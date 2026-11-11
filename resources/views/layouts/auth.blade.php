@@ -27,6 +27,7 @@
 
     </div>
 
+    @include('partials.notifications')
 </body>
 
 </html>

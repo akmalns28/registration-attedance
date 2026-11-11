@@ -1,7 +1,15 @@
+import registerNotify from "notifyjs-browser";
+
 export function initializeNotify($) {
+    // Notify.js 0.4 still uses these helpers, which jQuery 4 removed.
+    $.isArray ??= Array.isArray;
+    $.type ??= (value) =>
+        value == null
+            ? String(value)
+            : Object.prototype.toString.call(value).slice(8, -1).toLowerCase();
+
     if (typeof $.notify !== "function") {
-        console.error("Notify.js belum terinisialisasi.");
-        return;
+        registerNotify(window, $);
     }
 
     $.notify.defaults({
@@ -12,23 +20,45 @@ export function initializeNotify($) {
 
     const notify = {
         success(message) {
-            $.notify(message, "success");
+            $.notify(message, { className: "success" });
         },
 
         error(message) {
-            $.notify(message, "error");
+            $.notify(message, { className: "error" });
         },
 
         warning(message) {
-            $.notify(message, "warn");
+            $.notify(message, { className: "warn" });
         },
 
         info(message) {
-            $.notify(message, "info");
+            $.notify(message, { className: "info" });
         },
     };
 
     window.notify = notify;
+    $(() => showFlashNotifications(notify));
 
     return notify;
+}
+
+function showFlashNotifications(notify) {
+    const element = document.getElementById("flash-notifications");
+
+    if (!element) {
+        return;
+    }
+
+    const notifications = JSON.parse(element.textContent);
+    element.remove();
+
+    Object.entries(notifications).forEach(([type, message]) => {
+        if (
+            typeof message === "string" &&
+            message.trim() !== "" &&
+            typeof notify[type] === "function"
+        ) {
+            notify[type](message);
+        }
+    });
 }

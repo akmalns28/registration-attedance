@@ -13,7 +13,7 @@ class RolePermissionSeeder extends Seeder
     {
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        $permissions = ['dashboard.view', 'users.view', 'users.manage', 'roles.manage', 'employees.view', 'employees.manage', 'external-participants.view', 'external-participants.manage', 'events.view', 'events.create', 'events.update', 'events.delete', 'registrations.view', 'registrations.manage', 'attendance.view', 'attendance.scan', 'attendance.manual', 'reports.view', 'reports.export'];
+        $permissions = ['dashboard.view', 'users.view', 'users.manage', 'roles.manage', 'employees.view', 'employees.manage', 'external-participants.view', 'external-participants.manage', 'events.view', 'events.create', 'events.update', 'events.delete', 'registrations.view', 'registrations.manage', 'attendance.view', 'attendance.scan', 'attendance.manual', 'reports.view', 'reports.export', 'departments.view', 'departments.create', 'departments.update', 'departments.delete','departments.export',];
 
         foreach ($permissions as $permission) {
             Permission::firstOrCreate([

@@ -32,3 +32,14 @@
     white-space: normal;
     overflow-wrap: anywhere;
 }
+
+body > .notifyjs-corner {
+    z-index: 1090;
+    max-width: calc(100vw - 2rem);
+}
+
+.notifyjs-corner .notifyjs-bootstrap-base {
+    max-width: min(24rem, calc(100vw - 2rem));
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

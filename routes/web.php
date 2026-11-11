@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\KeycloakController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\Settings\RoleController;
 use App\Http\Controllers\Settings\UserController;
 use Illuminate\Http\RedirectResponse;
@@ -46,6 +47,14 @@ Route::middleware(['auth', 'active'])->group(function () {
                 ->except(['show', 'destroy'])
                 ->middleware('can:users.manage');
         });
+    Route::resource('departments', DepartmentController::class)
+        ->except(['show'])
+        ->middlewareFor('index', 'can:departments.view')
+        ->middlewareFor('create', 'can:departments.create')
+        ->middlewareFor('store', 'can:departments.create')
+        ->middlewareFor('edit', 'can:departments.update')
+        ->middlewareFor('update', 'can:departments.update')
+        ->middlewareFor('destroy', 'can:departments.delete');
 
     Route::view('/events', 'placeholder', [
         'title' => 'Event Management',
