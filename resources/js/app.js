@@ -4,8 +4,12 @@ import $ from "jquery";
 import { initializeForms } from "./plugins/forms";
 import { initializeDataTables } from "./plugins/datatables";
 import { initializeNotify } from "./plugins/notify";
+import { initializeTomSelect } from "./plugins/tom-select";
 
 window.$ = window.jQuery = $;
+document.addEventListener("app:plugins-ready", () => {
+    initializeTomSelect();
+});
 
 function initializeApp() {
     initializeNotify($);
