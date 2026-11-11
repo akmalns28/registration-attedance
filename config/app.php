@@ -116,4 +116,6 @@ return [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
+
+    'initial_admin_email' => env('INITIAL_ADMIN_EMAIL'),
 ];

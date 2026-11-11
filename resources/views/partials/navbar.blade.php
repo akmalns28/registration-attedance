@@ -1,56 +1,46 @@
-<header class="navbar navbar-expand-md d-none d-lg-flex d-print-none">
+@auth
 
-    <div class="container-xl">
+    <div class="nav-item dropdown">
 
-        <div class="navbar-nav flex-row order-md-last">
+        <a href="#" class="nav-link d-flex lh-1 text-reset p-0" data-bs-toggle="dropdown">
 
-            <div class="nav-item dropdown">
+            <span class="avatar avatar-sm bg-primary-lt">
+                {{ strtoupper(substr(auth()->user()->name, 0, 2)) }}
+            </span>
 
-                <a href="#" class="nav-link d-flex lh-1 text-reset p-0" data-bs-toggle="dropdown"
-                    aria-label="Open user menu">
+            <div class="d-none d-xl-block ps-2">
 
-                    <span class="avatar avatar-sm">
-                        AD
-                    </span>
+                <div>
+                    {{ auth()->user()->name }}
+                </div>
 
-                    <div class="d-none d-xl-block ps-2">
-
-                        <div>Administrator</div>
-
-                        <div class="mt-1 small text-secondary">
-                            Admin
-                        </div>
-
-                    </div>
-
-                </a>
-
-                <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
-
-                    <span class="dropdown-item-text">
-                        Administrator
-                    </span>
-
+                <div class="mt-1 small text-secondary">
+                    {{ ucfirst(auth()->user()->role) }}
                 </div>
 
             </div>
 
-        </div>
+        </a>
 
-        <div class="navbar-nav">
+        <div class="dropdown-menu dropdown-menu-end">
 
-            <div class="nav-item">
-
-                <span class="text-secondary">
-
-                    Event Registration & Attendance System
-
-                </span>
-
+            <div class="dropdown-header">
+                {{ auth()->user()->email }}
             </div>
+
+            <div class="dropdown-divider"></div>
+
+            <form method="POST" action="{{ route('logout') }}">
+                @csrf
+
+                <button type="submit" class="dropdown-item text-danger">
+                    Logout
+                </button>
+
+            </form>
 
         </div>
 
     </div>
 
-</header>
+@endauth
