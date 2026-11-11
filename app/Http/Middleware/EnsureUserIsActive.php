@@ -9,8 +9,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureUserIsActive
 {
-    public function handle(Request $request, Closure $next): Response
-    {
+    public function handle(
+        Request $request,
+        Closure $next
+    ): Response {
         $user = $request->user();
 
         if (!$user) {
@@ -23,7 +25,12 @@ class EnsureUserIsActive
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return redirect()->route('login')->with('error', 'Akun Anda telah dinonaktifkan.');
+            return redirect()
+                ->route('login')
+                ->with(
+                    'error',
+                    'Akun Anda telah dinonaktifkan.'
+                );
         }
 
         return $next($request);
