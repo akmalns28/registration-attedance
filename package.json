@@ -25,6 +25,7 @@
         "jquery": "^4.0.0",
         "jszip": "^3.10.2",
         "notifyjs-browser": "^0.4.2",
-        "pdfmake": "^0.2.23"
+        "pdfmake": "^0.2.23",
+        "tom-select": "^2.7.0"
     }
 }
