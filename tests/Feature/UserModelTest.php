@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class UserModelTest extends TestCase
@@ -20,7 +21,6 @@ class UserModelTest extends TestCase
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
             'email' => 'test@example.com',
-            'role' => 'panitia',
             'is_active' => false,
         ]);
 
@@ -49,14 +49,17 @@ class UserModelTest extends TestCase
 
     public function test_role_helpers_work_correctly(): void
     {
+        Role::create(['name' => 'super-admin', 'guard_name' => 'web']);
+        Role::create(['name' => 'panitia', 'guard_name' => 'web']);
+
         $user = User::create([
             'name' => 'Admin User',
             'email' => 'admin@example.com',
         ]);
 
-        $user->role = 'admin';
+        $user->assignRole('super-admin');
 
-        $this->assertTrue($user->isAdmin());
-        $this->assertFalse($user->isPanitia());
+        $this->assertTrue($user->hasRole('super-admin'));
+        $this->assertFalse($user->hasRole('panitia'));
     }
 }
