@@ -22,11 +22,44 @@ class User extends Authenticatable
      *
      * @return array<string, string>
      */
+    protected $fillable = [
+        'keycloak_id',
+        'name',
+        'email',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
+            'is_active' => 'boolean',
             'password' => 'hashed',
         ];
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    /**
+     * Check whether user is event staff.
+     */
+    public function isPanitia(): bool
+    {
+        return $this->role === 'panitia';
+    }
+
+    /**
+     * Check whether user has application access.
+     */
+    public function canAccessApplication(): bool
+    {
+        return $this->is_active === true;
     }
 }
