@@ -94,7 +94,7 @@ class KeycloakAuthenticationTest extends TestCase
         $this->assertAuthenticatedAs($user);
         $this->assertSame('keycloak-user-id', $user->keycloak_id);
         $this->assertSame('Keycloak User', $user->name);
-        $this->assertTrue($user->isAdmin());
+        $this->assertTrue($user->hasRole('super-admin'));
     }
 
     public function test_linked_user_can_sign_in_using_their_existing_keycloak_identity(): void

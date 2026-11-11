@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-bs-navbar-position="combined">
 
 <head>
     <meta charset="UTF-8">
@@ -25,11 +25,11 @@
         {{-- Sidebar --}}
         @include('partials.sidebar')
 
+        {{-- Navbar --}}
+        @include('partials.navbar')
+
         {{-- Main Content --}}
         <div class="page-wrapper">
-
-            {{-- Navbar --}}
-            @include('partials.navbar')
 
             {{-- Page Content --}}
             <div class="page-body">
@@ -50,7 +50,7 @@
     </div>
 
     @stack('scripts')
-
+    @include('partials.notifications')
 </body>
 
 </html>

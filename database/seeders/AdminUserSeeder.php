@@ -18,18 +18,20 @@ class AdminUserSeeder extends Seeder
             );
         }
 
+        $this->call(RolePermissionSeeder::class);
+
         $user = User::firstOrNew([
             'email' => $email,
         ]);
 
-        if (!$user->exists) {
+        if (! $user->exists) {
             $user->name = 'Administrator';
             $user->password = null;
         }
 
-        $user->role = 'admin';
         $user->is_active = true;
 
         $user->save();
+        $user->assignRole('super-admin');
     }
 }
