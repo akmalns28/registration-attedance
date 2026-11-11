@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\KeycloakController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Settings\RoleController;
 use App\Http\Controllers\Settings\UserController;
 use Illuminate\Http\RedirectResponse;
@@ -29,7 +30,9 @@ Route::middleware('guest')->group(function () {
 Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/', fn(): RedirectResponse => redirect()->route('dashboard'));
 
-    Route::view('/dashboard', 'dashboard.index')->middleware('can:dashboard.view')->name('dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->middleware('can:dashboard.view')
+        ->name('dashboard');
     Route::post('/logout', [KeycloakController::class, 'logout'])->name('logout');
 
     Route::prefix('settings')
