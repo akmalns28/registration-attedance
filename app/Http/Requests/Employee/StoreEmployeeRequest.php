@@ -15,7 +15,7 @@ class StoreEmployeeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nik' => ['required', 'string', 'max:30', Rule::unique('employees', 'nik')],
+            'nip' => ['required', 'string', 'size:15', Rule::unique('employees', 'nip')],
 
             'name' => ['required', 'string', 'max:150'],
 
@@ -32,7 +32,7 @@ class StoreEmployeeRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'nik' => strtoupper(trim((string) $this->input('nik'))),
+            'nip' => strtoupper(trim((string) $this->input('nip'))),
 
             'name' => trim((string) $this->input('name')),
 
@@ -47,8 +47,9 @@ class StoreEmployeeRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'nik.required' => 'NIK karyawan wajib diisi.',
-            'nik.unique' => 'NIK karyawan sudah digunakan.',
+            'nip.required' => 'NIP karyawan wajib diisi.',
+            'nip.size' => 'NIP karyawan harus terdiri dari 15 karakter.',
+            'nip.unique' => 'NIP karyawan sudah digunakan.',
             'name.required' => 'Nama karyawan wajib diisi.',
             'department_id.required' => 'Departemen wajib dipilih.',
             'department_id.exists' => 'Departemen tidak tersedia atau sudah tidak aktif.',

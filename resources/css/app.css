@@ -18,6 +18,18 @@
     --tblr-font-sans-serif: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+.navbar-vertical[data-bs-theme="dark"] {
+    --tblr-navbar-bg: var(--tblr-dark);
+    --tblr-navbar-hover-color: var(--tblr-white);
+    --tblr-navbar-active-bg: var(--tblr-primary);
+    --tblr-navbar-disabled-color: rgba(255, 255, 255, 0.6);
+    --tblr-navbar-border-color: rgba(255, 255, 255, 0.1);
+}
+
+.navbar-vertical[data-bs-theme="dark"] .navbar-nav {
+    --tblr-nav-link-hover-bg: rgba(255, 255, 255, 0.08);
+}
+
 .account-details {
     min-width: 0;
     max-width: 14rem;

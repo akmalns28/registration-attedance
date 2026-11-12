@@ -21,7 +21,7 @@ class MasterDataIntegrationTest extends TestCase
         ]);
 
         $employee = Employee::factory()->create([
-            'nik' => 'EMP001',
+            'nip' => 'EMP000000000001',
             'department_id' => $department->id,
         ]);
 

@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Department;
 use App\Models\Employee;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class EmployeeModelTest extends TestCase
@@ -16,14 +18,14 @@ class EmployeeModelTest extends TestCase
         $department = Department::factory()->create();
 
         $employee = Employee::factory()->create([
-            'nik' => 'EMP001',
+            'nip' => 'EMP000000000001',
             'name' => 'Test Employee',
             'department_id' => $department->id,
         ]);
 
         $this->assertDatabaseHas('employees', [
             'id' => $employee->id,
-            'nik' => 'EMP001',
+            'nip' => 'EMP000000000001',
             'name' => 'Test Employee',
             'department_id' => $department->id,
         ]);
@@ -87,19 +89,40 @@ class EmployeeModelTest extends TestCase
         );
     }
 
-    public function test_employee_nik_must_be_unique(): void
+    public function test_employee_nip_must_be_unique(): void
     {
         Employee::factory()->create([
-            'nik' => 'EMP001',
+            'nip' => 'EMP000000000001',
         ]);
 
         $this->expectException(
-            \Illuminate\Database\QueryException::class
+            QueryException::class
         );
 
         Employee::factory()->create([
-            'nik' => 'EMP001',
+            'nip' => 'EMP000000000001',
         ]);
+    }
+
+    public function test_employee_identifier_migration_preserves_data_and_can_be_reversed(): void
+    {
+        $employee = Employee::factory()->create(['nip' => '001234567890123']);
+        $migration = require database_path('migrations/2026_11_12_142733_rename_employee_nik_to_nip.php');
+
+        $migration->down();
+
+        $this->assertFalse(Schema::hasColumn('employees', 'nip'));
+        $this->assertTrue(Schema::hasIndex('employees', 'employees_nik_unique', 'unique'));
+        $this->assertDatabaseHas('employees', [
+            'id' => $employee->id,
+            'nik' => '001234567890123',
+        ]);
+
+        $migration->up();
+
+        $this->assertFalse(Schema::hasColumn('employees', 'nik'));
+        $this->assertTrue(Schema::hasIndex('employees', 'employees_nip_unique', 'unique'));
+        $this->assertSame('001234567890123', $employee->fresh()->nip);
     }
 
     public function test_department_with_employees_cannot_be_deleted(): void
@@ -111,7 +134,7 @@ class EmployeeModelTest extends TestCase
         ]);
 
         $this->expectException(
-            \Illuminate\Database\QueryException::class
+            QueryException::class
         );
 
         $department->delete();

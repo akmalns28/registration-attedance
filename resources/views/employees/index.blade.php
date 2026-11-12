@@ -105,7 +105,7 @@
                                 <thead>
                                     <tr>
                                         <th class="no-export">No.</th>
-                                        <th>NIK</th>
+                                        <th>NIP</th>
                                         <th>Nama Karyawan</th>
                                         <th>Departemen</th>
                                         <th>Email</th>
@@ -129,7 +129,7 @@
 
                                             <td>
                                                 <span class="badge bg-azure-lt">
-                                                    {{ $employee->nik }}
+                                                    {{ $employee->nip }}
                                                 </span>
                                             </td>
 
