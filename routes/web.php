@@ -1,10 +1,10 @@
 <?php
 
-
 use App\Http\Controllers\Auth\KeycloakController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\ExternalParticipantController;
 use App\Http\Controllers\Settings\RoleController;
 use App\Http\Controllers\Settings\UserController;
 use Illuminate\Http\RedirectResponse;
@@ -66,6 +66,15 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middlewareFor('edit', 'can:employees.manage')
         ->middlewareFor('update', 'can:employees.manage')
         ->middlewareFor('destroy', 'can:employees.manage');
+
+    Route::resource('external-participants', ExternalParticipantController::class)
+        ->except(['show'])
+        ->middlewareFor('index', 'can:external-participants.view')
+        ->middlewareFor('create', 'can:external-participants.manage')
+        ->middlewareFor('store', 'can:external-participants.manage')
+        ->middlewareFor('edit', 'can:external-participants.manage')
+        ->middlewareFor('update', 'can:external-participants.manage')
+        ->middlewareFor('destroy', 'can:external-participants.manage');
 
     Route::view('/events', 'placeholder', [
         'title' => 'Event Management',
