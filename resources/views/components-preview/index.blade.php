@@ -157,7 +157,8 @@
 
             <x-ui.card title="Form Inputs">
 
-                <x-ui.form.input name="nik" label="NIK Karyawan" placeholder="Masukkan NIK" required />
+                <x-ui.form.input name="nip" label="NIP Karyawan" placeholder="Masukkan NIP" minlength="15"
+                    maxlength="15" required />
 
                 <x-ui.form.input name="name" label="Nama Lengkap" placeholder="Masukkan nama" />
 
@@ -201,7 +202,7 @@
 
                     <x-slot:head>
                         <tr>
-                            <th>NIK</th>
+                            <th>NIP</th>
                             <th>Nama</th>
                             <th>Departemen</th>
                             <th>Status</th>
@@ -209,7 +210,7 @@
                     </x-slot:head>
 
                     <tr>
-                        <td>EMP001</td>
+                        <td>EMP000000000001</td>
                         <td>Ahmad</td>
                         <td>IT</td>
                         <td>
@@ -220,7 +221,7 @@
                     </tr>
 
                     <tr>
-                        <td>EMP002</td>
+                        <td>EMP000000000002</td>
                         <td>Budi</td>
                         <td>Finance</td>
                         <td>

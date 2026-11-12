@@ -21,25 +21,26 @@
 
             <div class="card-body">
 
-                {{-- NIK --}}
+                {{-- NIP --}}
                 <div class="mb-3">
-                    <label for="nik" class="form-label required">
-                        NIK Karyawan
+                    <label for="nip" class="form-label required">
+                        NIP Karyawan
                     </label>
 
-                    <input type="text" id="nik" name="nik"
-                        class="form-control @error('nik') is-invalid @enderror"
-                        value="{{ old('nik', $employee->nik ?? '') }}" placeholder="Contoh: EMP001" maxlength="30"
+                    <input type="text" id="nip" name="nip"
+                        class="form-control @error('nip') is-invalid @enderror"
+                        value="{{ old('nip', $employee->nip ?? '') }}" placeholder="Contoh: EMP000000000001"
+                        minlength="15" maxlength="15"
                         style="text-transform: uppercase" required>
 
-                    @error('nik')
+                    @error('nip')
                         <div class="invalid-feedback">
                             {{ $message }}
                         </div>
                     @enderror
 
                     <div class="form-hint">
-                        Nomor induk karyawan harus unik.
+                        Nomor induk pegawai harus unik dan terdiri dari 15 karakter.
                     </div>
                 </div>
 

@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -42,7 +43,7 @@ class EmployeeManagementTest extends TestCase
     {
         return array_merge(
             [
-                'nik' => 'EMP001',
+                'nip' => 'EMP000000000001',
                 'name' => 'Test Employee',
                 'department_id' => $department->id,
                 'email' => 'employee@example.com',
@@ -66,7 +67,11 @@ class EmployeeManagementTest extends TestCase
             'name' => 'Employee Example',
         ]);
 
-        $this->actingAs($user)->get(route('employees.index'))->assertOk()->assertSee('Employee Example');
+        $this->actingAs($user)->get(route('employees.index'))
+            ->assertOk()
+            ->assertSee('Employee Example')
+            ->assertSee('<th>NIP</th>', false)
+            ->assertDontSee('<th>NIK</th>', false);
     }
 
     public function test_user_without_permission_cannot_view_employees(): void
@@ -85,7 +90,14 @@ class EmployeeManagementTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($user)->get(route('employees.create'))->assertOk()->assertSee('Information Technology');
+        $this->actingAs($user)->get(route('employees.create'))
+            ->assertOk()
+            ->assertSee('Information Technology')
+            ->assertSee('NIP Karyawan')
+            ->assertSee('name="nip"', false)
+            ->assertSee('minlength="15"', false)
+            ->assertSee('maxlength="15"', false)
+            ->assertDontSee('name="nik"', false);
     }
 
     public function test_authorized_user_can_create_employee(): void
@@ -97,14 +109,14 @@ class EmployeeManagementTest extends TestCase
         $this->actingAs($user)->post(route('employees.store'), $this->employeeData($department))->assertRedirect(route('employees.index'));
 
         $this->assertDatabaseHas('employees', [
-            'nik' => 'EMP001',
+            'nip' => 'EMP000000000001',
             'name' => 'Test Employee',
             'department_id' => $department->id,
             'is_active' => true,
         ]);
     }
 
-    public function test_employee_nik_is_normalized_to_uppercase(): void
+    public function test_employee_nip_is_normalized_to_uppercase(): void
     {
         $user = $this->createUser(['employees.manage']);
 
@@ -114,27 +126,108 @@ class EmployeeManagementTest extends TestCase
             ->post(
                 route('employees.store'),
                 $this->employeeData($department, [
-                    'nik' => 'emp001',
+                    'nip' => ' emp000000000001 ',
                 ]),
             )
             ->assertRedirect(route('employees.index'));
 
         $this->assertDatabaseHas('employees', [
-            'nik' => 'EMP001',
+            'nip' => 'EMP000000000001',
         ]);
     }
 
-    public function test_duplicate_employee_nik_is_rejected(): void
+    public function test_duplicate_employee_nip_is_rejected(): void
     {
         $user = $this->createUser(['employees.manage']);
 
         $department = Department::factory()->create();
 
         Employee::factory()->create([
-            'nik' => 'EMP001',
+            'nip' => 'EMP000000000001',
         ]);
 
-        $this->actingAs($user)->post(route('employees.store'), $this->employeeData($department))->assertSessionHasErrors('nik');
+        $this->actingAs($user)->post(route('employees.store'), $this->employeeData($department))->assertSessionHasErrors('nip');
+    }
+
+    #[DataProvider('invalidNips')]
+    public function test_employee_cannot_be_created_with_an_invalid_nip_length(string $nip): void
+    {
+        $user = $this->createUser(['employees.manage']);
+        $department = Department::factory()->create();
+
+        $this->actingAs($user)
+            ->post(route('employees.store'), $this->employeeData($department, ['nip' => $nip]))
+            ->assertSessionHasErrors('nip');
+
+        $this->assertDatabaseCount('employees', 0);
+    }
+
+    #[DataProvider('invalidNips')]
+    public function test_employee_cannot_be_updated_with_an_invalid_nip_length(string $nip): void
+    {
+        $user = $this->createUser(['employees.manage']);
+        $employee = Employee::factory()->create();
+
+        $this->actingAs($user)
+            ->put(route('employees.update', $employee), $this->employeeData($employee->department, ['nip' => $nip]))
+            ->assertSessionHasErrors('nip');
+
+        $this->assertDatabaseHas('employees', [
+            'id' => $employee->id,
+            'nip' => $employee->nip,
+            'name' => $employee->name,
+        ]);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidNips(): array
+    {
+        return [
+            'empty' => [''],
+            '14 characters' => ['12345678901234'],
+            '16 characters' => ['1234567890123456'],
+        ];
+    }
+
+    public function test_employee_nip_preserves_leading_zeroes_on_create_and_update(): void
+    {
+        $user = $this->createUser(['employees.manage']);
+        $department = Department::factory()->create();
+        $nip = '001234567890123';
+
+        $this->actingAs($user)
+            ->post(route('employees.store'), $this->employeeData($department, ['nip' => $nip]))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('employees.index'));
+
+        $employee = Employee::query()->sole();
+
+        $this->assertSame($nip, $employee->nip);
+
+        $updatedNip = '001234567890124';
+
+        $this->put(route('employees.update', $employee), $this->employeeData($department, ['nip' => $updatedNip]))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('employees.index'));
+
+        $this->assertSame($updatedNip, $employee->fresh()->nip);
+    }
+
+    public function test_duplicate_employee_nip_is_rejected_on_update(): void
+    {
+        $user = $this->createUser(['employees.manage']);
+        $existingEmployee = Employee::factory()->create();
+        $employee = Employee::factory()->create();
+
+        $this->actingAs($user)
+            ->put(route('employees.update', $employee), $this->employeeData($employee->department, [
+                'nip' => $existingEmployee->nip,
+            ]))
+            ->assertSessionHasErrors('nip');
+
+        $this->assertSame($employee->nip, $employee->fresh()->nip);
     }
 
     public function test_employee_cannot_be_created_with_inactive_department(): void
@@ -162,7 +255,7 @@ class EmployeeManagementTest extends TestCase
             ->put(
                 route('employees.update', $employee),
                 $this->employeeData($department, [
-                    'nik' => $employee->nik,
+                    'nip' => $employee->nip,
                     'name' => 'Updated Employee',
                     'is_active' => false,
                 ]),
@@ -192,7 +285,7 @@ class EmployeeManagementTest extends TestCase
             ->put(
                 route('employees.update', $employee),
                 $this->employeeData($department, [
-                    'nik' => $employee->nik,
+                    'nip' => $employee->nip,
                     'name' => 'Updated Employee',
                 ]),
             )
@@ -223,7 +316,7 @@ class EmployeeManagementTest extends TestCase
             ->put(
                 route('employees.update', $employee),
                 $this->employeeData($inactiveDepartment, [
-                    'nik' => $employee->nik,
+                    'nip' => $employee->nip,
                 ]),
             )
             ->assertSessionHasErrors('department_id');
@@ -239,7 +332,7 @@ class EmployeeManagementTest extends TestCase
             ->put(
                 route('employees.update', $employee),
                 $this->employeeData($employee->department, [
-                    'nik' => $employee->nik,
+                    'nip' => $employee->nip,
                 ]),
             )
             ->assertForbidden();
