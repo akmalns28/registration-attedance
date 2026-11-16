@@ -30,7 +30,7 @@
                     <input type="text" id="nip" name="nip"
                         class="form-control @error('nip') is-invalid @enderror"
                         value="{{ old('nip', $employee->nip ?? '') }}" placeholder="Contoh: EMP000000000001"
-                        minlength="15" maxlength="15"
+                        maxlength="255"
                         style="text-transform: uppercase" required>
 
                     @error('nip')
@@ -40,7 +40,7 @@
                     @enderror
 
                     <div class="form-hint">
-                        Nomor induk pegawai harus unik dan terdiri dari 15 karakter.
+                        Nomor induk pegawai harus unik.
                     </div>
                 </div>
 

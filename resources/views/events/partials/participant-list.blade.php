@@ -1,0 +1,262 @@
+{{-- Participant List --}}
+
+<div class="card">
+
+    <div class="card-header">
+
+        <div>
+            <h3 class="card-title">
+                Daftar Peserta
+            </h3>
+
+            <div class="text-secondary small mt-1">
+                Seluruh registrasi Employee dan External Participant
+                pada event ini.
+            </div>
+        </div>
+
+        <div class="card-actions">
+
+            <span class="badge bg-primary-lt">
+                {{ $event->registered_participants_count }}
+                Registered
+            </span>
+
+            <span class="badge bg-secondary-lt ms-1">
+                {{ $event->cancelled_registrations_count }}
+                Cancelled
+            </span>
+
+        </div>
+
+    </div>
+
+    <div class="card-body">
+
+        <div class="table-responsive">
+
+            <table id="eventParticipantsTable" class="table table-vcenter table-hover w-100" data-datatable
+                data-export="true" data-filename="event-participants">
+
+                <thead>
+                    <tr>
+                        <th class="no-sort no-export">
+                            No.
+                        </th>
+
+                        <th data-priority="3">
+                            Registration Number
+                        </th>
+
+                        <th class="no-sort no-export" data-priority="2">
+                            QR Code
+                        </th>
+
+                        <th data-priority="1">
+                            Nama Peserta
+                        </th>
+
+                        <th>
+                            Type
+                        </th>
+
+                        <th>
+                            Department / Organization
+                        </th>
+
+                        <th>
+                            Status
+                        </th>
+
+                        <th>
+                            Registered At
+                        </th>
+
+                        <th class="no-sort no-export text-end all" data-priority="1">
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    @foreach ($registrations as $registration)
+                        @php
+                            $isEmployee = $registration->isEmployee();
+
+                            $participant = $isEmployee ? $registration->employee : $registration->externalParticipant;
+
+                            $participantName = $participant?->name ?? 'Unknown Participant';
+
+                            $participantInfo = $isEmployee
+                                ? $registration->employee?->department?->name ?? '-'
+                                : $registration->externalParticipant?->organization ?? '-';
+
+                            $isRegistered = $registration->isRegistered();
+                        @endphp
+
+                        <tr>
+
+                            {{-- No --}}
+                            <td>
+                                {{ $loop->iteration }}
+                            </td>
+
+                            {{-- Registration Number --}}
+                            <td>
+
+                                <span class="font-monospace small">
+                                    {{ $registration->registration_number }}
+                                </span>
+
+                            </td>
+
+                            {{-- Registration QR Code --}}
+                            <td>
+                                <a href="{{ route('events.participants.qr', [$event, $registration]) }}" target="_blank" rel="noopener" title="Buka QR ukuran penuh">
+                                    <img src="{{ route('events.participants.qr', [$event, $registration]) }}" alt="QR Code registrasi {{ $registration->registration_number }}"
+                                        width="111" height="111" loading="lazy" class="border rounded bg-white p-1" style="image-rendering: pixelated;">
+                                </a>
+                                <a class="d-block small mt-1" href="{{ route('events.participants.qr', ['event' => $event, 'registration' => $registration, 'download' => 1]) }}">Unduh PNG</a>
+                                <details class="small mt-1">
+                                    <summary class="text-secondary">Nilai QR</summary>
+                                    <code class="d-block text-break mt-1" style="max-width: 180px;">{{ app(\App\Services\RegistrationQrCodeService::class)->payload($registration) }}</code>
+                                </details>
+                            </td>
+
+                            {{-- Participant --}}
+                            <td>
+
+                                <div class="fw-semibold">
+                                    {{ $participantName }}
+                                </div>
+
+                                @if ($isEmployee)
+                                    <div class="text-secondary small">
+                                        NIP:
+                                        {{ $registration->employee?->nip ?? '-' }}
+                                    </div>
+                                @else
+                                    @if ($registration->externalParticipant?->email)
+                                        <div class="text-secondary small">
+                                            {{ $registration->externalParticipant->email }}
+                                        </div>
+                                    @endif
+                                @endif
+
+                            </td>
+
+                            {{-- Type --}}
+                            <td>
+
+                                @if ($isEmployee)
+                                    <span class="badge bg-blue-lt">
+                                        <i class="ti ti-user me-1"></i>
+                                        Employee
+                                    </span>
+                                @else
+                                    <span class="badge bg-purple-lt">
+                                        <i class="ti ti-users me-1"></i>
+                                        External
+                                    </span>
+                                @endif
+
+                            </td>
+
+                            {{-- Department / Organization --}}
+                            <td>
+                                {{ $participantInfo }}
+                            </td>
+
+                            {{-- Status --}}
+                            <td>
+
+                                @if ($isRegistered)
+                                    <span class="badge bg-success-lt">
+                                        <i class="ti ti-circle-check me-1"></i>
+                                        Registered
+                                    </span>
+                                @else
+                                    <span class="badge bg-danger-lt">
+                                        <i class="ti ti-circle-x me-1"></i>
+                                        Cancelled
+                                    </span>
+
+                                    @if ($registration->cancelled_at)
+                                        <div class="text-secondary small mt-1">
+                                            {{ $registration->cancelled_at->format('d/m/Y H:i') }}
+                                        </div>
+                                    @endif
+                                @endif
+
+                            </td>
+
+                            {{-- Registered At --}}
+                            <td data-order="{{ $registration->registered_at?->timestamp ?? 0 }}">
+
+                                {{ $registration->registered_at ? $registration->registered_at->format('d/m/Y H:i') : '-' }}
+
+                            </td>
+
+                            {{-- Actions --}}
+                            <td class="text-end">
+
+                                @can('events.update')
+                                    @if ($isRegistered)
+                                        {{-- Cancel Registration --}}
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
+                                            data-bs-target="#cancelRegistrationModal"
+                                            data-cancel-url="{{ route('events.participants.destroy', [$event, $registration]) }}"
+                                            data-participant-name="{{ $participantName }}">
+                                            <i class="ti ti-user-x me-1"></i>
+                                            Cancel
+                                        </button>
+                                    @elseif (in_array($event->status, ['draft', 'published'], true) && $participant?->is_active)
+                                        {{-- Reactivate Registration --}}
+                                        <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal"
+                                            data-bs-target="#reactivateRegistrationModal"
+                                            data-reactivate-url="{{ route('events.participants.reactivate', [$event, $registration]) }}"
+                                            data-participant-name="{{ $participantName }}">
+                                            <i class="ti ti-user-check me-1"></i>
+                                            Reactivate
+                                        </button>
+                                    @else
+                                        <span class="text-secondary small">
+                                            Tidak dapat diaktifkan
+                                        </span>
+                                    @endif
+                                @else
+                                    <span class="text-secondary">
+                                        -
+                                    </span>
+                                @endcan
+
+                            </td>
+
+                        </tr>
+                    @endforeach
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+        <p class="text-secondary small mt-3 mb-0">
+            QR berisi token registrasi RA1. Gunakan pembaca QR yang mendukung teks; iPhone Camera tidak dapat membuka token ini.
+            Klik gambar untuk ukuran penuh atau unduh PNG.
+        </p>
+
+        <div class="text-secondary small mt-3">
+
+            <i class="ti ti-info-circle me-1"></i>
+
+            Registrasi yang dibatalkan tetap tersimpan.
+            Gunakan tombol Reactivate untuk mengaktifkan kembali peserta
+            selama event masih menerima registrasi dan kapasitas tersedia.
+
+        </div>
+
+    </div>
+
+</div>

@@ -31,12 +31,12 @@ class NavigationLayoutTest extends TestCase
             ->assertSeeInOrder(['<aside', '<header', '<div class="page-wrapper">'], false)
             ->assertSee('aria-controls="sidebar-menu"', false)
             ->assertSee('aria-current="page"', false)
-            ->assertSee('href="' . route('settings.roles.index') . '"', false)
-            ->assertSee('href="' . route('events.index') . '"', false)
-            ->assertSee('href="' . route('attendance.scanner') . '"', false)
+            ->assertSee('href="'.route('settings.roles.index').'"', false)
+            ->assertSee('href="'.route('events.index').'"', false)
+            ->assertSee('href="'.route('attendance.scanner').'"', false)
             ->assertSee('Super Admin')
             ->assertSee($user->email)
-            ->assertSee('action="' . route('logout') . '"', false)
+            ->assertSee('action="'.route('logout').'"', false)
             ->assertDontSee('Registration</span>', false);
     }
 
@@ -45,9 +45,9 @@ class NavigationLayoutTest extends TestCase
         $this->actingAs($this->userWithRole('panitia'))
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('href="' . route('events.index') . '"', false)
-            ->assertSee('href="' . route('attendance.scanner') . '"', false)
-            ->assertDontSee('href="' . route('settings.roles.index') . '"', false)
+            ->assertSee('href="'.route('events.index').'"', false)
+            ->assertSee('href="'.route('attendance.scanner').'"', false)
+            ->assertDontSee('href="'.route('settings.roles.index').'"', false)
             ->assertSee('Panitia');
 
         $this->get(route('settings.roles.index'))->assertForbidden();
@@ -61,7 +61,7 @@ class NavigationLayoutTest extends TestCase
         foreach ([route('settings.roles.index'), route('settings.roles.create'), route('settings.roles.edit', $role)] as $url) {
             $this->get($url)
                 ->assertOk()
-                ->assertSee('href="' . route('settings.roles.index') . '"', false)
+                ->assertSee('href="'.route('settings.roles.index').'"', false)
                 ->assertSee('aria-current="page"', false)
                 ->assertSee('Account navigation');
         }
@@ -72,12 +72,11 @@ class NavigationLayoutTest extends TestCase
         $this->actingAs($this->userWithRole('panitia'))->get('/')->assertRedirectToRoute('dashboard');
     }
 
-    public function test_existing_module_placeholders_keep_the_application_navigation(): void
+    public function test_unimplemented_modules_keep_the_placeholder_layout(): void
     {
         $this->actingAs($this->userWithRole('super-admin'));
-        foreach (['events.index', 'events.create', 'attendance.scanner'] as $route) {
-            $this->get(route($route))->assertOk()->assertSee('aria-label="Main navigation"', false)->assertSee('aria-label="Account navigation"', false)->assertSee('Fitur belum tersedia');
-        }
+
+        $this->get(route('attendance.scanner'))->assertOk()->assertSee('aria-label="Main navigation"', false)->assertSee('aria-label="Account navigation"', false)->assertSee('Fitur belum tersedia');
     }
 
     private function userWithRole(string $role): User
@@ -86,5 +85,14 @@ class NavigationLayoutTest extends TestCase
         $user->assignRole($role);
 
         return $user;
+    }
+
+    public function test_event_management_pages_keep_the_application_navigation(): void
+    {
+        $this->actingAs($this->userWithRole('super-admin'));
+
+        foreach (['events.index', 'events.create'] as $route) {
+            $this->get(route($route))->assertOk()->assertSee('aria-label="Main navigation"', false)->assertSee('aria-label="Account navigation"', false)->assertDontSee('Fitur belum tersedia');
+        }
     }
 }

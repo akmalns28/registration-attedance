@@ -1,0 +1,486 @@
+@extends('layouts.app')
+
+@section('title', $event->title)
+
+@section('content')
+    @php
+        $statusClasses = [
+            'draft' => 'bg-secondary-lt',
+            'published' => 'bg-success-lt',
+            'closed' => 'bg-azure-lt',
+            'cancelled' => 'bg-danger-lt',
+        ];
+
+        $statusClass = $statusClasses[$event->status] ?? 'bg-secondary-lt';
+
+        $duration = (int) $event->start_date->diffInDays($event->end_date) + 1;
+
+        $totalSchedules = $event->days->sum(fn($day) => $day->schedules->count());
+
+        $participantErrors = collect($errors->getMessages())
+            ->filter(fn (array $messages, string $key): bool => in_array($key, ['participants', 'participant_ids', 'participant_type', 'event', 'registration'], true) || str_starts_with($key, 'participant_ids.'))
+            ->flatten();
+    @endphp
+
+    <div class="container-xl" data-event-details
+        data-participant-errors="{{ $participantErrors->isNotEmpty() ? 'true' : 'false' }}"
+        data-participant-type="{{ $participantErrors->isNotEmpty() ? old('participant_type', '') : '' }}">
+
+        {{-- Header --}}
+        <div class="page-header d-print-none">
+            <div class="row align-items-center g-3">
+                <div class="col">
+
+                    <div class="page-pretitle">
+                        Event Management
+                    </div>
+
+                    <h2 class="page-title">
+                        {{ $event->title }}
+                    </h2>
+
+                    <div class="text-secondary mt-2">
+                        <i class="ti ti-calendar me-1"></i>
+                        {{ $event->start_date->format('d M Y') }}
+
+                        @if ($event->isMultiDay())
+                            - {{ $event->end_date->format('d M Y') }}
+                        @endif
+
+                        @if ($event->location)
+                            <span class="mx-2">•</span>
+                            <i class="ti ti-map-pin me-1"></i>
+                            {{ $event->location }}
+                        @endif
+                    </div>
+
+                </div>
+
+                <div class="col-auto ms-auto">
+                    <div class="btn-list">
+
+                        <a href="{{ route('events.index') }}" class="btn btn-outline-secondary">
+                            <i class="ti ti-arrow-left me-1"></i>
+                            Kembali
+                        </a>
+
+                        @can('events.update')
+                            <a href="{{ route('events.edit', $event) }}" class="btn btn-primary">
+                                <i class="ti ti-edit me-1"></i>
+                                Edit Event
+                            </a>
+                        @endcan
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- Statistics --}}
+        <div class="row row-cards mt-3">
+
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="subheader">Status Event</div>
+
+                        <div class="mt-2">
+                            <span class="badge {{ $statusClass }}">
+                                {{ ucfirst($event->status) }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="subheader">Durasi Event</div>
+
+                        <div class="h1 mb-0">
+                            {{ $duration }}
+                            <span class="fs-5 text-secondary">Hari</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="subheader">Event Days</div>
+
+                        <div class="h1 mb-0">
+                            {{ $event->days->count() }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="subheader">Total Rundown</div>
+
+                        <div class="h1 mb-0">
+                            {{ $totalSchedules }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        {{-- Event Navigation --}}
+        <div class="card mt-3">
+
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+
+                    <li class="nav-item" role="presentation">
+                        <a href="#event-overview" class="nav-link active" data-bs-toggle="tab" role="tab"
+                            aria-controls="event-overview" aria-selected="true">
+                            <i class="ti ti-info-circle me-2"></i>
+                            Overview
+                        </a>
+                    </li>
+
+                    <li class="nav-item" role="presentation">
+                        <a href="#event-days" class="nav-link" data-bs-toggle="tab" role="tab"
+                            aria-controls="event-days" aria-selected="false">
+                            <i class="ti ti-calendar-event me-2"></i>
+                            Event Days & Rundown
+
+                            <span class="badge bg-primary-lt ms-2">
+                                {{ $event->days->count() }}
+                            </span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item" role="presentation">
+
+                        <a href="#event-participants" class="nav-link" data-bs-toggle="tab" role="tab"
+                            aria-controls="event-participants" aria-selected="false">
+
+                            <i class="ti ti-users me-2"></i>
+
+                            Participants
+
+                            <span class="badge bg-primary-lt ms-2">
+                                {{ $event->registered_participants_count }}
+                            </span>
+
+                        </a>
+
+                    </li>
+
+                </ul>
+            </div>
+
+            <div class="card-body">
+                <div class="tab-content">
+
+                    {{-- Overview Tab --}}
+                    <div id="event-overview" class="tab-pane fade show active" role="tabpanel">
+
+                        <h3 class="mb-3">
+                            Informasi Event
+                        </h3>
+
+                        <div class="datagrid">
+
+                            <div class="datagrid-item">
+                                <div class="datagrid-title">
+                                    Nama Event
+                                </div>
+
+                                <div class="datagrid-content">
+                                    {{ $event->title }}
+                                </div>
+                            </div>
+
+                            <div class="datagrid-item">
+                                <div class="datagrid-title">
+                                    Lokasi
+                                </div>
+
+                                <div class="datagrid-content">
+                                    {{ $event->location ?: '-' }}
+                                </div>
+                            </div>
+
+                            <div class="datagrid-item">
+                                <div class="datagrid-title">
+                                    Tanggal Mulai
+                                </div>
+
+                                <div class="datagrid-content">
+                                    {{ $event->start_date->format('d/m/Y') }}
+                                </div>
+                            </div>
+
+                            <div class="datagrid-item">
+                                <div class="datagrid-title">
+                                    Tanggal Selesai
+                                </div>
+
+                                <div class="datagrid-content">
+                                    {{ $event->end_date->format('d/m/Y') }}
+                                </div>
+                            </div>
+
+                            <div class="datagrid-item">
+                                <div class="datagrid-title">
+                                    Durasi
+                                </div>
+
+                                <div class="datagrid-content">
+                                    {{ $duration }} Hari
+                                </div>
+                            </div>
+
+                            <div class="datagrid-item">
+                                <div class="datagrid-title">
+                                    Kapasitas Peserta
+                                </div>
+
+                                <div class="datagrid-content">
+                                    {{ $event->capacity ? number_format($event->capacity, 0, ',', '.') : 'Unlimited' }}
+                                </div>
+                            </div>
+
+                            <div class="datagrid-item">
+                                <div class="datagrid-title">
+                                    Registrasi Dibuka
+                                </div>
+
+                                <div class="datagrid-content">
+                                    {{ $event->registration_start_at ? $event->registration_start_at->format('d/m/Y H:i') : 'Belum ditentukan' }}
+                                </div>
+                            </div>
+
+                            <div class="datagrid-item">
+                                <div class="datagrid-title">
+                                    Registrasi Ditutup
+                                </div>
+
+                                <div class="datagrid-content">
+                                    {{ $event->registration_end_at ? $event->registration_end_at->format('d/m/Y H:i') : 'Belum ditentukan' }}
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <hr class="my-4">
+
+                        <h3>Deskripsi</h3>
+
+                        <div class="text-secondary">
+                            {!! nl2br(e($event->description ?: 'Tidak ada deskripsi.')) !!}
+                        </div>
+
+                    </div>
+
+                    {{-- Event Days Tab --}}
+                    <div id="event-days" class="tab-pane fade" role="tabpanel">
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+
+                            <div>
+                                <h3 class="mb-1">
+                                    Hari Pelaksanaan & Rundown
+                                </h3>
+
+                                <div class="text-secondary">
+                                    Kelola tanggal pelaksanaan dan agenda
+                                    kegiatan setiap hari.
+                                </div>
+                            </div>
+
+                            @can('events.update')
+                                <a href="{{ route('events.days.create', $event) }}" class="btn btn-primary">
+                                    <i class="ti ti-plus me-2"></i>
+                                    Tambah Event Day
+                                </a>
+                            @endcan
+
+                        </div>
+
+                        @forelse ($event->days as $day)
+                            <div class="card mb-3">
+
+                                <div class="card-header">
+
+                                    <div class="flex-fill">
+
+                                        <h3 class="card-title">
+                                            Day {{ $day->day_number }}
+
+                                            @if ($day->title)
+                                                — {{ $day->title }}
+                                            @endif
+                                        </h3>
+
+                                        <div class="text-secondary small mt-1">
+                                            <i class="ti ti-calendar me-1"></i>
+                                            {{ $day->date->format('d M Y') }}
+                                        </div>
+
+                                    </div>
+
+                                    <div class="card-actions">
+
+                                        <div class="btn-list align-items-center">
+
+                                            <span class="badge {{ $day->is_active ? 'bg-success-lt' : 'bg-danger-lt' }}">
+                                                {{ $day->is_active ? 'Active' : 'Inactive' }}
+                                            </span>
+
+                                            @can('events.update')
+                                                <a href="{{ route('events.days.edit', [$event, $day]) }}"
+                                                    class="btn btn-sm btn-outline-primary">
+                                                    <i class="ti ti-edit me-1"></i>
+                                                    Edit
+                                                </a>
+
+                                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                                    data-bs-toggle="modal" data-bs-target="#deleteEventDayModal"
+                                                    data-delete-url="{{ route('events.days.destroy', [$event, $day]) }}"
+                                                    data-delete-name="Day {{ $day->day_number }}">
+                                                    <i class="ti ti-trash"></i>
+                                                </button>
+                                            @endcan
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                                <div class="card-body">
+
+                                    @if ($day->description)
+                                        <p class="text-secondary mb-3">
+                                            {{ $day->description }}
+                                        </p>
+                                    @endif
+
+                                    @include('events.partials.schedules')
+
+                                </div>
+
+                            </div>
+
+                        @empty
+
+                            <div class="empty">
+
+                                <div class="empty-icon">
+                                    <i class="ti ti-calendar-off fs-1 text-secondary"></i>
+                                </div>
+
+                                <p class="empty-title">
+                                    Belum Ada Event Day
+                                </p>
+
+                                <p class="empty-subtitle text-secondary">
+                                    Tambahkan hari pelaksanaan untuk mulai
+                                    menyusun rundown event.
+                                </p>
+
+                            </div>
+                        @endforelse
+
+                    </div>
+
+                    {{-- Participants Tab --}}
+
+                    <div id="event-participants" class="tab-pane fade" role="tabpanel">
+
+                        @include('events.partials.participants')
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    {{-- Delete Confirmation Modals --}}
+    @can('events.update')
+
+        @foreach ([
+                [
+                    'id' => 'deleteEventDayModal',
+                    'form' => 'deleteEventDayForm',
+                    'name' => 'deleteEventDayName',
+                    'title' => 'Hapus Event Day?',
+                    'description' => 'Event Day hanya dapat dihapus jika belum memiliki rundown.',
+                ],
+                [
+                    'id' => 'deleteScheduleModal',
+                    'form' => 'deleteScheduleForm',
+                    'name' => 'deleteScheduleName',
+                    'title' => 'Hapus Rundown?',
+                    'description' => 'Rundown yang dihapus tidak dapat dipulihkan.',
+                ],
+            ] as $modal)
+            <div class="modal modal-blur fade" id="{{ $modal['id'] }}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-sm modal-dialog-centered">
+                    <div class="modal-content">
+
+                        <div class="modal-status bg-danger"></div>
+
+                        <div class="modal-body text-center py-4">
+
+                            <i class="ti ti-alert-triangle text-danger fs-1"></i>
+
+                            <h3 class="mt-3">
+                                {{ $modal['title'] }}
+                            </h3>
+
+                            <p class="text-secondary">
+                                Yakin ingin menghapus
+                                <strong id="{{ $modal['name'] }}"></strong>?
+                            </p>
+
+                            <p class="text-secondary small">
+                                {{ $modal['description'] }}
+                            </p>
+
+                        </div>
+
+                        <div class="modal-footer">
+
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                Batal
+                            </button>
+
+                            <form id="{{ $modal['form'] }}" method="POST" data-form data-loading-text="Menghapus...">
+                                @csrf
+                                @method('DELETE')
+
+                                <button type="submit" class="btn btn-danger">
+                                    Ya, Hapus
+                                </button>
+
+                            </form>
+
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        @endforeach
+
+    @endcan
+
+
+    @include('events.partials.add-employee-modal')
+
+    @include('events.partials.add-external-modal')
+    @include('events.partials.cancel-registration-modal')
+    @include('events.partials.reactivate-registration-modal')
+@endsection

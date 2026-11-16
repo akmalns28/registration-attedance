@@ -1,0 +1,52 @@
+@extends('layouts.app')
+
+@section('title', 'Edit Event')
+
+@section('content')
+    <div class="container-xl">
+
+        <div class="page-header d-print-none">
+
+            <div class="row align-items-center g-3">
+
+                <div class="col">
+
+                    <div class="page-pretitle">
+                        Event Management
+                    </div>
+
+                    <h2 class="page-title">
+                        Edit Event
+                    </h2>
+
+                    <div class="text-secondary mt-1">
+                        Perbarui informasi:
+                        <strong>{{ $event->title }}</strong>
+                    </div>
+
+                </div>
+
+                <div class="col-auto ms-auto">
+
+                    <a href="{{ route('events.show', $event) }}" class="btn btn-outline-secondary">
+                        <i class="ti ti-arrow-left me-2"></i>
+                        Kembali
+                    </a>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <form method="POST" action="{{ route('events.update', $event) }}" class="mt-3" data-form
+            data-loading-text="Memperbarui event...">
+            @csrf
+            @method('PUT')
+
+            @include('events._form')
+
+        </form>
+
+    </div>
+@endsection

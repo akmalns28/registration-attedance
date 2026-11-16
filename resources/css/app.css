@@ -55,3 +55,75 @@ body > .notifyjs-corner {
     white-space: normal;
     overflow-wrap: anywhere;
 }
+
+.event-schedules-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.event-schedules-table .schedule-time {
+    width: 14rem;
+}
+
+.event-schedules-table .schedule-pic {
+    width: 22%;
+}
+
+.event-schedules-table .schedule-actions {
+    width: 9rem;
+}
+
+.event-schedules-table td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.event-schedules-table .form-control {
+    min-width: 0;
+}
+
+.schedule-time-inputs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+@media (max-width: 991.98px) {
+    .event-schedules-table,
+    .event-schedules-table tbody {
+        display: block;
+    }
+
+    .event-schedules-table thead {
+        display: none;
+    }
+
+    .event-schedules-table tbody > tr {
+        display: block;
+        margin-bottom: 0.75rem;
+        padding: 0.5rem;
+        border: 1px solid var(--tblr-border-color);
+        border-radius: var(--tblr-border-radius);
+    }
+
+    .event-schedules-table td {
+        display: block;
+        padding: 0.375rem;
+        border: 0;
+    }
+
+    .event-schedules-table td,
+    .event-schedules-table .schedule-time,
+    .event-schedules-table .schedule-pic,
+    .event-schedules-table .schedule-actions {
+        width: 100%;
+    }
+
+    .event-schedules-table td[data-label]::before {
+        display: block;
+        margin-bottom: 0.25rem;
+        content: attr(data-label);
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+}

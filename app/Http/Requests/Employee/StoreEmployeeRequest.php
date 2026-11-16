@@ -15,7 +15,7 @@ class StoreEmployeeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nip' => ['required', 'string', 'size:15', Rule::unique('employees', 'nip')],
+            'nip' => ['required', 'string', 'max:255', Rule::unique('employees', 'nip')],
 
             'name' => ['required', 'string', 'max:150'],
 
@@ -48,7 +48,7 @@ class StoreEmployeeRequest extends FormRequest
     {
         return [
             'nip.required' => 'NIP karyawan wajib diisi.',
-            'nip.size' => 'NIP karyawan harus terdiri dari 15 karakter.',
+            'nip.max' => 'NIP karyawan maksimal 255 karakter.',
             'nip.unique' => 'NIP karyawan sudah digunakan.',
             'name.required' => 'Nama karyawan wajib diisi.',
             'department_id.required' => 'Departemen wajib dipilih.',

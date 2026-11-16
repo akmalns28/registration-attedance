@@ -12,8 +12,9 @@ export function initializeTomSelect(root = document) {
         new TomSelect(element, {
             create: false,
             allowEmptyOption: true,
-            maxItems: 1,
+            maxItems: element.multiple ? null : 1,
             plugins: {
+                ...(element.multiple ? { remove_button: { title: "Hapus peserta" } } : {}),
                 clear_button: {
                     title: "Hapus pilihan",
                 },
