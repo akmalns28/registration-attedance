@@ -167,3 +167,15 @@ export function initializeDataTables() {
         });
     });
 }
+
+export function adjustDataTables(root = document) {
+    root.querySelectorAll("[data-datatable]").forEach((table) => {
+        if (!DataTable.isDataTable(table)) {
+            return;
+        }
+
+        const instance = new DataTable(table);
+        instance.columns.adjust();
+        instance.responsive?.recalc();
+    });
+}

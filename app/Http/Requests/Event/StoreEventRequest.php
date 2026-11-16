@@ -1,0 +1,103 @@
+<?php
+
+namespace App\Http\Requests\Event;
+
+use App\Models\Event;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class StoreEventRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user()?->can('events.create') ?? false;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'title' => ['required', 'string', 'max:200'],
+
+            'description' => ['nullable', 'string'],
+
+            'location' => ['nullable', 'string', 'max:255'],
+
+            'start_date' => ['required', 'date_format:Y-m-d'],
+
+            'end_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+
+            'registration_start_at' => ['nullable', 'date_format:Y-m-d H:i', 'required_with:registration_end_at'],
+
+            'registration_end_at' => ['nullable', 'date_format:Y-m-d H:i', 'required_with:registration_start_at', 'after_or_equal:registration_start_at'],
+
+            'capacity' => ['nullable', 'integer', 'min:1'],
+
+            'status' => ['required', Rule::in(Event::statuses())],
+        ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $registrationStart = $this->input('registration_start_at');
+        $registrationEnd = $this->input('registration_end_at');
+
+        $this->merge([
+            'title' => trim((string) $this->input('title')),
+
+            'description' => $this->normalizeOptional('description'),
+
+            'location' => $this->normalizeOptional('location'),
+
+            'registration_start_at' => is_string($registrationStart) ? $this->normalizeDateTime($registrationStart) : null,
+
+            'registration_end_at' => is_string($registrationEnd) ? $this->normalizeDateTime($registrationEnd) : null,
+
+            'capacity' => $this->normalizeOptional('capacity'),
+
+            'status' => strtolower(trim((string) $this->input('status', 'draft'))),
+        ]);
+    }
+
+    protected function normalizeDateTime(string $value): ?string
+    {
+        $value = trim($value);
+
+        return $value === '' ? null : str_replace('T', ' ', $value);
+    }
+
+    protected function normalizeOptional(string $field): ?string
+    {
+        $value = $this->input($field);
+
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        return trim((string) $value);
+    }
+
+    public function messages(): array
+    {
+        return [
+            'title.required' => 'Nama event wajib diisi.',
+            'title.max' => 'Nama event maksimal 200 karakter.',
+
+            'start_date.required' => 'Tanggal mulai wajib diisi.',
+            'start_date.date_format' => 'Format tanggal mulai tidak valid.',
+
+            'end_date.required' => 'Tanggal selesai wajib diisi.',
+            'end_date.after_or_equal' => 'Tanggal selesai tidak boleh sebelum tanggal mulai.',
+
+            'registration_start_at.required_with' => 'Tanggal mulai registrasi wajib diisi jika tanggal selesai registrasi ditentukan.',
+
+            'registration_end_at.required_with' => 'Tanggal selesai registrasi wajib diisi jika tanggal mulai registrasi ditentukan.',
+
+            'registration_end_at.after_or_equal' => 'Tanggal selesai registrasi tidak boleh sebelum tanggal mulai registrasi.',
+
+            'capacity.integer' => 'Kapasitas harus berupa angka.',
+            'capacity.min' => 'Kapasitas minimal 1 peserta.',
+
+            'status.in' => 'Status event tidak valid.',
+        ];
+    }
+}

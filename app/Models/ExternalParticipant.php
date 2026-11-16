@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ExternalParticipant extends Model
 {
@@ -41,5 +42,10 @@ class ExternalParticipant extends Model
     public function scopeOrganization(Builder $query, string $organization): Builder
     {
         return $query->where('organization', $organization);
+    }
+
+    public function eventRegistrations(): HasMany
+    {
+        return $this->hasMany(EventRegistration::class);
     }
 }

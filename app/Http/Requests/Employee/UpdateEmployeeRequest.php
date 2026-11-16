@@ -19,7 +19,7 @@ class UpdateEmployeeRequest extends FormRequest
         $employee = $this->route('employee');
 
         return [
-            'nip' => ['required', 'string', 'size:15', Rule::unique('employees', 'nip')->ignore($employee)],
+            'nip' => ['required', 'string', 'max:255', Rule::unique('employees', 'nip')->ignore($employee)],
 
             'name' => ['required', 'string', 'max:150'],
 
@@ -60,7 +60,7 @@ class UpdateEmployeeRequest extends FormRequest
     {
         return [
             'nip.required' => 'NIP karyawan wajib diisi.',
-            'nip.size' => 'NIP karyawan harus terdiri dari 15 karakter.',
+            'nip.max' => 'NIP karyawan maksimal 255 karakter.',
             'nip.unique' => 'NIP karyawan sudah digunakan.',
             'name.required' => 'Nama karyawan wajib diisi.',
             'department_id.required' => 'Departemen wajib dipilih.',

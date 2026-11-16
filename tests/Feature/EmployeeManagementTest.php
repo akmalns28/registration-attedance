@@ -95,8 +95,9 @@ class EmployeeManagementTest extends TestCase
             ->assertSee('Information Technology')
             ->assertSee('NIP Karyawan')
             ->assertSee('name="nip"', false)
-            ->assertSee('minlength="15"', false)
-            ->assertSee('maxlength="15"', false)
+            ->assertDontSee('minlength="15"', false)
+            ->assertDontSee('maxlength="15"', false)
+            ->assertSee('maxlength="255"', false)
             ->assertDontSee('name="nik"', false);
     }
 
@@ -186,8 +187,49 @@ class EmployeeManagementTest extends TestCase
     {
         return [
             'empty' => [''],
+            'over database limit' => [str_repeat('1', 256)],
+        ];
+    }
+
+    #[DataProvider('validNips')]
+    public function test_employee_nip_accepts_variable_lengths_on_create_and_update(string $nip): void
+    {
+        $user = $this->createUser(['employees.manage']);
+        $department = Department::factory()->create();
+
+        $this->actingAs($user)
+            ->post(route('employees.store'), $this->employeeData($department, ['nip' => $nip]))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('employees.index'));
+
+        $employee = Employee::query()->sole();
+
+        $this->assertSame($nip, $employee->nip);
+
+        $this->put(route('employees.update', $employee), $this->employeeData($department, [
+            'nip' => $nip,
+            'name' => 'Updated Employee',
+        ]))
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('employees.index'));
+
+        $this->assertDatabaseHas('employees', [
+            'id' => $employee->id,
+            'nip' => $nip,
+            'name' => 'Updated Employee',
+        ]);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function validNips(): array
+    {
+        return [
+            'short' => ['001'],
             '14 characters' => ['12345678901234'],
             '16 characters' => ['1234567890123456'],
+            'database limit' => [str_repeat('1', 255)],
         ];
     }
 

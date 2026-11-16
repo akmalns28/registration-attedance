@@ -157,8 +157,7 @@
 
             <x-ui.card title="Form Inputs">
 
-                <x-ui.form.input name="nip" label="NIP Karyawan" placeholder="Masukkan NIP" minlength="15"
-                    maxlength="15" required />
+                <x-ui.form.input name="nip" label="NIP Karyawan" placeholder="Masukkan NIP" maxlength="255" required />
 
                 <x-ui.form.input name="name" label="Nama Lengkap" placeholder="Masukkan nama" />
 

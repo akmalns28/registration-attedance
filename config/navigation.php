@@ -26,6 +26,13 @@ return [
                 'permission' => 'registrations.view',
             ],
             [
+                'label' => 'Notifications',
+                'icon' => 'ti ti-mail',
+                'route' => 'notifications.index',
+                'active' => 'notifications.*',
+                'permission' => 'events.view',
+            ],
+            [
                 'label' => 'QR Scanner',
                 'icon' => 'ti ti-qrcode',
                 'route' => 'attendance.scanner',

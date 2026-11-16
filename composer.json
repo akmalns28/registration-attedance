@@ -10,11 +10,13 @@
         "laravel/framework": "^13.17",
         "laravel/socialite": "^5.31",
         "laravel/tinker": "^3.0",
+        "linkxtr/laravel-qrcode": "^3.3",
         "socialiteproviders/keycloak": "^5.3",
         "spatie/laravel-permission": "^8.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "khanamiryan/qrcode-detector-decoder": "2.0.3",
         "laravel/boost": "^2.10",
         "laravel/pail": "^1.2.5",
         "laravel/pao": "^1.0.6",
