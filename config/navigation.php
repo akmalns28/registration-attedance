@@ -40,6 +40,13 @@ return [
                 'permission' => 'attendance.scan',
             ],
             [
+                'label' => 'Analytic',
+                'icon' => 'ti ti-chart-line',
+                'route' => 'analytic.index',
+                'active' => 'analytic.*',
+                'permission' => 'reports.view',
+            ],
+            [
                 'label' => 'Attendance',
                 'icon' => 'ti ti-clipboard-check',
                 'route' => 'attendance.index',

@@ -16,6 +16,16 @@ function initializeApp() {
     initializeEventPage();
     initializeDataTables();
 
+    if (document.querySelector("[data-analytic-page]")) {
+        import("./analytic").then(({ initializeAnalyticPage }) => {
+            initializeAnalyticPage();
+        }).catch(() => {
+            const feedback = document.querySelector("[data-analytic-feedback]");
+            feedback.className = "alert alert-danger";
+            feedback.textContent = "Grafik Analytic gagal dimuat. Muat ulang halaman untuk mencoba kembali.";
+        });
+    }
+
     if (document.querySelector("[data-attendance-scanner]")) {
         import("./attendance-scanner").then(({ initializeAttendanceScanner }) => {
             initializeAttendanceScanner();

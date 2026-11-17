@@ -18,6 +18,22 @@
     --tblr-font-sans-serif: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+.analytic-chart-card,
+.analytic-chart,
+.analytic-kpis .card {
+    min-width: 0;
+}
+
+.analytic-chart {
+    min-height: 280px;
+}
+
+.analytic-kpis .badge {
+    white-space: normal;
+    text-align: start;
+    line-height: 1.4;
+}
+
 .attendance-camera-stage {
     position: relative;
     width: 100%;
