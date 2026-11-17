@@ -16,6 +16,15 @@ function initializeApp() {
     initializeEventPage();
     initializeDataTables();
 
+    if (document.querySelector("[data-attendance-scanner]")) {
+        import("./attendance-scanner").then(({ initializeAttendanceScanner }) => {
+            initializeAttendanceScanner();
+        }).catch(() => {
+            document.querySelector("[data-scanner-feedback]").textContent =
+                "QR Scanner gagal dimuat. Muat ulang halaman untuk mencoba kembali.";
+        });
+    }
+
     document.dispatchEvent(new Event("app:plugins-ready", { bubbles: true }));
 }
 

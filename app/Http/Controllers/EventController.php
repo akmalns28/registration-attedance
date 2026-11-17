@@ -9,6 +9,8 @@ use App\Models\Event;
 use App\Models\ExternalParticipant;
 use App\Services\EventPublicationNotificationService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -62,7 +64,16 @@ class EventController extends Controller
     |--------------------------------------------------------------------------
     */
 
-        $event->load(['days.schedules']);
+        $event->load(['days' => fn (HasMany $days): HasMany => $days
+            ->withCount([
+                'schedules',
+                'attendances as checked_in_count' => fn (Builder $query): Builder => $query
+                    ->select(DB::raw('count(distinct attendances.event_registration_id)'))
+                    ->whereHas('registration', fn (Builder $registrations): Builder => $registrations
+                        ->where('event_id', $event->id)->registered()),
+            ])
+            ->withMin('schedules', 'start_time')
+            ->withMax('schedules', 'end_time')]);
 
         $event->loadCount([
             'registrations as registered_participants_count' => fn ($query) => $query->registered(),
@@ -70,6 +81,14 @@ class EventController extends Controller
             'registrations as registered_externals_count' => fn ($query) => $query->registered()->externals(),
             'registrations as cancelled_registrations_count' => fn ($query) => $query->cancelled(),
         ]);
+
+        $expectedAttendance = (int) $event->registered_participants_count * $event->days->count();
+        $totalCheckedIn = (int) $event->days->sum('checked_in_count');
+        $eventAttendanceSummary = [
+            'checked_in' => $totalCheckedIn,
+            'expected_attendance' => $expectedAttendance,
+            'percentage' => $expectedAttendance === 0 ? 0.0 : round($totalCheckedIn / $expectedAttendance * 100, 2),
+        ];
 
         /*
     |--------------------------------------------------------------------------
@@ -123,6 +142,7 @@ class EventController extends Controller
             'employees' => $employees,
             'externalParticipants' => $externalParticipants,
             'remainingCapacity' => $remainingCapacity,
+            'eventAttendanceSummary' => $eventAttendanceSummary,
         ]);
     }
 

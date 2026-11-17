@@ -101,6 +101,11 @@ class EventRegistration extends Model
         return $this->belongsTo(ExternalParticipant::class);
     }
 
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(Attendance::class);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Scopes

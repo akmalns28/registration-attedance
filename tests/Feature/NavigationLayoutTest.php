@@ -72,11 +72,16 @@ class NavigationLayoutTest extends TestCase
         $this->actingAs($this->userWithRole('panitia'))->get('/')->assertRedirectToRoute('dashboard');
     }
 
-    public function test_unimplemented_modules_keep_the_placeholder_layout(): void
+    public function test_attendance_scanner_keeps_the_shared_application_layout(): void
     {
         $this->actingAs($this->userWithRole('super-admin'));
 
-        $this->get(route('attendance.scanner'))->assertOk()->assertSee('aria-label="Main navigation"', false)->assertSee('aria-label="Account navigation"', false)->assertSee('Fitur belum tersedia');
+        $this->get(route('attendance.scanner'))->assertOk()
+            ->assertSee('aria-label="Main navigation"', false)
+            ->assertSee('aria-label="Account navigation"', false)
+            ->assertSee('data-attendance-scanner', false)
+            ->assertSee('Kehadiran belum dicatat.')
+            ->assertDontSee('Fitur belum tersedia');
     }
 
     private function userWithRole(string $role): User

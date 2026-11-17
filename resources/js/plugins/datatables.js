@@ -103,9 +103,10 @@ export function initializeDataTables() {
               ]
             : [];
 
-        new DataTable(table, {
+        const invalidRow = table.querySelector(".is-invalid")?.closest("tr");
+        const instance = new DataTable(table, {
             processing: true,
-            responsive: true,
+            responsive: table.dataset.responsive !== "false",
             pageLength: 10,
 
             lengthMenu: [
@@ -165,6 +166,10 @@ export function initializeDataTables() {
                   }
                 : {}),
         });
+
+        if (invalidRow) {
+            instance.page(Math.floor(instance.row(invalidRow).index() / instance.page.len())).draw("page");
+        }
     });
 }
 

@@ -172,7 +172,7 @@
 
         <div class="d-flex justify-content-end gap-2">
 
-            <a href="{{ route('events.show', $event) }}#event-days" class="btn btn-outline-secondary">
+            <a href="{{ route('events.days.show', [$event, $day]) }}#day-rundown" class="btn btn-outline-secondary">
                 Batal
             </a>
 

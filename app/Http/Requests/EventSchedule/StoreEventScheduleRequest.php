@@ -46,7 +46,7 @@ class StoreEventScheduleRequest extends FormRequest
     protected function getRedirectUrl(): string
     {
         if ($this->filled('schedule_form')) {
-            return route('events.show', $this->route('event')).'#event-days';
+            return route('events.days.show', [$this->route('event'), $this->route('day')]).'#day-rundown';
         }
 
         return parent::getRedirectUrl();

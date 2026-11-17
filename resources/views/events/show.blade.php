@@ -15,7 +15,7 @@
 
         $duration = (int) $event->start_date->diffInDays($event->end_date) + 1;
 
-        $totalSchedules = $event->days->sum(fn($day) => $day->schedules->count());
+        $totalSchedules = $event->days->sum('schedules_count');
 
         $participantErrors = collect($errors->getMessages())
             ->filter(fn (array $messages, string $key): bool => in_array($key, ['participants', 'participant_ids', 'participant_type', 'event', 'registration'], true) || str_starts_with($key, 'participant_ids.'))
@@ -39,19 +39,25 @@
                         {{ $event->title }}
                     </h2>
 
-                    <div class="text-secondary mt-2">
-                        <i class="ti ti-calendar me-1"></i>
-                        {{ $event->start_date->format('d M Y') }}
+                    <div class="text-secondary mt-2 d-flex flex-wrap align-items-center gap-1">
+                        <span>
+                            <i class="ti ti-calendar me-1" aria-hidden="true"></i>
+                            {{ $event->start_date->format('d M Y') }}
 
-                        @if ($event->isMultiDay())
-                            - {{ $event->end_date->format('d M Y') }}
-                        @endif
+                            @if ($event->isMultiDay())
+                                - {{ $event->end_date->format('d M Y') }}
+                            @endif
+                        </span>
 
                         @if ($event->location)
-                            <span class="mx-2">•</span>
-                            <i class="ti ti-map-pin me-1"></i>
-                            {{ $event->location }}
+                            <span class="mx-1" aria-hidden="true">•</span>
+                            <span class="text-break">
+                                <i class="ti ti-map-pin me-1" aria-hidden="true"></i>
+                                {{ $event->location }}
+                            </span>
                         @endif
+                        <span class="mx-1" aria-hidden="true">•</span>
+                        <span class="badge {{ $statusClass }}">{{ ucfirst($event->status) }}</span>
                     </div>
 
                 </div>
@@ -63,6 +69,15 @@
                             <i class="ti ti-arrow-left me-1"></i>
                             Kembali
                         </a>
+
+                        @can('attendance.scan')
+                            @if ($event->isPublished())
+                                <a href="{{ route('events.scanner', $event) }}" class="btn btn-success">
+                                    <i class="ti ti-qrcode me-1" aria-hidden="true"></i>
+                                    Scan QR
+                                </a>
+                            @endif
+                        @endcan
 
                         @can('events.update')
                             <a href="{{ route('events.edit', $event) }}" class="btn btn-primary">
@@ -77,21 +92,7 @@
         </div>
 
         {{-- Statistics --}}
-        <div class="row row-cards mt-3">
-
-            <div class="col-sm-6 col-lg-3">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="subheader">Status Event</div>
-
-                        <div class="mt-2">
-                            <span class="badge {{ $statusClass }}">
-                                {{ ucfirst($event->status) }}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="row row-cards mt-3" role="group" aria-label="Ringkasan event">
 
             <div class="col-sm-6 col-lg-3">
                 <div class="card">
@@ -125,6 +126,19 @@
 
                         <div class="h1 mb-0">
                             {{ $totalSchedules }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="subheader">PERSENTASE KEHADIRAN EVENT</div>
+
+                        <div class="h1 mb-0">{{ $eventAttendanceSummary['percentage'] }}%</div>
+                        <div class="text-secondary small mt-1">
+                            {{ $eventAttendanceSummary['checked_in'] }} dari {{ $eventAttendanceSummary['expected_attendance'] }} potensi kehadiran
                         </div>
                     </div>
                 </div>
@@ -310,7 +324,7 @@
                         @forelse ($event->days as $day)
                             <div class="card mb-3">
 
-                                <div class="card-header">
+                                <div class="card-header d-flex flex-wrap gap-3">
 
                                     <div class="flex-fill">
 
@@ -337,6 +351,11 @@
                                                 {{ $day->is_active ? 'Active' : 'Inactive' }}
                                             </span>
 
+                                            <a href="{{ route('events.days.show', [$event, $day]) }}"
+                                                class="btn btn-sm btn-outline-secondary">
+                                                <i class="ti ti-eye me-1" aria-hidden="true"></i>Detail
+                                            </a>
+
                                             @can('events.update')
                                                 <a href="{{ route('events.days.edit', [$event, $day]) }}"
                                                     class="btn btn-sm btn-outline-primary">
@@ -347,7 +366,7 @@
                                                 <button type="button" class="btn btn-sm btn-outline-danger"
                                                     data-bs-toggle="modal" data-bs-target="#deleteEventDayModal"
                                                     data-delete-url="{{ route('events.days.destroy', [$event, $day]) }}"
-                                                    data-delete-name="Day {{ $day->day_number }}">
+                                                    data-delete-name="Day {{ $day->day_number }}" aria-label="Hapus Day {{ $day->day_number }}">
                                                     <i class="ti ti-trash"></i>
                                                 </button>
                                             @endcan
@@ -358,16 +377,13 @@
 
                                 </div>
 
-                                <div class="card-body">
-
-                                    @if ($day->description)
-                                        <p class="text-secondary mb-3">
-                                            {{ $day->description }}
-                                        </p>
-                                    @endif
-
-                                    @include('events.partials.schedules')
-
+                                <div class="card-body py-3 d-flex flex-wrap gap-3">
+                                    <span><i class="ti ti-list-details me-1" aria-hidden="true"></i>{{ $day->schedules_count }} kegiatan rundown</span>
+                                    <span class="text-secondary">
+                                        <i class="ti ti-clock me-1" aria-hidden="true"></i>
+                                        {{ $day->schedules_min_start_time ? substr($day->schedules_min_start_time, 0, 5).' - '.substr($day->schedules_max_end_time, 0, 5) : 'Belum ada rundown' }}
+                                    </span>
+                                    <span><i class="ti ti-users me-1" aria-hidden="true"></i>{{ $day->checked_in_count }} / {{ $event->registered_participants_count }} peserta hadir</span>
                                 </div>
 
                             </div>
@@ -418,13 +434,6 @@
                     'name' => 'deleteEventDayName',
                     'title' => 'Hapus Event Day?',
                     'description' => 'Event Day hanya dapat dihapus jika belum memiliki rundown.',
-                ],
-                [
-                    'id' => 'deleteScheduleModal',
-                    'form' => 'deleteScheduleForm',
-                    'name' => 'deleteScheduleName',
-                    'title' => 'Hapus Rundown?',
-                    'description' => 'Rundown yang dihapus tidak dapat dipulihkan.',
                 ],
             ] as $modal)
             <div class="modal modal-blur fade" id="{{ $modal['id'] }}" tabindex="-1" aria-hidden="true">
