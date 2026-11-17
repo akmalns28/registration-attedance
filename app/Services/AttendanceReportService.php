@@ -9,6 +9,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\LazyCollection;
 use stdClass;
 
 class AttendanceReportService
@@ -27,6 +28,23 @@ class AttendanceReportService
             ->join('event_days', 'event_days.event_id', '=', 'event_registrations.event_id')
             ->where('event_registrations.event_id', $event->id)
             ->where('event_registrations.status', EventRegistration::STATUS_REGISTERED)->count();
+        $query = $this->query($event, $filters);
+        $summary = $this->summarize($query);
+        $start = (int) ($filters['start'] ?? 0);
+        $rows = $query->offset($start)->limit((int) ($filters['length'] ?? 10))->get();
+
+        return [
+            'draw' => (int) ($filters['draw'] ?? 0),
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $summary['expected'],
+            'data' => $rows->map(fn (stdClass $row, int $index): array => $this->mapRow($row, $start + $index + 1))->all(),
+            'summary' => $summary,
+        ];
+    }
+
+    /** @param array<string, mixed> $filters */
+    public function query(Event $event, array $filters): Builder
+    {
         $query = $this->rows($event)
             ->when($filters['event_day'] ?? null, fn (Builder $query, int|string $id): Builder => $query->where('event_days.id', $id))
             ->when($filters['participant_type'] ?? null, fn (Builder $query, string $type): Builder => $query->where('event_registrations.registration_type', $type))
@@ -44,17 +62,14 @@ class AttendanceReportService
                 ->whereRaw("coalesce(employees.name, external_participants.name, '-') like ? escape '!'", [$pattern])
                 ->orWhereRaw("event_registrations.registration_number like ? escape '!'", [$pattern]));
         }
-        $totals = (clone $query)->selectRaw('count(*) as expected, coalesce(sum(case when report_attendance.id is not null then 1 else 0 end), 0) as present')->first();
-        $expected = (int) $totals->expected;
-        $present = (int) $totals->present;
-        $start = (int) ($filters['start'] ?? 0);
         $columns = [
             1 => 'event_registrations.registration_number', 2 => 'participant_name', 3 => 'event_registrations.registration_type',
             4 => 'departments.name', 5 => 'event_days.day_number', 6 => 'event_days.date',
             7 => 'attendance_status', 8 => 'report_attendance.checked_in_at', 9 => 'operators.name',
         ];
         $sort = $filters['order'][0] ?? ['column' => 6, 'dir' => 'asc'];
-        $rows = $query->select([
+
+        return $query->select([
             'event_registrations.registration_number', 'event_registrations.registration_type',
             'departments.name as department_name', 'event_days.id as event_day_id', 'event_days.day_number',
             'event_days.title as day_title', 'event_days.date as event_day_date',
@@ -62,29 +77,57 @@ class AttendanceReportService
         ])->selectRaw("coalesce(employees.name, external_participants.name, '-') as participant_name")
             ->selectRaw("case when report_attendance.id is null then 'not_present' else 'present' end as attendance_status")
             ->orderBy($columns[(int) $sort['column']], $sort['dir'])
-            ->orderBy('event_registrations.id')->orderBy('event_days.id')
-            ->offset($start)->limit((int) ($filters['length'] ?? 10))->get();
+            ->orderBy('event_registrations.id')->orderBy('event_days.id');
+    }
+
+    /**
+     * Pagination is intentionally excluded from exports.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return LazyCollection<int, array<string, int|string>>
+     */
+    public function exportRows(Event $event, array $filters): LazyCollection
+    {
+        return $this->query($event, $filters)->lazy(500)
+            ->map(fn (stdClass $row, int $index): array => $this->mapRow($row, $index + 1));
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array{expected: int, present: int, not_present: int, percentage: float}
+     */
+    public function summary(Event $event, array $filters): array
+    {
+        return $this->summarize($this->query($event, $filters));
+    }
+
+    /** @return array{expected: int, present: int, not_present: int, percentage: float} */
+    private function summarize(Builder $query): array
+    {
+        $totals = (clone $query)->reorder()->select(DB::raw('count(*) as expected, coalesce(sum(case when report_attendance.id is not null then 1 else 0 end), 0) as present'))->first();
+        $expected = (int) $totals->expected;
+        $present = (int) $totals->present;
 
         return [
-            'draw' => (int) ($filters['draw'] ?? 0),
-            'recordsTotal' => $recordsTotal,
-            'recordsFiltered' => $expected,
-            'data' => $rows->map(fn (stdClass $row, int $index): array => [
-                'row_number' => $start + $index + 1,
-                'registration_number' => $row->registration_number,
-                'participant_name' => $row->participant_name,
-                'participant_type' => $row->registration_type,
-                'department_name' => $row->department_name ?? '-',
-                'event_day' => 'Day '.$row->day_number.($row->day_title ? ' — '.$row->day_title : ''),
-                'event_day_date' => $row->event_day_date,
-                'attendance_status' => $row->attendance_status,
-                'checkin_time' => $row->checked_in_at === null ? '-' : Carbon::parse($row->checked_in_at, config('app.timezone'))->format('H:i:s'),
-                'operator_name' => $row->operator_name ?? '-',
-            ])->all(),
-            'summary' => [
-                'expected' => $expected, 'present' => $present, 'not_present' => $expected - $present,
-                'percentage' => $expected === 0 ? 0.0 : round($present / $expected * 100, 2),
-            ],
+            'expected' => $expected, 'present' => $present, 'not_present' => $expected - $present,
+            'percentage' => $expected === 0 ? 0.0 : round($present / $expected * 100, 2),
+        ];
+    }
+
+    /** @return array<string, int|string> */
+    private function mapRow(stdClass $row, int $number): array
+    {
+        return [
+            'row_number' => $number,
+            'registration_number' => $row->registration_number,
+            'participant_name' => $row->participant_name,
+            'participant_type' => $row->registration_type,
+            'department_name' => $row->department_name ?? '-',
+            'event_day' => 'Day '.$row->day_number.($row->day_title ? ' — '.$row->day_title : ''),
+            'event_day_date' => $row->event_day_date,
+            'attendance_status' => $row->attendance_status,
+            'checkin_time' => $row->checked_in_at === null ? '-' : Carbon::parse($row->checked_in_at, config('app.timezone'))->format('H:i:s'),
+            'operator_name' => $row->operator_name ?? '-',
         ];
     }
 

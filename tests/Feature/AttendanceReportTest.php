@@ -332,6 +332,8 @@ class AttendanceReportTest extends TestCase
         $directory = getenv('REPORT_BROWSER_ARTIFACT_DIR');
         if (is_string($directory) && is_dir($directory)) {
             file_put_contents($directory.'/event.html', $response->getContent());
+            file_put_contents($directory.'/print.html', $this->get(route('events.reports.print', $fixture['event']))->assertOk()->streamedContent());
+            file_put_contents($directory.'/report.pdf', $this->get(route('events.reports.export.pdf', $fixture['event']))->assertOk()->getContent());
             $rows = app(AttendanceReportService::class)->data($fixture['event'], ['length' => 100]);
             file_put_contents($directory.'/fixture.json', json_encode([
                 'rows' => $rows['data'], 'origin' => url('/'), 'url' => $this->url($fixture['event']),

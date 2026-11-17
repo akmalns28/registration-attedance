@@ -17,6 +17,8 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
     let client;
     let processHandle;
     const requests = [];
+    const exportRequests = [];
+    let exportFailure = null;
     try {
         const generated = await promisify(execFile)("php", ["vendor/bin/phpunit", "tests/Feature/AttendanceReportTest.php",
             "--filter=test_browser_fixtures_preserve_multi_day_scope_and_existing_scanner_entry"], {
@@ -25,6 +27,8 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
         assert.match(generated.stdout, /passed/);
         const fixture = JSON.parse(await readFile(join(artifacts, "fixture.json"), "utf8"));
         const source = await readFile(join(artifacts, "event.html"), "utf8");
+        const printSource = await readFile(join(artifacts, "print.html"), "utf8");
+        const pdfSource = await readFile(join(artifacts, "report.pdf"));
         const manifest = JSON.parse(await readFile(resolve("public/build/manifest.json"), "utf8"));
         const styles = [manifest["resources/css/app.css"].file, ...(manifest["resources/js/app.js"].css ?? []),
             ...(manifest["resources/js/attendance-reports.js"].css ?? [])];
@@ -44,6 +48,23 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
         server = createServer(async (request, response) => {
             try {
                 const url = new URL(request.url, "http://localhost");
+                if (/\/reports\/(export\/(excel|csv|pdf)|print)$/.test(url.pathname)) {
+                    exportRequests.push({ path: url.pathname, parameters: Object.fromEntries(url.searchParams) });
+                    await new Promise((resolve) => setTimeout(resolve, 200));
+                    if (exportFailure) {
+                        response.writeHead(exportFailure.status, { "Content-Type": "application/json" }).end(JSON.stringify({ errors: { export: [exportFailure.message] } }));
+                        return;
+                    }
+                    const format = url.pathname.split("/").at(-1);
+                    if (format === "print") {
+                        response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(printSource);
+                    } else {
+                        response.writeHead(200, { "Content-Type": ({ excel: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv; charset=utf-8", pdf: "application/pdf" })[format],
+                            "Content-Disposition": `attachment; filename="attendance-report-test.${format === "excel" ? "xlsx" : format}"` })
+                            .end(format === "csv" ? '\uFEFFNo.,Participant Name\r\n1,"Doe, Jane"\r\n' : format === "pdf" ? pdfSource : "PK-test-workbook");
+                    }
+                    return;
+                }
                 if (url.pathname.endsWith("/reports/data")) {
                     const parameters = Object.fromEntries(url.searchParams);
                     requests.push(parameters);
@@ -93,6 +114,23 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
         await once(server, "listening");
         origin = `http://127.0.0.1:${server.address().port}`;
         ({ client, processHandle } = await launchBrowser(join(artifacts, "profile")));
+        await client.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: artifacts });
+        // Fulfill the real backend PDF fixture before local download managers can replace the HTTP response.
+        client.socket.addEventListener("message", async ({ data }) => {
+            const message = JSON.parse(data);
+            if (message.method !== "Fetch.requestPaused") { return; }
+            const { requestId, request } = message.params;
+            const url = new URL(request.url);
+            exportRequests.push({ path: url.pathname, parameters: Object.fromEntries(url.searchParams) });
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            const failure = exportFailure;
+            await client.send("Fetch.fulfillRequest", { requestId, responseCode: failure?.status ?? 200,
+                responseHeaders: [{ name: "Content-Type", value: failure ? "application/json" : "application/pdf" },
+                    { name: "Content-Disposition", value: 'attachment; filename="attendance-report-test.pdf"' }],
+                body: (failure ? Buffer.from(JSON.stringify({ errors: { export: [failure.message] } })) : pdfSource).toString("base64"),
+            }).catch((error) => client.errors.push(error.message));
+        });
+        await client.send("Fetch.enable", { patterns: [{ urlPattern: "*/reports/export/pdf*", requestStage: "Request" }] });
 
         async function fresh(query = "", tab = "event-reports") {
             const cleared = client.waitFor("Page.loadEventFired");
@@ -263,6 +301,114 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
             assert.equal(result.recovered, 24);
         });
 
+        await suite.test("exports retain every filter and sorting, omit pagination and prevent repeated clicks", async () => {
+            await fresh(`?report_day=${fixture.day}&report_type=employee&report_status=present&report_department=${fixture.department}&report_search=Alice&report_sort=2&report_direction=desc`);
+            exportRequests.length = 0;
+            const result = await client.evaluate(`
+                const button = reports.page.querySelector('[data-report-export="csv"]');
+                button.click(); button.click();
+                const busy = reports.exportButtons.every((button) => button.disabled);
+                const label = button.textContent.trim();
+                const deadline = Date.now() + 10000;
+                while (reports.exporting) { if (Date.now() > deadline) { throw new Error("Export stuck"); } await new Promise((resolve) => setTimeout(resolve, 20)); }
+                return { busy, label, ready: reports.exportButtons.every((button) => !button.disabled),
+                    message: reports.exportFeedback.textContent, search: reports.table.search(), order: reports.table.order() };
+            `);
+            assert.equal(result.busy, true);
+            assert.match(result.label, /Menyiapkan/);
+            assert.equal(result.ready, true);
+            assert.match(result.message, /Unduhan/);
+            assert.equal(result.search, "Alice");
+            assert.deepEqual(result.order, [[2, "desc"]]);
+            assert.equal(exportRequests.length, 1);
+            assert.deepEqual(exportRequests[0].parameters, { event_day: String(fixture.day), participant_type: "employee", attendance_status: "present",
+                department_id: String(fixture.department), "search[value]": "Alice", "order[0][column]": "2", "order[0][dir]": "desc" });
+            let downloaded;
+            const deadline = Date.now() + 10000;
+            while (!downloaded) {
+                try { downloaded = await readFile(join(artifacts, "attendance-report-test.csv"), "utf8"); }
+                catch (error) { if (Date.now() > deadline) { throw error; } await new Promise((resolve) => setTimeout(resolve, 50)); }
+            }
+            assert.equal(downloaded, '\uFEFFNo.,Participant Name\r\n1,"Doe, Jane"\r\n');
+        });
+
+        await suite.test("pending search cannot export stale data and all file formats download", async () => {
+            await fresh();
+            const result = await client.evaluate(`
+                reports.search.value = "Carla"; reports.search.dispatchEvent(new Event("input", { bubbles: true }));
+                const disabled = reports.exportButtons.every((button) => button.disabled);
+                await waitForReports("Carla");
+                let details;
+                const request = reports.request;
+                reports.request = async (...args) => {
+                    const response = await request(...args);
+                    details = { url: args[0], status: response.status, headers: Object.fromEntries(response.headers), redirected: response.redirected };
+                    return response;
+                };
+                for (const format of ["excel", "pdf"]) {
+                    await reports.exportReport(reports.page.querySelector('[data-report-export="' + format + '"]'));
+                    if (!reports.exportFeedback.textContent.includes("Unduhan")) { throw new Error(format + ": " + reports.exportFeedback.textContent + " " + JSON.stringify(details)); }
+                }
+                return { disabled, ready: reports.exportButtons.every((button) => !button.disabled), rows: reports.table.rows().count() };
+            `);
+            assert.deepEqual(result, { disabled: true, ready: true, rows: 3 });
+            const deadline = Date.now() + 10000;
+            for (const [file, expected] of [["attendance-report-test.xlsx", "PK-test-workbook"], ["attendance-report-test.pdf", pdfSource]]) {
+                let downloaded;
+                while (!downloaded) {
+                    try { downloaded = await readFile(join(artifacts, file)); }
+                    catch (error) { if (Date.now() > deadline) { throw error; } await new Promise((resolve) => setTimeout(resolve, 50)); }
+                }
+                assert.deepEqual(downloaded, Buffer.isBuffer(expected) ? expected : Buffer.from(expected));
+            }
+        });
+
+        await suite.test("export permission and size errors leave the report usable and allow retry", async () => {
+            await fresh();
+            for (const [status, message] of [[403, "Anda tidak memiliki izin ekspor."], [422, "PDF maksimal 2000 baris. Gunakan Excel atau CSV."]]) {
+                exportFailure = { status, message };
+                const result = await client.evaluate(`
+                    await reports.exportReport(reports.page.querySelector('[data-report-export="pdf"]'));
+                    return { message: reports.exportFeedback.textContent, enabled: reports.exportButtons.every((button) => !button.disabled),
+                        rows: reports.table.rows().count(), busy: reports.page.getAttribute("aria-busy") };
+                `);
+                assert.equal(result.message, message);
+                assert.equal(result.enabled, true);
+                assert.equal(result.rows, 10);
+                assert.equal(result.busy, "false");
+            }
+            exportFailure = null;
+            const result = await client.evaluate(`
+                await reports.exportReport(reports.page.querySelector('[data-report-export="pdf"]'));
+                return reports.exportFeedback.textContent;
+            `);
+            assert.match(result, /Unduhan/);
+        });
+
+        await suite.test("Print opens the standalone report and explains blocked popups", async () => {
+            await fresh();
+            const result = await client.evaluate(`
+                const original = window.open;
+                window.open = (...args) => (window.printPopup = original.apply(window, args));
+                await reports.exportReport(reports.page.querySelector('[data-report-export="print"]'));
+                const deadline = Date.now() + 10000;
+                while (!printPopup.document.querySelector(".report-table")) {
+                    if (Date.now() > deadline) { throw new Error("Print report did not open"); } await new Promise((resolve) => setTimeout(resolve, 20));
+                }
+                const printed = { rows: printPopup.document.querySelectorAll("[data-report-row]").length,
+                    sidebar: printPopup.document.querySelector("aside, nav") !== null, opener: printPopup.opener,
+                    title: printPopup.document.querySelector("h2").textContent };
+                printPopup.close();
+                window.open = () => null;
+                await reports.exportReport(reports.page.querySelector('[data-report-export="print"]'));
+                window.open = original;
+                return { printed, message: reports.exportFeedback.textContent, ready: reports.exportButtons.every((button) => !button.disabled) };
+            `);
+            assert.deepEqual(result.printed, { rows: 24, sidebar: false, opener: null, title: "LAPORAN KEHADIRAN EVENT" });
+            assert.match(result.message, /Izinkan popup/);
+            assert.equal(result.ready, true);
+        });
+
         await suite.test("participant text is escaped before DataTables renders it", async () => {
             await fresh();
             const result = await client.evaluate(`
@@ -293,7 +439,7 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
                     return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
                         detail,
                         tables: reports.page.querySelectorAll(".dt-container").length,
-                        fields: Array.from(reports.form.querySelectorAll("select, input, button"), (field) => ({ left: field.getBoundingClientRect().left, right: field.getBoundingClientRect().right })) };
+                        fields: Array.from(reports.page.querySelectorAll("select, input, button[data-report-export]"), (field) => ({ left: field.getBoundingClientRect().left, right: field.getBoundingClientRect().right })) };
                 `);
                 assert.ok(result.scrollWidth <= result.width, JSON.stringify(result));
                 assert.equal(result.tables, 1);
