@@ -16,6 +16,16 @@ function initializeApp() {
     initializeEventPage();
     initializeDataTables();
 
+    if (document.querySelector("[data-attendance-reports]")) {
+        import("./attendance-reports").then(({ initializeAttendanceReports }) => {
+            initializeAttendanceReports();
+        }).catch(() => {
+            const feedback = document.querySelector("[data-report-feedback]");
+            feedback.className = "alert alert-danger";
+            feedback.textContent = "Laporan gagal dimuat. Muat ulang halaman untuk mencoba kembali.";
+        });
+    }
+
     if (document.querySelector("[data-analytic-page]")) {
         import("./analytic").then(({ initializeAnalyticPage }) => {
             initializeAnalyticPage();

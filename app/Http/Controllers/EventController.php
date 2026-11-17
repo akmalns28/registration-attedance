@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Event\StoreEventRequest;
 use App\Http\Requests\Event\UpdateEventRequest;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Event;
 use App\Models\ExternalParticipant;
@@ -143,6 +144,7 @@ class EventController extends Controller
             'externalParticipants' => $externalParticipants,
             'remainingCapacity' => $remainingCapacity,
             'eventAttendanceSummary' => $eventAttendanceSummary,
+            'reportDepartments' => auth()->user()->can('reports.view') ? Department::query()->orderBy('name')->get(['id', 'name']) : collect(),
         ]);
     }
 

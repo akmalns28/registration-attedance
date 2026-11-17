@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AnalyticController;
 use App\Http\Controllers\AttendanceCheckinController;
+use App\Http\Controllers\AttendanceReportController;
 use App\Http\Controllers\AttendanceScannerController;
 use App\Http\Controllers\Auth\KeycloakController;
 use App\Http\Controllers\DashboardController;
@@ -187,6 +188,9 @@ Route::middleware(['auth', 'active'])->group(function () {
     */
 
     Route::scopeBindings()->group(function () {
+        Route::get('events/{event}/reports/data', AttendanceReportController::class)
+            ->middleware(['can:events.view', 'can:reports.view'])->name('events.reports.data');
+
         Route::get('events/{event}/participants/{registration}/qr', EventRegistrationQrController::class)
             ->middleware('can:events.view')->name('events.participants.qr');
 

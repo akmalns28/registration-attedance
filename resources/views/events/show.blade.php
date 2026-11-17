@@ -189,6 +189,14 @@
 
                     </li>
 
+                    @can('reports.view')
+                        <li class="nav-item" role="presentation">
+                            <a href="#event-reports" id="event-reports-tab" class="nav-link" data-bs-toggle="tab" role="tab"
+                                aria-controls="event-reports" aria-selected="false">
+                                <i class="ti ti-report-analytics me-2" aria-hidden="true"></i>Reports
+                            </a>
+                        </li>
+                    @endcan
                 </ul>
             </div>
 
@@ -417,6 +425,12 @@
                         @include('events.partials.participants')
 
                     </div>
+
+                    @can('reports.view')
+                        <section id="event-reports" class="tab-pane fade" role="tabpanel" aria-labelledby="event-reports-tab">
+                            @include('events.partials.reports')
+                        </section>
+                    @endcan
 
                 </div>
             </div>
