@@ -25,7 +25,7 @@ class AttendanceConcurrencyTest extends TestCase
         $processes = [];
         $connection = [
             ...config('database.connections.sqlite'), 'url' => null, 'database' => $database,
-            'busy_timeout' => 10000, 'journal_mode' => 'WAL',
+            'busy_timeout' => 10000, 'journal_mode' => 'WAL', 'transaction_mode' => 'IMMEDIATE',
         ];
         config(['database.connections.attendance_concurrency' => $connection]);
         DB::setDefaultConnection('attendance_concurrency');

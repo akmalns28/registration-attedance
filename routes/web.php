@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AnalyticController;
 use App\Http\Controllers\AttendanceCheckinController;
 use App\Http\Controllers\AttendanceScannerController;
 use App\Http\Controllers\Auth\KeycloakController;
@@ -61,6 +62,11 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])
         ->middleware('can:dashboard.view')
         ->name('dashboard');
+
+    Route::middleware('can:reports.view')->group(function () {
+        Route::get('/analytic', [AnalyticController::class, 'index'])->name('analytic.index');
+        Route::get('/analytic/data', [AnalyticController::class, 'data'])->name('analytic.data');
+    });
 
     /*
     |--------------------------------------------------------------------------
