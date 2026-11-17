@@ -89,88 +89,92 @@ export function initializeDataTables() {
             return;
         }
 
-        const filename = table.dataset.filename || "export-data";
-        const enableExport = table.dataset.export === "true";
-
-        const buttons = enableExport
-            ? [
-                  {
-                      extend: "collection",
-                      text: "Export",
-                      className: "btn btn-primary",
-                      buttons: getExportButtons(filename),
-                  },
-              ]
-            : [];
-
         const invalidRow = table.querySelector(".is-invalid")?.closest("tr");
-        const instance = new DataTable(table, {
-            processing: true,
-            responsive: table.dataset.responsive !== "false",
-            pageLength: 10,
-
-            lengthMenu: [
-                [10, 25, 50, 100],
-                [10, 25, 50, 100],
-            ],
-
-            order: [],
-
-            language,
-
-            layout: {
-                topStart: {
-                    pageLength: {},
-                },
-
-                topEnd: {
-                    search: {},
-                },
-
-                bottomStart: {
-                    info: {},
-                },
-
-                bottomEnd: {
-                    paging: {},
-                },
-            },
-
-            columnDefs: [
-                {
-                    targets: "no-sort",
-                    orderable: false,
-                },
-            ],
-
-            ...(enableExport
-                ? {
-                      layout: {
-                          topStart: {
-                              buttons,
-                          },
-
-                          topEnd: {
-                              search: {},
-                          },
-
-                          bottomStart: {
-                              pageLength: {},
-                              info: {},
-                          },
-
-                          bottomEnd: {
-                              paging: {},
-                          },
-                      },
-                  }
-                : {}),
-        });
+        const instance = new DataTable(table, getDataTableOptions(table));
 
         if (invalidRow) {
             instance.page(Math.floor(instance.row(invalidRow).index() / instance.page.len())).draw("page");
         }
     });
+}
+
+export function getDataTableOptions(table) {
+    const filename = table.dataset.filename || "export-data";
+    const enableExport = table.dataset.export === "true";
+
+    const buttons = enableExport
+        ? [
+              {
+                  extend: "collection",
+                  text: "Export",
+                  className: "btn btn-primary",
+                  buttons: getExportButtons(filename),
+              },
+          ]
+        : [];
+
+    return {
+        processing: true,
+        responsive: table.dataset.responsive !== "false",
+        pageLength: 10,
+
+        lengthMenu: [
+            [10, 25, 50, 100],
+            [10, 25, 50, 100],
+        ],
+
+        order: [],
+
+        language,
+
+        layout: {
+            topStart: {
+                pageLength: {},
+            },
+
+            topEnd: {
+                search: {},
+            },
+
+            bottomStart: {
+                info: {},
+            },
+
+            bottomEnd: {
+                paging: {},
+            },
+        },
+
+        columnDefs: [
+            {
+                targets: "no-sort",
+                orderable: false,
+            },
+        ],
+
+        ...(enableExport
+            ? {
+                  layout: {
+                      topStart: {
+                          buttons,
+                      },
+
+                      topEnd: {
+                          search: {},
+                      },
+
+                      bottomStart: {
+                          pageLength: {},
+                          info: {},
+                      },
+
+                      bottomEnd: {
+                          paging: {},
+                      },
+                  },
+              }
+            : {}),
+    };
 }
 
 export function adjustDataTables(root = document) {
