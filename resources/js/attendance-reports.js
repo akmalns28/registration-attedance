@@ -18,6 +18,8 @@ export class AttendanceReports {
         this.department = this.form.elements.namedItem("report_department");
         this.type = this.form.elements.namedItem("report_type");
         this.refreshButton = page.querySelector("[data-report-refresh]");
+        this.exportButtons = [...page.querySelectorAll("[data-report-export]")];
+        this.exportFeedback = page.querySelector("[data-report-export-feedback]");
         this.tableElement = page.querySelector("[data-attendance-report-table]");
         this.table = null;
         this.sequence = 0;
@@ -36,6 +38,10 @@ export class AttendanceReports {
         }
         this.department.disabled = this.type.value === "external";
         const options = { signal: this.listeners.signal };
+        this.exportButtons.forEach((button) => {
+            button.dataset.label = button.querySelector("span").textContent;
+            button.addEventListener("click", () => this.exportReport(button), options);
+        });
         this.form.addEventListener("submit", (event) => {
             event.preventDefault();
             this.applyFilters();
@@ -51,6 +57,7 @@ export class AttendanceReports {
         }, options);
         this.search.addEventListener("input", () => {
             window.clearTimeout(this.searchTimer);
+            this.updateExportButtons();
             this.searchTimer = window.setTimeout(() => this.applyFilters(), 350);
         }, options);
         page.querySelector("[data-report-reset]").addEventListener("click", () => {
@@ -72,6 +79,8 @@ export class AttendanceReports {
                 window.clearTimeout(this.searchTimer);
                 this.table?.processing(false);
                 this.setLoading(false);
+                this.exportAbort?.abort();
+                this.printWindow?.close();
             } else {
                 this.destroy();
             }
@@ -120,12 +129,112 @@ export class AttendanceReports {
     }
 
     setLoading(loading) {
+        this.loading = loading;
+        this.updateExportButtons();
         this.page.setAttribute("aria-busy", String(loading));
         this.refreshButton.disabled = loading;
         this.refreshButton.textContent = loading ? "Memuat..." : "Perbarui";
         if (loading) {
             this.feedback.className = "alert alert-info";
             this.feedback.textContent = "Memuat laporan dan ringkasan kehadiran...";
+        }
+    }
+
+    updateExportButtons() {
+        const changed = !this.lastFilters || [...Object.keys(filters), "report_search"].some((name) =>
+            this.form.elements.namedItem(name).value.trim() !== String(this.lastFilters[name] ?? "").trim());
+        this.exportButtons.forEach((button) => {
+            button.disabled = this.destroyed || this.loading || Boolean(this.exporting) || changed;
+            button.querySelector("span").textContent = this.exporting === button.dataset.reportExport ? "Menyiapkan..." : button.dataset.label;
+        });
+    }
+
+    async exportReport(button) {
+        if (button.disabled || this.exporting || this.destroyed) {
+            return;
+        }
+        const format = button.dataset.reportExport;
+        const parameters = new URLSearchParams();
+        for (const [name, parameter] of Object.entries(filters)) {
+            const value = this.form.elements.namedItem(name).value;
+            if (value) {
+                parameters.set(parameter, value);
+            }
+        }
+        parameters.set("search[value]", this.search.value.trim());
+        const [column, direction] = this.table.order()[0];
+        parameters.set("order[0][column]", column);
+        parameters.set("order[0][dir]", direction);
+        let popup;
+        if (format === "print") {
+            popup = window.open("about:blank", "_blank");
+            if (!popup) {
+                this.showExportMessage("Izinkan popup untuk membuka halaman Print laporan.", true);
+                return;
+            }
+            popup.opener = null;
+            popup.document.title = "Menyiapkan laporan";
+            popup.document.body.textContent = "Menyiapkan laporan untuk dicetak...";
+            this.printWindow = popup;
+        }
+        this.exporting = format;
+        this.updateExportButtons();
+        this.showExportMessage("Menyiapkan seluruh hasil filter untuk ekspor...");
+        const abort = new AbortController();
+        this.exportAbort = abort;
+        const timeout = window.setTimeout(() => abort.abort(), 120000);
+        const mime = { excel: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv", pdf: "application/pdf", print: "text/html" }[format];
+        try {
+            const response = await this.request(`${button.dataset.url}?${parameters}`, {
+                credentials: "same-origin", headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" }, signal: abort.signal,
+            });
+            const contentType = response.headers.get("content-type") || "";
+            if (!response.ok || response.redirected || !contentType.includes(mime)) {
+                const body = contentType.includes("application/json") ? await response.json() : null;
+                throw new Error(Object.values(body?.errors ?? {}).flat().join(" ") ||
+                    (response.redirected || [401, 403, 419].includes(response.status) ? "Akses ekspor berakhir. Muat ulang halaman atau login kembali." : "Ekspor belum dapat dibuat. Silakan coba kembali."));
+            }
+            const blob = await response.blob();
+            if (this.destroyed || abort.signal.aborted) {
+                return;
+            }
+            const url = URL.createObjectURL(blob);
+            window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+            if (popup) {
+                if (popup.closed) {
+                    throw new Error("Halaman Print telah ditutup. Tekan Print untuk membuka kembali.");
+                }
+                popup.location.replace(url);
+                this.printWindow = null;
+            } else {
+                const disposition = response.headers.get("content-disposition") || "";
+                const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = filename?.replace(/[\\/\x00-\x1f]/g, "_") || `attendance-report.${format === "excel" ? "xlsx" : format}`;
+                document.body.append(link);
+                link.click();
+                link.remove();
+            }
+            this.showExportMessage(popup ? "Laporan siap dicetak pada tab baru." : "Unduhan laporan telah disiapkan.");
+        } catch (error) {
+            popup?.close();
+            if (!this.destroyed) {
+                this.showExportMessage(error.name === "AbortError" ? "Ekspor melewati batas waktu. Persempit filter atau coba kembali." : error.message, true);
+            }
+        } finally {
+            window.clearTimeout(timeout);
+            this.exporting = null;
+            this.printWindow = null;
+            this.updateExportButtons();
+        }
+    }
+
+    showExportMessage(message, failed = false) {
+        this.exportFeedback.className = failed ? "alert alert-danger" : "alert alert-info";
+        this.exportFeedback.textContent = message;
+        if (failed) {
+            window.notify?.error(message);
         }
     }
 
@@ -213,6 +322,8 @@ export class AttendanceReports {
         this.destroyed = true;
         this.sequence++;
         this.abort?.abort();
+        this.exportAbort?.abort();
+        this.printWindow?.close();
         window.clearTimeout(this.searchTimer);
         this.listeners.abort();
         this.table?.destroy();
