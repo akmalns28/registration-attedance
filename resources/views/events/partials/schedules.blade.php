@@ -10,14 +10,17 @@
 </div>
 
 <div class="table-responsive">
-    <table class="table table-sm table-vcenter event-schedules-table">
+    <table class="table table-sm table-vcenter event-schedules-table"
+        @if ($enableScheduleDataTable ?? false)
+            id="day-schedules-{{ $day->id }}" data-datatable data-export="false" data-responsive="{{ auth()->user()->can('events.update') ? 'false' : 'true' }}"
+        @endif>
         <thead>
             <tr>
                 <th class="schedule-time">Waktu</th>
                 <th>Kegiatan</th>
                 <th class="schedule-pic">PIC</th>
                 @can('events.update')
-                    <th class="schedule-actions text-end">Aksi</th>
+                    <th class="schedule-actions text-end no-sort">Aksi</th>
                 @endcan
             </tr>
         </thead>
@@ -46,10 +49,18 @@
                     </tr>
                 @endcannot
             @endforelse
-
-            @can('events.update')
-                @include('events.partials.schedule-row', ['schedule' => null])
-            @endcan
         </tbody>
     </table>
 </div>
+
+@can('events.update')
+    <h4 class="mt-3">Tambah Rundown</h4>
+    <div class="table-responsive">
+        <table class="table table-sm table-vcenter event-schedules-table">
+            <thead><tr><th class="schedule-time">Waktu</th><th>Kegiatan</th><th class="schedule-pic">PIC</th><th class="schedule-actions text-end">Aksi</th></tr></thead>
+            <tbody>
+                @include('events.partials.schedule-row', ['schedule' => null])
+            </tbody>
+        </table>
+    </div>
+@endcan

@@ -90,7 +90,7 @@ class EventScheduleManagementTest extends TestCase
                 'schedule_form' => 'schedule-new-'.$day->id,
                 'pic' => '  Budi Santoso  ',
             ]))
-            ->assertRedirect(route('events.show', $event).'#event-days');
+            ->assertRedirect(route('events.days.show', [$event, $day]).'#day-rundown');
 
         $this->assertDatabaseHas('event_schedules', [
             'event_day_id' => $day->id,
@@ -115,7 +115,7 @@ class EventScheduleManagementTest extends TestCase
             ->assertSessionHasErrors('title');
     }
 
-    public function test_event_page_displays_inline_schedule_forms_for_each_day(): void
+    public function test_event_page_displays_compact_day_summaries_without_schedule_forms(): void
     {
         $this->withoutVite();
 
@@ -136,13 +136,16 @@ class EventScheduleManagementTest extends TestCase
         $this->actingAs($this->authorizedUser())
             ->get(route('events.show', $event))
             ->assertOk()
-            ->assertSee('Rundown Kegiatan')
-            ->assertSee('action="'.route('events.days.schedules.store', [$event, $day]).'"', false)
-            ->assertSee('action="'.route('events.days.schedules.store', [$event, $anotherDay]).'"', false)
-            ->assertSee('action="'.route('events.days.schedules.update', [$event, $day, $schedule]).'"', false)
-            ->assertSee('value="Opening Ceremony"', false)
-            ->assertSee('value="Panitia Acara"', false)
-            ->assertSee('name="pic"', false)
+            ->assertSee('1 kegiatan rundown')->assertSee('0 kegiatan rundown')->assertSee('Belum ada rundown')
+            ->assertSee('href="'.route('events.days.show', [$event, $day]).'"', false)
+            ->assertSee('href="'.route('events.days.show', [$event, $anotherDay]).'"', false)
+            ->assertSee('href="'.route('events.days.edit', [$event, $day]).'"', false)
+            ->assertSee('data-delete-url="'.route('events.days.destroy', [$event, $day]).'"', false)
+            ->assertDontSee('action="'.route('events.days.schedules.store', [$event, $day]).'"', false)
+            ->assertDontSee('action="'.route('events.days.schedules.store', [$event, $anotherDay]).'"', false)
+            ->assertDontSee('action="'.route('events.days.schedules.update', [$event, $day, $schedule]).'"', false)
+            ->assertDontSee('Opening Ceremony')->assertDontSee('Panitia Acara')
+            ->assertDontSee('name="pic"', false)
             ->assertDontSee('name="location"', false)
             ->assertDontSee('name="is_active"', false)
             ->assertDontSee('<th>Status</th>', false)
@@ -168,19 +171,19 @@ class EventScheduleManagementTest extends TestCase
         ]);
 
         $this->actingAs($this->authorizedUser())
-            ->from(route('events.show', $event))
+            ->from(route('events.days.show', [$event, $day]))
             ->post(route('events.days.schedules.store', [$event, $day]), $this->scheduleData([
                 'schedule_form' => 'schedule-new-'.$day->id,
                 'title' => 'Unsaved activity',
                 'pic' => 'Draft PIC',
                 'end_time' => '08:00',
             ]))
-            ->assertRedirect(route('events.show', $event).'#event-days')
+            ->assertRedirect(route('events.days.show', [$event, $day]).'#day-rundown')
             ->assertSessionHasErrors(['end_time' => 'Jam selesai harus lebih besar dari jam mulai.'])
             ->assertSessionHasInput('title', 'Unsaved activity');
 
         $response = $this->withCookie(config('session.cookie'), session()->getId())
-            ->get(route('events.show', $event))
+            ->get(route('events.days.show', [$event, $day]))
             ->assertOk()
             ->assertSee('value="Original activity"', false)
             ->assertSee('value="Unsaved activity"', false);
@@ -208,7 +211,7 @@ class EventScheduleManagementTest extends TestCase
         $user->givePermissionTo('events.view');
 
         $this->actingAs($user)
-            ->get(route('events.show', $event))
+            ->get(route('events.days.show', [$event, $day]))
             ->assertOk()
             ->assertSee($schedule->title)
             ->assertSee($schedule->pic)
@@ -250,7 +253,7 @@ class EventScheduleManagementTest extends TestCase
                     'end_time' => '10:30',
                 ]),
             )
-            ->assertRedirect(route('events.show', $event).'#event-days');
+            ->assertRedirect(route('events.days.show', [$event, $day]).'#day-rundown');
 
         $this->assertEquals(2, EventSchedule::where('event_day_id', $day->id)->count());
     }
@@ -273,7 +276,7 @@ class EventScheduleManagementTest extends TestCase
                     'pic' => 'Rina Wati',
                 ]),
             )
-            ->assertRedirect(route('events.show', $event).'#event-days');
+            ->assertRedirect(route('events.days.show', [$event, $day]).'#day-rundown');
 
         $this->assertDatabaseHas('event_schedules', [
             'id' => $schedule->id,
@@ -293,7 +296,7 @@ class EventScheduleManagementTest extends TestCase
                 'pic' => '   ',
             ]))
             ->assertSessionHasNoErrors()
-            ->assertRedirect(route('events.show', $event).'#event-days');
+            ->assertRedirect(route('events.days.show', [$event, $day]).'#day-rundown');
 
         $this->assertDatabaseHas('event_schedules', [
             'event_day_id' => $day->id,
@@ -329,7 +332,7 @@ class EventScheduleManagementTest extends TestCase
 
         $this->actingAs($this->authorizedUser())
             ->delete(route('events.days.schedules.destroy', [$event, $day, $schedule]))
-            ->assertRedirect(route('events.show', $event).'#event-days');
+            ->assertRedirect(route('events.days.show', [$event, $day]).'#day-rundown');
 
         $this->assertDatabaseMissing('event_schedules', [
             'id' => $schedule->id,
@@ -345,6 +348,23 @@ class EventScheduleManagementTest extends TestCase
         ]);
 
         $this->actingAs($user)->post(route('events.days.schedules.store', [$event, $day]), $this->scheduleData())->assertForbidden();
+    }
+
+    public function test_viewer_cannot_open_management_forms_update_or_delete_the_day_rundown(): void
+    {
+        [$event, $day] = $this->eventDay();
+        $schedule = EventSchedule::factory()->for($day, 'eventDay')->create(['title' => 'Protected activity']);
+        $user = User::factory()->create(['is_active' => true]);
+        $user->givePermissionTo('events.view');
+        $this->actingAs($user);
+
+        $this->get(route('events.days.schedules.create', [$event, $day]))->assertForbidden();
+        $this->get(route('events.days.schedules.edit', [$event, $day, $schedule]))->assertForbidden();
+        $this->put(route('events.days.schedules.update', [$event, $day, $schedule]), $this->scheduleData())->assertForbidden();
+        $this->delete(route('events.days.schedules.destroy', [$event, $day, $schedule]))->assertForbidden();
+
+        $this->assertDatabaseCount('event_schedules', 1);
+        $this->assertDatabaseHas('event_schedules', ['id' => $schedule->id, 'title' => 'Protected activity']);
     }
 
     public function test_inactive_user_cannot_access_rundown(): void

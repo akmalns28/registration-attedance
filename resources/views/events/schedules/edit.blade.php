@@ -31,7 +31,7 @@
 
                 <div class="col-auto ms-auto">
 
-                    <a href="{{ route('events.show', $event) }}#event-days" class="btn btn-outline-secondary">
+                    <a href="{{ route('events.days.show', [$event, $day]) }}#day-rundown" class="btn btn-outline-secondary">
                         <i class="ti ti-arrow-left me-2"></i>
                         Kembali
                     </a>

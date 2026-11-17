@@ -113,9 +113,12 @@ class RegistrationQrCodeTest extends TestCase
         $this->assertStringStartsWith("\x89PNG\r\n\x1a\n", $png);
     }
 
-    public function test_generated_png_decodes_to_exact_registration_token(): void
+    #[TestWith([null])]
+    #[TestWith(['01a1e3c3-85b2-7333-a1c8-b73ed6dab9a3'])]
+    #[TestWith(['01a1cf4f-9c62-721a-9b5a-d478aea18229'])]
+    public function test_generated_png_decodes_to_exact_registration_token(?string $uuid): void
     {
-        $registration = $this->registration();
+        $registration = $uuid === null ? $this->registration() : EventRegistration::factory()->create(['uuid' => $uuid]);
 
         $png = $this->service->generatePng($registration);
         $decodedPayload = (new QrReader($png, QrReader::SOURCE_TYPE_BLOB))->text(['TRY_HARDER' => true]);

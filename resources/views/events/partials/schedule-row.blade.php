@@ -8,7 +8,7 @@
 @endphp
 
 <tr @class(['table-light' => ! $isEdit])>
-    <td class="align-top schedule-time" data-label="Waktu">
+    <td class="align-top schedule-time" data-label="Waktu" data-search="{{ $schedule?->start_time }} {{ $schedule?->end_time }}" data-order="{{ $schedule?->start_time }}">
         <div class="schedule-time-inputs">
             @foreach (['start_time' => 'Jam mulai', 'end_time' => 'Jam selesai'] as $field => $label)
                 <div>
@@ -24,7 +24,7 @@
             @endforeach
         </div>
     </td>
-    <td class="align-top" data-label="Kegiatan">
+    <td class="align-top" data-label="Kegiatan" data-search="{{ $schedule?->title }} {{ $schedule?->description }}" data-order="{{ $schedule?->title }}">
         <label for="{{ $formId }}-title" class="visually-hidden">Nama kegiatan</label>
         <input type="text" id="{{ $formId }}-title" name="title" form="{{ $formId }}"
             @class(['form-control form-control-sm', 'is-invalid' => $fieldHasError('title')])
@@ -42,7 +42,7 @@
             <div class="invalid-feedback">{{ $errors->first('description') }}</div>
         @endif
     </td>
-    <td class="align-top schedule-pic" data-label="PIC">
+    <td class="align-top schedule-pic" data-label="PIC" data-search="{{ $schedule?->pic }}" data-order="{{ $schedule?->pic }}">
         <label for="{{ $formId }}-pic" class="visually-hidden">PIC kegiatan</label>
         <input type="text" id="{{ $formId }}-pic" name="pic" form="{{ $formId }}"
             @class(['form-control form-control-sm', 'is-invalid' => $fieldHasError('pic')])

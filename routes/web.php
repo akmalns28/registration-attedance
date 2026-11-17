@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\AttendanceCheckinController;
+use App\Http\Controllers\AttendanceScannerController;
 use App\Http\Controllers\Auth\KeycloakController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
@@ -188,6 +190,12 @@ Route::middleware(['auth', 'active'])->group(function () {
         |--------------------------------------------------------------------------
         */
 
+        Route::get('events/{event}/days/{day}', [EventDayController::class, 'show'])
+            ->whereNumber('day')->middleware('can:events.view')->name('events.days.show');
+
+        Route::get('events/{event}/days/{day}/attendance', [EventDayController::class, 'attendance'])
+            ->whereNumber('day')->middleware(['can:events.view', 'can:attendance.view'])->name('events.days.attendance');
+
         Route::resource('events.days', EventDayController::class)
             ->parameters([
                 'days' => 'day',
@@ -233,18 +241,23 @@ Route::middleware(['auth', 'active'])->group(function () {
     |--------------------------------------------------------------------------
     | Attendance - QR Scanner
     |--------------------------------------------------------------------------
-    |
-    | Temporary placeholder.
-    | Will be implemented in the Attendance sprint.
-    |
     */
 
-    Route::view('/attendance/scanner', 'placeholder', [
-        'title' => 'QR Scanner',
-        'description' => 'Pemindaian QR untuk absensi akan tersedia di halaman ini.',
-    ])
+    Route::get('/attendance/scanner', [AttendanceScannerController::class, 'index'])
         ->middleware('can:attendance.scan')
         ->name('attendance.scanner');
+
+    Route::get('/events/{event}/scanner', [AttendanceScannerController::class, 'forEvent'])
+        ->whereUuid('event')
+        ->middleware('can:attendance.scan')
+        ->name('events.scanner');
+
+    Route::post('/attendance/scanner/validate', [AttendanceScannerController::class, 'validate'])
+        ->middleware(['can:attendance.scan', 'throttle:60,1'])
+        ->name('attendance.scanner.validate');
+
+    Route::post('/attendance/check-in', AttendanceCheckinController::class)
+        ->middleware(['can:attendance.scan', 'throttle:60,1'])->name('attendance.check-in');
 });
 
 /*

@@ -17,10 +17,12 @@ class RegistrationQrCodeService
 
     /**
      * Generate PNG QR Code binary.
+     * RA1 tokens are ASCII, so an additional UTF-8 ECI segment is unnecessary.
      */
     public function generatePng(EventRegistration $registration): string
     {
-        $result = QrCode::format('png')->size(600)->margin(4)->errorCorrection('M')->generate($this->payload($registration));
+        $result = QrCode::format('png')->encoding('ISO-8859-1')->size(600)->margin(4)
+            ->errorCorrection('Q')->generate($this->payload($registration));
 
         return (string) $result;
     }

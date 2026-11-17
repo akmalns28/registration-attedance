@@ -36,7 +36,7 @@ class EventScheduleController extends Controller
         $day->schedules()->create($request->validated());
 
         return redirect()
-            ->to(route('events.show', $event).'#event-days')
+            ->to(route('events.days.show', [$event, $day]).'#day-rundown')
             ->with('success', 'Rundown berhasil ditambahkan.');
     }
 
@@ -68,7 +68,7 @@ class EventScheduleController extends Controller
         $schedule->update($request->validated());
 
         return redirect()
-            ->to(route('events.show', $event).'#event-days')
+            ->to(route('events.days.show', [$event, $day]).'#day-rundown')
             ->with('success', 'Rundown berhasil diperbarui.');
     }
 
@@ -86,7 +86,7 @@ class EventScheduleController extends Controller
         $schedule->delete();
 
         return redirect()
-            ->to(route('events.show', $event).'#event-days')
+            ->to(route('events.days.show', [$event, $day]).'#day-rundown')
             ->with('success', 'Rundown berhasil dihapus.');
     }
 

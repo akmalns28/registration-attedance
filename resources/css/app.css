@@ -18,6 +18,53 @@
     --tblr-font-sans-serif: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+.attendance-camera-stage {
+    position: relative;
+    width: 100%;
+    height: clamp(14rem, 52dvh, 28rem);
+    overflow: hidden;
+    border-radius: var(--tblr-border-radius);
+    background: #0f172a;
+}
+
+#qr-reader {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+#qr-reader video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+}
+
+.attendance-camera-placeholder {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    pointer-events: none;
+}
+
+.attendance-scanner-controls .btn {
+    min-height: 2.75rem;
+    white-space: normal;
+}
+
+.attendance-scanner-participant dd,
+[data-scanner-result-message] {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 575.98px) {
+    .attendance-camera-stage {
+        height: clamp(12rem, 38dvh, 20rem);
+    }
+}
+
 .navbar-vertical[data-bs-theme="dark"] {
     --tblr-navbar-bg: var(--tblr-dark);
     --tblr-navbar-hover-color: var(--tblr-white);

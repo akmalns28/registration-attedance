@@ -1,5 +1,6 @@
 import { Modal, Tab } from "@tabler/core";
 import { adjustDataTables } from "./plugins/datatables";
+import DataTable from "datatables.net-bs5";
 
 export function initializeEventPage(root = document) {
     const page = root.querySelector("[data-event-details]");
@@ -9,6 +10,80 @@ export function initializeEventPage(root = document) {
     }
 
     page.dataset.initialized = "true";
+    const refreshButton = page.querySelector("[data-attendance-refresh]");
+    let refreshingAttendance = false;
+    let attendanceRefreshPending = false;
+    const updateSummary = (summary) => {
+        page.querySelectorAll("[data-attendance-summary]").forEach((card) => {
+            const key = card.dataset.attendanceSummary;
+            if (typeof summary?.[key] === "number") {
+                card.querySelector(".h1").textContent = `${summary[key]}${key === "percentage" ? "%" : ""}`;
+            }
+        });
+    };
+    const refreshAttendance = async () => {
+        if (!page.dataset.attendanceRefreshUrl) {
+            return;
+        }
+        if (refreshingAttendance) {
+            attendanceRefreshPending = true;
+            return;
+        }
+        refreshingAttendance = true;
+        refreshButton.disabled = true;
+        const feedback = page.querySelector("[data-attendance-refresh-feedback]");
+        feedback.className = "alert alert-info";
+        feedback.textContent = "Memperbarui data kehadiran...";
+        try {
+            const response = await fetch(page.dataset.attendanceRefreshUrl, {
+                credentials: "same-origin", headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+                signal: AbortSignal.timeout(20000),
+            });
+            const data = await response.json();
+            if (!response.ok || data.success !== true || !Array.isArray(data.attendees)) {
+                throw new Error("Refresh failed");
+            }
+            if (attendanceRefreshPending) {
+                return;
+            }
+            updateSummary(data.summary);
+            const table = page.querySelector("[data-attendance-table]");
+            const rows = data.attendees.map((attendee) => {
+                const row = document.createElement("tr");
+                ["registration_number", "participant_name", "participant_type", "registration_status", "checkin_time", "operator_name", "attendance_status"].forEach((key) => {
+                    const cell = document.createElement("td");
+                    cell.textContent = key === "attendance_status" ? "Hadir" : attendee[key];
+                    row.append(cell);
+                });
+                return row;
+            });
+            if (DataTable.isDataTable(table)) {
+                new DataTable(table).clear().rows.add(rows).draw(false);
+                adjustDataTables(page);
+            } else {
+                table.querySelector("tbody").replaceChildren(...rows);
+            }
+            feedback.className = "d-none";
+            feedback.textContent = "";
+        } catch {
+            feedback.className = "alert alert-warning";
+            feedback.textContent = "Data kehadiran belum dapat diperbarui. Tekan Perbarui Kehadiran untuk mencoba kembali.";
+        } finally {
+            refreshingAttendance = false;
+            refreshButton.disabled = false;
+            if (attendanceRefreshPending) {
+                attendanceRefreshPending = false;
+                refreshAttendance();
+            }
+        }
+    };
+    refreshButton?.addEventListener("click", refreshAttendance);
+    page.addEventListener("attendance:updated", (event) => {
+        if (String(event.detail.eventId) === page.dataset.eventId && String(event.detail.dayId) === page.dataset.dayId) {
+            updateSummary(event.detail.summary);
+            refreshAttendance();
+        }
+    });
 
     const confirmations = new Map([
         [
