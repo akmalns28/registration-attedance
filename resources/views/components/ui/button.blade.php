@@ -18,7 +18,8 @@
 @endphp
 
 @if ($href)
-    <a href="{{ $href }}" {{ $attributes->class([$classes]) }}>
+    <a @if (! $disabled) href="{{ $href }}" @else aria-disabled="true" tabindex="-1" @endif
+        {{ $attributes->class([$classes, 'disabled' => $disabled]) }}>
         {{ $slot }}
     </a>
 @else

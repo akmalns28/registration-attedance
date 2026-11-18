@@ -26,7 +26,7 @@
                 @can('departments.create')
                     <div class="col-auto ms-auto">
                         <a href="{{ route('departments.create') }}" class="btn btn-primary">
-                            <i class="ti ti-plus me-2"></i>
+                            <x-ui.icon name="plus" class="me-2" />
                             Tambah Departemen
                         </a>
                     </div>
@@ -64,7 +64,7 @@
                                             No.
                                         </th>
                                         <th>Kode</th>
-                                        <th>Nama Departemen</th>
+                                        <th class="all">Nama Departemen</th>
                                         <th>Deskripsi</th>
                                         <th>Status</th>
 
@@ -120,21 +120,14 @@
                                                     <div class="btn-list justify-content-end">
 
                                                         @can('departments.update')
-                                                            <a href="{{ route('departments.edit', $department) }}"
-                                                                class="btn btn-sm btn-outline-primary">
-                                                                <i class="ti ti-edit me-1"></i>
-                                                                Edit
-                                                            </a>
+                                                            <x-ui.action icon="pencil" label="Edit Departemen" variant="primary" :href="route('departments.edit', $department)" />
                                                         @endcan
 
                                                         @can('departments.delete')
-                                                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                                            <x-ui.action icon="trash" label="Hapus Departemen" variant="danger"
                                                                 data-bs-toggle="modal" data-bs-target="#deleteDepartmentModal"
                                                                 data-delete-url="{{ route('departments.destroy', $department) }}"
-                                                                data-delete-name="{{ $department->name }}">
-                                                                <i class="ti ti-trash me-1"></i>
-                                                                Hapus
-                                                            </button>
+                                                                data-delete-name="{{ $department->name }}" />
                                                         @endcan
 
                                                     </div>
@@ -164,7 +157,7 @@
 
                     <div class="modal-body text-center py-4">
 
-                        <i class="ti ti-alert-triangle text-danger fs-1"></i>
+                        <x-ui.icon name="alert-triangle" class="text-danger fs-1" />
 
                         <h3 class="mt-3" id="deleteDepartmentModalLabel">
                             Hapus Departemen?

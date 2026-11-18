@@ -9,7 +9,7 @@
 
                 <div class="modal-body text-center py-4">
 
-                    <i class="ti ti-user-check text-success fs-1"></i>
+                    <x-ui.icon name="user-check" class="text-success fs-1" />
 
                     <h3 class="mt-3" id="reactivateRegistrationModalLabel">
                         Aktifkan Kembali Registrasi?
@@ -25,7 +25,7 @@
 
                     <div class="alert alert-info text-start mb-0">
 
-                        <i class="ti ti-info-circle me-1"></i>
+                        <x-ui.icon name="info-circle" class="me-1" />
 
                         Peserta akan kembali berstatus
                         <strong>Registered</strong>.
@@ -48,7 +48,7 @@
                         @csrf
 
                         <button type="submit" class="btn btn-success" disabled>
-                            <i class="ti ti-user-check me-1"></i>
+                            <x-ui.icon name="user-check" class="me-1" />
                             Ya, Aktifkan
                         </button>
 

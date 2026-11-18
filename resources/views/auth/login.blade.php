@@ -7,11 +7,11 @@
 <div class="text-center mb-4">
 
     <h1 class="fw-bold">
-        Registration Attendance
+        {{ config('app.name') }}
     </h1>
 
     <p class="text-secondary">
-        Event Registration & Attendance System
+        Registrasi peserta dan pencatatan kehadiran event
     </p>
 
 </div>

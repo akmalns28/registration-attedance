@@ -13,7 +13,14 @@
                     ->map(fn ($name) => \Illuminate\Support\Str::headline($name))->join(', ');
             @endphp
 
-            <div class="navbar-nav flex-row ms-auto">
+            <div class="navbar-nav flex-row align-items-center gap-3 ms-auto">
+                @can('events.view')
+                    <a href="{{ route('notifications.index') }}" class="nav-link btn-icon notification-entry {{ request()->routeIs('notifications.*') ? 'active' : '' }}"
+                        data-notification-entry aria-label="Pengelolaan notifikasi email" title="Pengelolaan notifikasi email"
+                        @if (request()->routeIs('notifications.*')) aria-current="page" @endif>
+                        <x-ui.icon name="bell" />
+                    </a>
+                @endcan
                 <div class="nav-item dropdown" aria-label="Account navigation">
                     <button type="button" id="account-menu-toggle"
                         class="nav-link d-flex align-items-center text-reset p-0 border-0 bg-transparent"

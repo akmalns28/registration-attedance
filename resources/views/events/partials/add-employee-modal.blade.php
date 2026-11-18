@@ -10,7 +10,7 @@
                     <div class="modal-header">
 
                         <h3 class="modal-title" id="addEmployeeModalLabel">
-                            <i class="ti ti-user-plus me-2"></i>
+                            <x-ui.icon name="user-plus" class="me-2" />
                             Add Employee Participants
                         </h3>
 
@@ -28,7 +28,7 @@
 
                             <div class="alert alert-info">
 
-                                <i class="ti ti-info-circle me-2"></i>
+                                <x-ui.icon name="info-circle" class="me-2" />
 
                                 Pilih satu atau beberapa Employee
                                 untuk didaftarkan ke event.
@@ -41,18 +41,20 @@
                                     Pilih Employee
                                 </label>
 
-                                <select id="employee_ids" name="participant_ids[]"
-                                    class="form-select @error('participant_ids') is-invalid @enderror" multiple
-                                    data-tom-select data-placeholder="Cari nama atau NIP Employee..." required>
+                                <div class="employee-select" data-tom-select-dropdown-parent>
+                                    <select id="employee_ids" name="participant_ids[]"
+                                        class="form-select @error('participant_ids') is-invalid @enderror" multiple
+                                        data-tom-select data-placeholder="Cari nama atau NIP Employee..." required>
 
-                                    @foreach ($employees as $employee)
-                                        <option value="{{ $employee->id }}" @selected(old('participant_type') === 'employee' && in_array((string) $employee->id, array_map('strval', (array) old('participant_ids', [])), true))>
-                                            {{ $employee->name }}
-                                            — {{ $employee->nip }}
-                                        </option>
-                                    @endforeach
+                                        @foreach ($employees as $employee)
+                                            <option value="{{ $employee->id }}" @selected(old('participant_type') === 'employee' && in_array((string) $employee->id, array_map('strval', (array) old('participant_ids', [])), true))>
+                                                {{ $employee->name }}
+                                                — {{ $employee->nip }}
+                                            </option>
+                                        @endforeach
 
-                                </select>
+                                    </select>
+                                </div>
 
                                 @error('participant_ids')
                                     <div class="invalid-feedback d-block">
@@ -126,7 +128,7 @@
                             </button>
 
                             <button type="submit" class="btn btn-primary">
-                                <i class="ti ti-user-plus me-2"></i>
+                                <x-ui.icon name="user-plus" class="me-2" />
                                 Register Employees
                             </button>
 

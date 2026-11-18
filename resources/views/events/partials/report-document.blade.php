@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Laporan Kehadiran — {{ $event->title }}</title>
+    <title>Laporan Kehadiran — {{ $event->title }} - {{ config('app.name') }}</title>
     <style>
         @page { size: A4 landscape; margin: 12mm; }
         * { box-sizing: border-box; }

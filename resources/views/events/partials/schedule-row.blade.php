@@ -65,17 +65,15 @@
 
             <div class="btn-list flex-nowrap justify-content-end">
                 <button type="submit" class="btn btn-sm {{ $isEdit ? 'btn-outline-primary' : 'btn-primary' }}">
-                    <i class="ti {{ $isEdit ? 'ti-device-floppy' : 'ti-plus' }} me-1" aria-hidden="true"></i>
+                    <x-ui.icon :name="$isEdit ? 'device-floppy' : 'plus'" class="me-1" />
                     {{ $isEdit ? 'Simpan' : 'Tambah' }}
                 </button>
 
                 @if ($isEdit)
-                    <button type="button" class="btn btn-sm btn-outline-danger" aria-label="Hapus {{ $schedule->title }}"
+                    <x-ui.action icon="trash" :label="'Hapus '.$schedule->title" variant="danger"
                         data-bs-toggle="modal" data-bs-target="#deleteScheduleModal"
                         data-delete-url="{{ route('events.days.schedules.destroy', [$event, $day, $schedule]) }}"
-                        data-delete-name="{{ $schedule->title }}">
-                        <i class="ti ti-trash" aria-hidden="true"></i>
-                    </button>
+                        data-delete-name="{{ $schedule->title }}" />
                 @endif
             </div>
             @if ($fieldHasError('sort_order'))

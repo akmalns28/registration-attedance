@@ -293,12 +293,16 @@ class AttendanceReportExportTest extends TestCase
 
     public function test_print_escapes_data_repeats_table_headers_and_contains_only_the_report(): void
     {
+        $applicationName = 'Event & Attendance <Portal>';
+        config(['app.name' => $applicationName]);
         $fixture = $this->fixture();
         $attack = '<script>alert("x")</script>';
         $fixture['alice']->employee->update(['name' => $attack]);
         $fixture['event']->update(['title' => $attack, 'location' => '<img src="https://evil.test/x">']);
         $response = $this->actingAs($this->user())->getJson($this->url($fixture['event'], 'print', ['search' => ['value' => $attack]]))->assertOk();
         $html = $response->streamedContent();
+        $this->assertStringContainsString('<title>Laporan Kehadiran — '.e($attack).' - '.e($applicationName).'</title>', $html);
+        $this->assertStringContainsString('<h1>PT Ari Utsaha Nusantara</h1>', $html);
         $this->assertStringContainsString(e($attack), $html);
         $this->assertStringNotContainsString($attack, $html);
         $this->assertStringNotContainsString('<img', $html);

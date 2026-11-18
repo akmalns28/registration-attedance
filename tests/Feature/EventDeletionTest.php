@@ -258,13 +258,17 @@ class EventDeletionTest extends TestCase
             $this->assertCount(1, $actionCells);
             $actionCell = $actionCells->item(0);
 
-            $this->assertSame('Detail', trim($actionCell->textContent));
-            $this->assertSame(1, $xpath->query('.//a[@href="'.route('events.show', $event).'"]', $actionCell)->length);
+            $this->assertSame('', trim($actionCell->textContent));
+            $this->assertSame(1, $xpath->query('.//a[@href="'.route('events.show', $event).'" and @aria-label="Detail Event" and @title="Detail Event"]', $actionCell)->length);
             $this->assertSame((int) $canEdit, $xpath->query('.//a[@href="'.route('events.edit', $event).'"]', $actionCell)->length);
             $this->assertSame((int) $event->is($eligibleEvent), $xpath->query('.//button', $actionCell)->length);
             $this->assertSame(1, $xpath->query('./*', $actionCell)->length);
             $this->assertSame(1 + (int) $canEdit + (int) $event->is($eligibleEvent), $xpath->query('./div/*', $actionCell)->length);
-            $this->assertSame(0, $xpath->query('.//*[@disabled or @title or @aria-describedby or @placeholder]', $actionCell)->length);
+            $this->assertSame(0, $xpath->query('.//*[@disabled or @aria-describedby or @placeholder]', $actionCell)->length);
+            foreach ($xpath->query('./div/*', $actionCell) as $action) {
+                $this->assertNotSame('', $action->getAttribute('aria-label'));
+                $this->assertSame($action->getAttribute('aria-label'), $action->getAttribute('title'));
+            }
 
             if (! $event->is($eligibleEvent)) {
                 $response->assertDontSee('data-delete-url="'.route('events.destroy', $event).'"', false)

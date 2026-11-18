@@ -55,7 +55,7 @@
 
             </div>
 
-            <div class="row g-3">
+            <div class="row g-3" data-role-permissions>
 
                 @foreach ($permissions as $module => $items)
                     <div class="col-md-6">
@@ -73,7 +73,7 @@
                                     <label class="form-check mb-0">
 
                                         <input type="checkbox" class="form-check-input module-select-all"
-                                            data-module="{{ $module }}">
+                                            data-module="{{ $module }}" aria-label="Select All {{ str_replace('-', ' ', $module) }}">
 
                                         <span class="form-check-label">
                                             Select All
@@ -88,14 +88,14 @@
                             <div class="card-body">
 
                                 @foreach ($items as $permission)
-                                    <label class="form-check mb-3">
+                                    <label class="form-check permission-option mb-2">
 
                                         <input type="checkbox" class="form-check-input permission-checkbox"
                                             name="permissions[]" value="{{ $permission->name }}"
                                             data-module="{{ $module }}" @checked(in_array($permission->name, $selectedPermissions))>
 
                                         <span class="form-check-label">
-                                            {{ $permission->name }}
+                                            {{ \App\Services\PermissionLabelFormatter::action($permission->name) }}
                                         </span>
 
                                     </label>
@@ -164,15 +164,13 @@
 
                         const module = moduleCheckbox.dataset.module;
 
-                        const permissions = document.querySelectorAll(
-                            `.permission-checkbox[data-module="${module}"]`
-                        );
+                        const permissions = Array.from(permissionCheckboxes).filter(checkbox => checkbox.dataset.module === module);
 
                         const checked = Array.from(permissions)
                             .filter(checkbox => checkbox.checked);
 
                         moduleCheckbox.checked =
-                            checked.length === permissions.length;
+                            permissions.length > 0 && checked.length === permissions.length;
 
                         moduleCheckbox.indeterminate =
                             checked.length > 0 &&
@@ -213,9 +211,7 @@
 
                         const module = this.dataset.module;
 
-                        document.querySelectorAll(
-                            `.permission-checkbox[data-module="${module}"]`
-                        ).forEach(checkbox => {
+                        Array.from(permissionCheckboxes).filter(checkbox => checkbox.dataset.module === module).forEach(checkbox => {
                             checkbox.checked = this.checked;
                         });
 

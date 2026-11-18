@@ -31,7 +31,7 @@
                 @can('events.create')
                     <div class="col-auto ms-auto">
                         <a href="{{ route('events.create') }}" class="btn btn-primary">
-                            <i class="ti ti-plus me-2"></i>
+                            <x-ui.icon name="plus" class="me-2" />
                             Tambah Event
                         </a>
                     </div>
@@ -43,7 +43,7 @@
         {{-- Summary --}}
         <div class="row row-cards mt-3">
 
-            <div class="col-sm-6 col-lg-3">
+            <div class="col-6 col-lg-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">Total Event</div>
@@ -54,7 +54,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-3">
+            <div class="col-6 col-lg-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">Draft</div>
@@ -65,7 +65,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-3">
+            <div class="col-6 col-lg-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">Published</div>
@@ -76,7 +76,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-3">
+            <div class="col-6 col-lg-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">Closed / Cancelled</div>
@@ -110,11 +110,11 @@
 
                         <div class="table-responsive">
                             <table id="eventsTable" class="table table-vcenter table-hover w-100" data-datatable
-                                data-export="true" data-filename="event-management">
+                                data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}" data-filename="event-management">
                                 <thead>
                                     <tr>
                                         <th class="no-sort no-export">No.</th>
-                                        <th>Nama Event</th>
+                                        <th class="all">Nama Event</th>
                                         <th>Tanggal Mulai</th>
                                         <th>Tanggal Selesai</th>
                                         <th>Lokasi</th>
@@ -188,28 +188,18 @@
                                             <td class="text-end text-nowrap">
                                                 <div class="btn-list flex-nowrap justify-content-end">
 
-                                                    <a href="{{ route('events.show', $event) }}"
-                                                        class="btn btn-sm btn-outline-secondary">
-                                                        <i class="ti ti-eye me-1"></i>
-                                                        Detail
-                                                    </a>
+                                                    <x-ui.action icon="eye" label="Detail Event" :href="route('events.show', $event)" />
 
                                                     @can('events.update')
-                                                        <a href="{{ route('events.edit', $event) }}"
-                                                            class="btn btn-sm btn-outline-primary">
-                                                            <i class="ti ti-edit"></i>
-                                                        </a>
+                                                        <x-ui.action icon="pencil" label="Edit Event" variant="primary" :href="route('events.edit', $event)" />
                                                     @endcan
 
                                                     @can('events.delete')
                                                         @if ($event->deletionProhibitedReason() === null)
-                                                            <button type="button" class="btn btn-sm btn-outline-danger"
-                                                                aria-label="Hapus Event"
+                                                            <x-ui.action icon="trash" label="Hapus Event" variant="danger"
                                                                 data-bs-toggle="modal" data-bs-target="#deleteEventModal"
                                                                 data-delete-url="{{ route('events.destroy', $event) }}"
-                                                                data-delete-name="{{ $event->title }}">
-                                                                <i class="ti ti-trash"></i>
-                                                            </button>
+                                                                data-delete-name="{{ $event->title }}" />
                                                         @endif
                                                     @endcan
 
@@ -239,7 +229,7 @@
 
                     <div class="modal-body text-center py-4">
 
-                        <i class="ti ti-alert-triangle text-danger fs-1"></i>
+                        <x-ui.icon name="alert-triangle" class="text-danger fs-1" />
 
                         <h3 id="deleteEventModalLabel" class="mt-3">
                             Hapus Event?

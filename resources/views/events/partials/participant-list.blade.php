@@ -1,5 +1,9 @@
 {{-- Participant List --}}
 
+@php
+    $canViewInvitations = auth()->user()->can('registrations.view');
+@endphp
+
 <div class="card">
 
     <div class="card-header">
@@ -9,10 +13,6 @@
                 Daftar Peserta
             </h3>
 
-            <div class="text-secondary small mt-1">
-                Seluruh registrasi Employee dan External Participant
-                pada event ini.
-            </div>
         </div>
 
         <div class="card-actions">
@@ -36,7 +36,7 @@
         <div class="table-responsive">
 
             <table id="eventParticipantsTable" class="table table-vcenter table-hover w-100" data-datatable
-                data-export="true" data-filename="event-participants">
+                data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}" data-filename="event-participants">
 
                 <thead>
                     <tr>
@@ -52,7 +52,7 @@
                             QR Code
                         </th>
 
-                        <th data-priority="1">
+                        <th class="all" data-priority="1">
                             Nama Peserta
                         </th>
 
@@ -117,7 +117,7 @@
                                     <img src="{{ route('events.participants.qr', [$event, $registration]) }}" alt="QR Code registrasi {{ $registration->registration_number }}"
                                         width="111" height="111" loading="lazy" class="border rounded bg-white p-1" style="image-rendering: pixelated;">
                                 </a>
-                                <a class="d-block small mt-1" href="{{ route('events.participants.qr', ['event' => $event, 'registration' => $registration, 'download' => 1]) }}">Unduh PNG</a>
+                                <x-ui.action icon="download" label="Unduh QR PNG" class="mt-1" :href="route('events.participants.qr', ['event' => $event, 'registration' => $registration, 'download' => 1])" />
                                 <details class="small mt-1">
                                     <summary class="text-secondary">Nilai QR</summary>
                                     <code class="d-block text-break mt-1" style="max-width: 180px;">{{ app(\App\Services\RegistrationQrCodeService::class)->payload($registration) }}</code>
@@ -151,12 +151,12 @@
 
                                 @if ($isEmployee)
                                     <span class="badge bg-blue-lt">
-                                        <i class="ti ti-user me-1"></i>
+                                        <x-ui.icon name="user" class="me-1" />
                                         Employee
                                     </span>
                                 @else
                                     <span class="badge bg-purple-lt">
-                                        <i class="ti ti-users me-1"></i>
+                                        <x-ui.icon name="users" class="me-1" />
                                         External
                                     </span>
                                 @endif
@@ -173,12 +173,12 @@
 
                                 @if ($isRegistered)
                                     <span class="badge bg-success-lt">
-                                        <i class="ti ti-circle-check me-1"></i>
+                                        <x-ui.icon name="circle-check" class="me-1" />
                                         Registered
                                     </span>
                                 @else
                                     <span class="badge bg-danger-lt">
-                                        <i class="ti ti-circle-x me-1"></i>
+                                        <x-ui.icon name="circle-x" class="me-1" />
                                         Cancelled
                                     </span>
 
@@ -199,33 +199,32 @@
                             </td>
 
                             {{-- Actions --}}
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
+
+                                @if ($isRegistered && $canViewInvitations)
+                                    <x-ui.action icon="file-type-pdf" label="Download Invitation PDF"
+                                        :href="route('events.participants.invitation', [$event, $registration])" />
+                                @endif
 
                                 @can('events.update')
                                     @if ($isRegistered)
                                         {{-- Cancel Registration --}}
-                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
+                                        <x-ui.action icon="x" label="Batalkan Registrasi" variant="danger" data-bs-toggle="modal"
                                             data-bs-target="#cancelRegistrationModal"
                                             data-cancel-url="{{ route('events.participants.destroy', [$event, $registration]) }}"
-                                            data-participant-name="{{ $participantName }}">
-                                            <i class="ti ti-user-x me-1"></i>
-                                            Cancel
-                                        </button>
+                                            data-participant-name="{{ $participantName }}" />
                                     @elseif (in_array($event->status, ['draft', 'published'], true) && $participant?->is_active)
                                         {{-- Reactivate Registration --}}
-                                        <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal"
+                                        <x-ui.action icon="refresh" label="Aktifkan Kembali Registrasi" variant="success" data-bs-toggle="modal"
                                             data-bs-target="#reactivateRegistrationModal"
                                             data-reactivate-url="{{ route('events.participants.reactivate', [$event, $registration]) }}"
-                                            data-participant-name="{{ $participantName }}">
-                                            <i class="ti ti-user-check me-1"></i>
-                                            Reactivate
-                                        </button>
+                                            data-participant-name="{{ $participantName }}" />
                                     @else
                                         <span class="text-secondary small">
                                             Tidak dapat diaktifkan
                                         </span>
                                     @endif
-                                @else
+                                @elseif (! $isRegistered || ! $canViewInvitations)
                                     <span class="text-secondary">
                                         -
                                     </span>
@@ -249,7 +248,7 @@
 
         <div class="text-secondary small mt-3">
 
-            <i class="ti ti-info-circle me-1"></i>
+            <x-ui.icon name="info-circle" class="me-1" />
 
             Registrasi yang dibatalkan tetap tersimpan.
             Gunakan tombol Reactivate untuk mengaktifkan kembali peserta

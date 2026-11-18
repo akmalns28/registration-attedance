@@ -6,49 +6,42 @@ return [
         'items' => [
             [
                 'label' => 'Dashboard',
-                'icon' => 'ti ti-layout-dashboard',
+                'icon' => 'layout-dashboard',
                 'route' => 'dashboard',
                 'active' => 'dashboard',
                 'permission' => 'dashboard.view',
             ],
             [
                 'label' => 'Events',
-                'icon' => 'ti ti-calendar-event',
+                'icon' => 'calendar-event',
                 'route' => 'events.index',
                 'active' => 'events.*',
                 'permission' => 'events.view',
             ],
             [
                 'label' => 'Registrations',
-                'icon' => 'ti ti-ticket',
+                'icon' => 'ticket',
                 'route' => 'registrations.index',
                 'active' => 'registrations.*',
                 'permission' => 'registrations.view',
             ],
             [
-                'label' => 'Notifications',
-                'icon' => 'ti ti-mail',
-                'route' => 'notifications.index',
-                'active' => 'notifications.*',
-                'permission' => 'events.view',
-            ],
-            [
                 'label' => 'QR Scanner',
-                'icon' => 'ti ti-qrcode',
+                'icon' => 'qrcode',
                 'route' => 'attendance.scanner',
                 'active' => 'attendance.scanner',
                 'permission' => 'attendance.scan',
             ],
             [
                 'label' => 'Analytic',
-                'icon' => 'ti ti-chart-line',
+                'icon' => 'chart-line',
                 'route' => 'analytic.index',
                 'active' => 'analytic.*',
                 'permission' => 'reports.view',
             ],
             [
                 'label' => 'Attendance',
-                'icon' => 'ti ti-clipboard-check',
+                'icon' => 'clipboard-check',
                 'route' => 'attendance.index',
                 'active' => 'attendance.*',
                 'permission' => 'attendance.view',
@@ -61,21 +54,21 @@ return [
         'items' => [
             [
                 'label' => 'Departments',
-                'icon' => 'ti ti-building',
+                'icon' => 'building',
                 'route' => 'departments.index',
                 'active' => 'departments.*',
                 'permission' => 'departments.view',
             ],
             [
                 'label' => 'Employees',
-                'icon' => 'ti ti-users',
+                'icon' => 'users',
                 'route' => 'employees.index',
                 'active' => 'employees.*',
                 'permission' => 'employees.view',
             ],
             [
                 'label' => 'External Participants',
-                'icon' => 'ti ti-user-plus',
+                'icon' => 'user-plus',
                 'route' => 'external-participants.index',
                 'active' => 'external-participants.*',
                 'permission' => 'external-participants.view',
@@ -88,7 +81,7 @@ return [
         'items' => [
             [
                 'label' => 'Attendance Reports',
-                'icon' => 'ti ti-chart-bar',
+                'icon' => 'chart-bar',
                 'route' => 'reports.attendance',
                 'active' => 'reports.*',
                 'permission' => 'reports.view',
@@ -101,14 +94,14 @@ return [
         'items' => [
             [
                 'label' => 'User Management',
-                'icon' => 'ti ti-user-cog',
+                'icon' => 'user-cog',
                 'route' => 'settings.users.index',
                 'active' => 'settings.users.*',
                 'permission' => 'users.manage',
             ],
             [
                 'label' => 'Role Management',
-                'icon' => 'ti ti-shield-lock',
+                'icon' => 'shield-lock',
                 'route' => 'settings.roles.index',
                 'active' => 'settings.roles.*',
                 'permission' => 'roles.manage',

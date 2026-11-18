@@ -10,7 +10,7 @@
                     <div class="modal-header">
 
                         <h3 class="modal-title" id="addExternalModalLabel">
-                            <i class="ti ti-users-plus me-2"></i>
+                            <x-ui.icon name="users-plus" class="me-2" />
                             Add External Participants
                         </h3>
 
@@ -28,7 +28,7 @@
 
                             <div class="alert alert-info">
 
-                                <i class="ti ti-info-circle me-2"></i>
+                                <x-ui.icon name="info-circle" class="me-2" />
 
                                 Pilih External Participant yang sudah
                                 tersedia pada Master Data.
@@ -89,7 +89,7 @@
                                 @can('external-participants.manage')
                                     <a href="{{ route('external-participants.create') }}"
                                         class="btn btn-outline-secondary btn-sm">
-                                        <i class="ti ti-plus me-1"></i>
+                                        <x-ui.icon name="plus" class="me-1" />
                                         New External Participant
                                     </a>
                                 @endcan
@@ -105,7 +105,7 @@
                             </button>
 
                             <button type="submit" class="btn btn-primary">
-                                <i class="ti ti-user-plus me-2"></i>
+                                <x-ui.icon name="user-plus" class="me-2" />
                                 Register Participants
                             </button>
 

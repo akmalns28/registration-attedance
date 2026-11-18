@@ -8,7 +8,7 @@
         @if ($fixedEvent)
             <x-slot:actions>
                 <a href="{{ route('events.show', $fixedEvent) }}" class="btn btn-outline-secondary">
-                    <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Kembali ke Event
+                    <x-ui.icon name="arrow-left" class="me-1" />Kembali ke Event
                 </a>
             </x-slot:actions>
         @endif

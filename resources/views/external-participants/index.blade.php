@@ -26,8 +26,9 @@
 
                 @can('external-participants.manage')
                     <div class="col-auto ms-auto">
+                        <a href="{{ route('external-participants.import.index') }}" class="btn btn-outline-primary"><x-ui.icon name="file-spreadsheet" class="me-2" />Import Excel</a>
                         <a href="{{ route('external-participants.create') }}" class="btn btn-primary">
-                            <i class="ti ti-plus me-2"></i>
+                            <x-ui.icon name="plus" class="me-2" />
                             Tambah Peserta
                         </a>
                     </div>
@@ -39,7 +40,7 @@
         {{-- Summary Cards --}}
         <div class="row row-cards mt-3">
 
-            <div class="col-sm-6 col-lg-4">
+            <div class="col-6 col-lg-4">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">
@@ -53,7 +54,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-4">
+            <div class="col-6 col-lg-4">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">
@@ -67,7 +68,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-4">
+            <div class="col-6 col-lg-4">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">
@@ -104,14 +105,14 @@
 
                         <div class="table-responsive">
                             <table id="externalParticipantsTable" class="table table-vcenter table-hover w-100"
-                                data-datatable data-export="true" data-filename="external-participants">
+                                data-datatable data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}" data-filename="external-participants">
                                 <thead>
                                     <tr>
                                         <th class="no-sort no-export">
                                             No.
                                         </th>
 
-                                        <th>Nama Peserta</th>
+                                        <th class="all">Nama Peserta</th>
                                         <th>Organisasi</th>
                                         <th>Jabatan</th>
                                         <th>Email</th>
@@ -179,19 +180,12 @@
                                                 <td class="text-end">
                                                     <div class="btn-list justify-content-end">
 
-                                                        <a href="{{ route('external-participants.edit', $participant) }}"
-                                                            class="btn btn-sm btn-outline-primary">
-                                                            <i class="ti ti-edit me-1"></i>
-                                                            Edit
-                                                        </a>
+                                                        <x-ui.action icon="pencil" label="Edit Peserta" variant="primary" :href="route('external-participants.edit', $participant)" />
 
-                                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                        <x-ui.action icon="trash" label="Hapus Peserta" variant="danger"
                                                             data-bs-toggle="modal" data-bs-target="#deleteParticipantModal"
                                                             data-delete-url="{{ route('external-participants.destroy', $participant) }}"
-                                                            data-delete-name="{{ $participant->name }}">
-                                                            <i class="ti ti-trash me-1"></i>
-                                                            Hapus
-                                                        </button>
+                                                            data-delete-name="{{ $participant->name }}" />
 
                                                     </div>
                                                 </td>
@@ -222,7 +216,7 @@
 
                     <div class="modal-body text-center py-4">
 
-                        <i class="ti ti-alert-triangle text-danger fs-1"></i>
+                        <x-ui.icon name="alert-triangle" class="text-danger fs-1" />
 
                         <h3 id="deleteParticipantModalLabel" class="mt-3">
                             Hapus Peserta?

@@ -1,6 +1,9 @@
 import registerNotify from "notifyjs-browser";
 
 export function initializeNotify($) {
+    if (window.notify?.system === "attendance") {
+        return window.notify;
+    }
     // Notify.js 0.4 still uses these helpers, which jQuery 4 removed.
     $.isArray ??= Array.isArray;
     $.type ??= (value) =>
@@ -12,27 +15,59 @@ export function initializeNotify($) {
         registerNotify(window, $);
     }
 
-    $.notify.defaults({
-        globalPosition: "top right",
-        autoHideDelay: 4000,
-        clickToHide: true,
+    $.notify.addStyle("attendance", {
+        html: document.getElementById("notification-toast-template")?.innerHTML ||
+            '<div><div class="app-toast" role="status" aria-live="polite" aria-atomic="true"><div class="app-toast-copy"><strong data-notify-text="title"></strong><div data-notify-text="message"></div></div><button type="button" class="app-toast-dismiss" aria-label="Tutup notifikasi">×</button></div></div>',
+        classes: { success: {}, error: {}, warning: {}, info: {} },
+    });
+    $.notify.defaults({ style: "attendance", globalPosition: "top right", clickToHide: false, arrowShow: false, gap: 8 });
+    const active = new Map();
+    const titles = { success: "Berhasil", error: "Terjadi kesalahan", warning: "Perhatian", info: "Informasi" };
+    const durations = { success: 4500, error: 9000, warning: 7000, info: 5500 };
+    function show(type, message, options = {}) {
+        if (typeof message !== "string" || !message.trim()) {
+            return;
+        }
+        for (const [key, wrapper] of active) {
+            if (!wrapper.isConnected) { active.delete(key); }
+        }
+        const key = `${type}:${message.trim()}`;
+        if (active.has(key)) {
+            return;
+        }
+        const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        $.notify({ title: titles[type], message }, {
+            className: type, autoHide: !options.persistent, autoHideDelay: options.duration ?? durations[type],
+            showAnimation: "fadeIn", hideAnimation: "fadeOut", showDuration: reduced ? 0 : 160, hideDuration: reduced ? 0 : 160,
+        });
+        const wrapper = document.querySelector(".notifyjs-attendance-base")?.closest(".notifyjs-wrapper");
+        const toast = wrapper?.querySelector(".app-toast");
+        if (toast) {
+            toast.setAttribute("role", type === "error" ? "alert" : "status");
+            toast.setAttribute("aria-live", type === "error" ? "assertive" : "polite");
+            active.set(key, wrapper);
+        }
+    }
+    $(document).on("click.attendance-notify", ".app-toast-dismiss", function () {
+        $(this).closest(".notifyjs-wrapper").trigger("notify-hide");
     });
 
     const notify = {
-        success(message) {
-            $.notify(message, { className: "success" });
+        system: "attendance",
+        success(message, options) {
+            show("success", message, options);
         },
 
-        error(message) {
-            $.notify(message, { className: "error" });
+        error(message, options) {
+            show("error", message, options);
         },
 
-        warning(message) {
-            $.notify(message, { className: "warn" });
+        warning(message, options) {
+            show("warning", message, options);
         },
 
-        info(message) {
-            $.notify(message, { className: "info" });
+        info(message, options) {
+            show("info", message, options);
         },
     };
 

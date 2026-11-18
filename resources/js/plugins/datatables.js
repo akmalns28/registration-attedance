@@ -1,11 +1,11 @@
 import DataTable from "datatables.net-bs5";
+import { createPopper } from "@popperjs/core";
 
 import "datatables.net-buttons-bs5";
 import "datatables.net-responsive-bs5";
-
-import "datatables.net-buttons/js/buttons.html5.mjs";
-import "datatables.net-buttons/js/buttons.print.mjs";
-import "datatables.net-buttons/js/buttons.colVis.mjs";
+import "datatables.net-bs5/css/dataTables.bootstrap5.css";
+import "datatables.net-buttons-bs5/css/buttons.bootstrap5.css";
+import "datatables.net-responsive-bs5/css/responsive.bootstrap5.css";
 
 import JSZip from "jszip";
 
@@ -14,9 +14,37 @@ import pdfFonts from "pdfmake/build/vfs_fonts";
 
 DataTable.Buttons.jszip(JSZip);
 
-pdfMake.vfs = pdfFonts.pdfMake?.vfs ?? pdfFonts;
+pdfMake.addVirtualFileSystem(pdfFonts.pdfMake?.vfs ?? pdfFonts);
 
 DataTable.Buttons.pdfMake(pdfMake);
+
+function exportCollection(event, table, button, config) {
+    const wasOpen = button.attr("aria-expanded") === "true";
+    DataTable.ext.buttons.collection.action.call(this, event, table, button, config);
+    if (wasOpen) {
+        return;
+    }
+    const menu = document.querySelector("div.dt-button-collection[role=dialog]");
+    const trigger = button.get(0);
+    if (!menu || !trigger) {
+        return;
+    }
+    menu.dataset.exportMenu = "true";
+    document.body.append(menu);
+    const popper = createPopper(trigger, menu, {
+        strategy: "fixed", placement: "bottom-start",
+        modifiers: [{ name: "offset", options: { offset: [0, 6] } },
+            { name: "preventOverflow", options: { rootBoundary: "viewport", padding: 8 } },
+            { name: "flip", options: { padding: 8 } }],
+    });
+    const observer = new MutationObserver(() => {
+        if (!menu.isConnected) {
+            popper.destroy();
+            observer.disconnect();
+        }
+    });
+    observer.observe(document.body, { childList: true });
+}
 
 const language = {
     emptyTable: "Tidak ada data tersedia",
@@ -37,28 +65,68 @@ const language = {
     },
 };
 
-function getExportButtons(filename) {
-    const exportOptions = {
-        columns: ":visible:not(.no-export)",
-        modifier: {
-            search: "applied",
-            order: "applied",
-        },
+function exportOptions(format) {
+    const text = (value, _row, _column, node) => {
+        const copy = node?.cloneNode(true);
+        copy?.querySelectorAll("svg, .avatar, .no-export-content").forEach((element) => element.remove());
+        const plain = DataTable.Buttons.stripData(copy?.innerHTML ?? String(value ?? ""), {
+            stripHtml: true, trim: false, stripNewlines: false, decodeEntities: true, escapeExcelFormula: false,
+        });
+        const normalized = plain.replace(/\s+/g, " ").trim();
+        if (format === "print") {
+            const escaped = document.createElement("span");
+            escaped.textContent = normalized;
+            return escaped.innerHTML;
+        }
+        if (["excel", "csv"].includes(format) && /^[\s\p{Z}\uFEFF]*[=+@-]/u.test(normalized)) {
+            return `'${normalized}`;
+        }
+        return normalized;
     };
+    return {
+        columns: (_index, _data, header) => !header.classList.contains("no-export"),
+        modifier: {
+            search: "applied", order: "applied", page: "all", selected: null,
+        },
+        escapeExcelFormula: false,
+        format: { header: (value, column, node) => text(value, null, column, node), body: text,
+            footer: (value, column, node) => text(value, null, column, node) },
+    };
+}
 
+function clientExport(type) {
+    return function (event, table, button, config, complete) {
+        if (table.init().serverSide) {
+            window.notify?.warning("Gunakan tombol ekspor laporan untuk mengunduh seluruh hasil filter dari server.");
+            complete?.();
+            return;
+        }
+        try {
+            return DataTable.ext.buttons[type].action.call(this, event, table, button, config, complete);
+        } catch {
+            window.notify?.error("Ekspor belum dapat dibuat. Muat ulang halaman dan coba kembali.");
+            complete?.();
+        }
+    };
+}
+
+function getExportButtons(filename) {
     return [
         {
             extend: "excelHtml5",
             text: "Excel",
             filename,
             title: filename,
-            exportOptions,
+            exportOptions: exportOptions("excel"),
+            action: clientExport("excelHtml5"),
         },
         {
             extend: "csvHtml5",
             text: "CSV",
             filename,
-            exportOptions,
+            bom: true,
+            exportOptions: exportOptions("csv"),
+            action: clientExport("csvHtml5"),
         },
         {
             extend: "pdfHtml5",
@@ -67,20 +135,43 @@ function getExportButtons(filename) {
             title: filename,
             orientation: "landscape",
             pageSize: "A4",
-            exportOptions,
+            exportOptions: exportOptions("pdf"),
+            action: clientExport("pdfHtml5"),
+            customize(document) {
+                document.defaultStyle.fontSize = 9;
+                document.pageMargins = [24, 30, 24, 30];
+                const table = document.content.find((item) => item.table)?.table;
+                if (table) {
+                    table.widths = table.body[0].map(() => "*");
+                }
+            },
         },
         {
             extend: "copyHtml5",
             text: "Copy",
-            exportOptions,
+            exportOptions: exportOptions("copy"),
+            action: clientExport("copyHtml5"),
         },
         {
             extend: "print",
             text: "Print",
             title: filename,
-            exportOptions,
+            exportOptions: exportOptions("print"),
+            action: clientExport("print"),
+            autoPrint: false,
+            customize(window) {
+                const style = window.document.createElement("style");
+                style.textContent = "@page{size:A4 landscape;margin:12mm}body{background:white!important;padding:16px;font-size:11px}table{width:100%;table-layout:fixed;border-collapse:collapse}th,td{overflow-wrap:anywhere;padding:6px}thead{display:table-header-group}tr{break-inside:avoid}@media print{.print-controls{display:none!important}body{padding:0}}";
+                window.document.head.append(style);
+                const control = window.document.createElement("button");
+                control.className = "btn btn-primary print-controls mb-3";
+                control.textContent = "Print";
+                control.type = "button";
+                control.onclick = () => window.print();
+                window.document.body.prepend(control);
+            },
         },
-    ];
+    ].map((button) => ({ ...button, footer: false }));
 }
 
 export function initializeDataTables() {
@@ -108,6 +199,9 @@ export function getDataTableOptions(table) {
                   extend: "collection",
                   text: "Export",
                   className: "btn btn-primary",
+                  action: exportCollection,
+                  fade: 0,
+                  autoClose: true,
                   buttons: getExportButtons(filename),
               },
           ]

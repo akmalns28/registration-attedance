@@ -11,9 +11,9 @@
             <span class="navbar-toggler-icon"></span>
         </button>
 
-        <h1 class="navbar-brand navbar-brand-autodark">
+        <h1 class="navbar-brand navbar-brand-autodark text-wrap text-break">
             <a href="{{ route('dashboard') }}">
-                Registration Attendance
+                {{ config('app.name') }}
             </a>
         </h1>
 
@@ -35,7 +35,7 @@
                                 @if ($item['is_active']) aria-current="page" @endif>
 
                                 <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                    <i class="{{ $item['icon'] }}" aria-hidden="true"></i>
+                                    <x-ui.icon :name="$item['icon']" />
                                 </span>
 
                                 <span class="nav-link-title">

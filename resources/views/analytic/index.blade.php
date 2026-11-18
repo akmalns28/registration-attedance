@@ -62,7 +62,7 @@
                 </div>
                 <div class="col-12 col-md-4 col-xl-2">
                     <button type="submit" data-analytic-refresh class="btn btn-primary w-100">
-                        <i class="ti ti-refresh me-2" aria-hidden="true"></i>Refresh
+                        <x-ui.icon name="refresh" class="me-2" /><span data-button-label>Refresh</span>
                     </button>
                 </div>
             </form>

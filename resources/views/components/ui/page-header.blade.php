@@ -1,7 +1,7 @@
 @props(['title', 'subtitle' => null])
 
 <div {{ $attributes->class(['page-header d-print-none mb-4']) }}>
-    <div class="row align-items-center">
+    <div class="row align-items-center g-3">
 
         <div class="col">
             <h2 class="page-title">

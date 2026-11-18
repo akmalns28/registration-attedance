@@ -45,6 +45,7 @@ export function initializeForms(root = document) {
             }
 
             form.dataset.submitting = "true";
+            form.setAttribute("aria-busy", "true");
 
             const loadingText = form.dataset.loadingText || "Menyimpan...";
 
@@ -64,6 +65,21 @@ export function initializeForms(root = document) {
         });
     });
 }
+
+window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) {
+        return;
+    }
+    document.querySelectorAll('form[data-submitting="true"]').forEach((form) => {
+        delete form.dataset.submitting;
+        form.removeAttribute("aria-busy");
+        form.querySelectorAll("[data-original-html]").forEach((button) => {
+            button.innerHTML = button.dataset.originalHtml;
+            delete button.dataset.originalHtml;
+            button.disabled = false;
+        });
+    });
+});
 
 function escapeHtml(value) {
     const element = document.createElement("div");

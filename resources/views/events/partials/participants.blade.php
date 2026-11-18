@@ -7,26 +7,41 @@
             Event Participants
         </h3>
 
-        <div class="text-secondary">
-            Kelola peserta Employee dan External Participant
-            yang mengikuti event ini.
-        </div>
     </div>
 
     <div class="btn-list">
         <a href="{{ route('notifications.index', ['event' => $event->uuid]) }}" class="btn btn-outline-primary">
-            <i class="ti ti-mail me-2"></i> Notifications
+            <x-ui.icon name="mail" class="me-2" /> Email peserta
         </a>
+        @can('registrations.manage')
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-primary dropdown-toggle" id="invitation-export-menu"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+                    <x-ui.icon name="download" class="me-2" /> Export Invitations
+                </button>
+                <div class="dropdown-menu dropdown-menu-end" aria-labelledby="invitation-export-menu">
+                    @foreach ([
+                        'all' => ['Semua peserta', $event->registered_participants_count],
+                        'employee' => ['Employee', $event->registered_employees_count],
+                        'external' => ['External', $event->registered_externals_count],
+                    ] as $type => [$label, $count])
+                        <a class="dropdown-item" href="{{ route('events.participants.invitations.export', ['event' => $event, 'participant_type' => $type]) }}">
+                            {{ $label }} ({{ number_format($count, 0, ',', '.') }})
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+        @endcan
         @can('events.update')
             @if (in_array($event->status, ['draft', 'published'], true))
                 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addEmployeeModal">
-                    <i class="ti ti-user-plus me-2"></i>
+                    <x-ui.icon name="user-plus" class="me-2" />
                     Add Employee
                 </button>
 
                 <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal"
                     data-bs-target="#addExternalModal">
-                    <i class="ti ti-users-plus me-2"></i>
+                    <x-ui.icon name="users-plus" class="me-2" />
                     Add External
                 </button>
             @endif
@@ -39,7 +54,7 @@
 
 <div class="row row-cards mb-4">
 
-    <div class="col-sm-6 col-lg-3">
+    <div class="col-6 col-lg-3">
         <div class="card">
 
             <div class="card-body">
@@ -61,7 +76,7 @@
         </div>
     </div>
 
-    <div class="col-sm-6 col-lg-3">
+    <div class="col-6 col-lg-3">
         <div class="card">
 
             <div class="card-body">
@@ -83,7 +98,7 @@
         </div>
     </div>
 
-    <div class="col-sm-6 col-lg-3">
+    <div class="col-6 col-lg-3">
         <div class="card">
 
             <div class="card-body">
@@ -105,7 +120,7 @@
         </div>
     </div>
 
-    <div class="col-sm-6 col-lg-3">
+    <div class="col-6 col-lg-3">
         <div class="card">
 
             <div class="card-body">
@@ -134,7 +149,7 @@
 @if ($event->status === 'draft')
     <div class="alert alert-info">
 
-        <i class="ti ti-info-circle me-2"></i>
+        <x-ui.icon name="info-circle" class="me-2" />
 
         Event masih berstatus <strong>Draft</strong>.
 
@@ -145,7 +160,7 @@
 @elseif ($event->status === 'published')
     <div class="alert alert-success">
 
-        <i class="ti ti-circle-check me-2"></i>
+        <x-ui.icon name="circle-check" class="me-2" />
 
         Event sudah berstatus <strong>Published</strong>.
 
@@ -155,7 +170,7 @@
 @else
     <div class="alert alert-warning">
 
-        <i class="ti ti-alert-triangle me-2"></i>
+        <x-ui.icon name="alert-triangle" class="me-2" />
 
         Event tidak menerima registrasi peserta baru.
 
@@ -163,6 +178,12 @@
 @endif
 
 {{-- Validation Errors --}}
+
+@if ($errors->invitations->any())
+    <div class="alert alert-danger" role="alert">
+        {{ $errors->invitations->first() }}
+    </div>
+@endif
 
 @if ($participantErrors->isNotEmpty())
 

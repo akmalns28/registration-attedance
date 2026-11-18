@@ -65,7 +65,7 @@
 
                     <div class="d-flex gap-2">
 
-                        <i class="ti ti-shield-lock fs-2"></i>
+                        <x-ui.icon name="shield-lock" class="fs-2" />
 
                         <div>
                             <h4 class="alert-title">
