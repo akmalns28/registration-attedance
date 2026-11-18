@@ -36,13 +36,16 @@ class EventRegistrationMailTest extends TestCase
 
     public function test_invitation_email_can_be_rendered(): void
     {
+        $applicationName = 'Event & Attendance <Portal>';
+        config(['app.name' => $applicationName]);
         $notification = $this->notification();
 
         $mail = new EventRegistrationMail($notification);
 
         $html = $mail->render();
 
-        $this->assertStringContainsString('Undangan Event', $html);
+        $this->assertStringContainsString('<title>Undangan Event - '.e($applicationName).'</title>', $html);
+        $this->assertSame(3, substr_count($html, e($applicationName)));
 
         $this->assertStringContainsString($notification->registration->registration_number, $html);
     }

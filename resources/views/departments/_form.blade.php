@@ -113,15 +113,7 @@
                 </label>
 
                 <div class="text-secondary small mt-3">
-                    Departemen aktif dapat digunakan dalam
-                    pemilihan departemen pada master karyawan.
-                </div>
-
-                <div class="alert alert-info mt-3 mb-0">
-                    <i class="ti ti-info-circle me-1"></i>
-
-                    Departemen yang dinonaktifkan tetap
-                    tersimpan untuk kebutuhan histori data.
+                    Hanya departemen aktif yang dapat dipilih pada master karyawan. Menonaktifkan departemen tetap menyimpan riwayat data.
                 </div>
 
                 @error('is_active')
@@ -145,7 +137,7 @@
             </a>
 
             <button type="submit" class="btn btn-primary">
-                <i class="ti ti-device-floppy me-2"></i>
+                <x-ui.icon name="device-floppy" class="me-2" />
 
                 {{ $isEdit ? 'Simpan Perubahan' : 'Simpan Departemen' }}
             </button>

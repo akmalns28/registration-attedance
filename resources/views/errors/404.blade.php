@@ -24,13 +24,13 @@
             <div class="d-flex flex-wrap justify-content-center gap-2">
 
                 <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
-                    <i class="ti ti-arrow-left me-2"></i>
+                    <x-ui.icon name="arrow-left" class="me-2" />
                     Kembali
                 </button>
 
                 <a href="{{ auth()->check() && auth()->user()->can('dashboard.view') ? route('dashboard') : route('login') }}"
                     class="btn btn-primary">
-                    <i class="ti ti-home me-2"></i>
+                    <x-ui.icon name="home" class="me-2" />
                     {{ auth()->check() && auth()->user()->can('dashboard.view') ? 'Dashboard' : 'Login' }}
                 </a>
 

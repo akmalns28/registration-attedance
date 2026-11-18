@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>
-        @yield('title', 'Error') - Registration Attendance
+        @yield('title', 'Error') - {{ config('app.name') }}
     </title>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -21,7 +21,7 @@
 
             <div class="text-center mb-4">
                 <span class="fw-bold fs-2">
-                    Registration Attendance
+                    {{ config('app.name') }}
                 </span>
             </div>
 

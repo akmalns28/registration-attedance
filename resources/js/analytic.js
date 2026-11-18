@@ -46,7 +46,7 @@ export class AnalyticPage {
     setLoading(loading) {
         this.page.setAttribute("aria-busy", String(loading));
         this.refreshButton.disabled = loading;
-        this.refreshButton.textContent = loading ? "Memuat..." : "Refresh";
+        (this.refreshButton.querySelector("[data-button-label]") ?? this.refreshButton).textContent = loading ? "Memuat..." : "Refresh";
         if (loading) {
             this.feedback.className = "alert alert-info";
             this.feedback.textContent = "Memperbarui ringkasan dan grafik...";

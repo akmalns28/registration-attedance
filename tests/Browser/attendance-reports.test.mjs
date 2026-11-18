@@ -461,6 +461,7 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
             `);
             assert.deepEqual(result, { aborted: true, initialized: false, destroyed: true });
         });
+        assert.equal(await client.evaluate('return Boolean(document.querySelector("[data-report-refresh] svg"));'), true);
         assert.deepEqual(client.errors, []);
     } finally {
         if (client) { await client.send("Page.close").catch(() => {}); client.socket.close(); }

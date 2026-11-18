@@ -57,7 +57,8 @@ class RegistrationQrImageTest extends TestCase
 
         $this->actingAs($this->viewer())->get(route('events.show', $registration->event))
             ->assertOk()->assertSee('QR Code')->assertSee('src="'.$url.'"', false)
-            ->assertSee('RA1:'.$registration->uuid)->assertSee('Unduh PNG');
+            ->assertSee('RA1:'.$registration->uuid)->assertSee('aria-label="Unduh QR PNG"', false)
+            ->assertSee('href="'.route('events.participants.qr', ['event' => $registration->event, 'registration' => $registration, 'download' => 1]).'"', false);
     }
 
     public function test_qr_images_require_authentication_and_event_view_permission(): void

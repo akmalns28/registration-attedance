@@ -17,7 +17,7 @@
                     {{ $title }}
                 </h5>
 
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
 
             </div>
 

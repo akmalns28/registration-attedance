@@ -22,13 +22,18 @@ class NavigationLayoutTest extends TestCase
 
     public function test_admin_dashboard_renders_navigation_and_the_spatie_role_in_the_account_menu(): void
     {
+        $applicationName = 'Event & Attendance <Portal>';
+        config(['app.name' => $applicationName]);
         $user = $this->userWithRole('super-admin');
 
         $this->actingAs($user)
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('data-bs-navbar-position="combined"', false)
-            ->assertSeeInOrder(['<aside', '<header', '<div class="page-wrapper">'], false)
+            ->assertSeeInOrder([
+                '<title>', e($applicationName), '</title>', '<aside', e($applicationName),
+                '<header', '<div class="page-wrapper">', 'page-pretitle', e($applicationName),
+            ], false)
             ->assertSee('aria-controls="sidebar-menu"', false)
             ->assertSee('aria-current="page"', false)
             ->assertSee('href="'.route('settings.roles.index').'"', false)
@@ -38,6 +43,16 @@ class NavigationLayoutTest extends TestCase
             ->assertSee($user->email)
             ->assertSee('action="'.route('logout').'"', false)
             ->assertDontSee('Registration</span>', false);
+    }
+
+    public function test_login_and_error_pages_render_the_configured_application_name(): void
+    {
+        $applicationName = 'Event & Attendance <Portal>';
+        config(['app.name' => $applicationName]);
+        $branding = ['<title>', e($applicationName), '</title>', e($applicationName), 'PT Ari Utsaha Nusantara'];
+
+        $this->get(route('login'))->assertOk()->assertSeeInOrder($branding, false);
+        $this->get('/route-yang-tidak-tersedia')->assertNotFound()->assertSeeInOrder($branding, false);
     }
 
     public function test_staff_navigation_hides_role_management_and_the_route_still_denies_access(): void

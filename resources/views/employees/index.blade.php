@@ -24,8 +24,9 @@
 
                 @can('employees.manage')
                     <div class="col-auto ms-auto">
+                        <a href="{{ route('employees.import.index') }}" class="btn btn-outline-primary"><x-ui.icon name="file-spreadsheet" class="me-2" />Import Excel</a>
                         <a href="{{ route('employees.create') }}" class="btn btn-primary">
-                            <i class="ti ti-plus me-2"></i>
+                            <x-ui.icon name="plus" class="me-2" />
                             Tambah Karyawan
                         </a>
                     </div>
@@ -36,7 +37,7 @@
         {{-- Summary --}}
         <div class="row row-cards mt-3">
 
-            <div class="col-sm-6 col-lg-4">
+            <div class="col-6 col-lg-4">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">
@@ -50,7 +51,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-4">
+            <div class="col-6 col-lg-4">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">
@@ -64,7 +65,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-4">
+            <div class="col-6 col-lg-4">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">
@@ -101,12 +102,12 @@
 
                         <div class="table-responsive">
                             <table id="employeesTable" class="table table-vcenter table-hover w-100" data-datatable
-                                data-export="true" data-filename="employee-management">
+                                data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}" data-filename="employee-management">
                                 <thead>
                                     <tr>
                                         <th class="no-export">No.</th>
                                         <th>NIP</th>
-                                        <th>Nama Karyawan</th>
+                                        <th class="all">Nama Karyawan</th>
                                         <th>Departemen</th>
                                         <th>Email</th>
                                         <th>No. HP</th>
@@ -167,19 +168,12 @@
                                                 <td class="text-end">
                                                     <div class="btn-list justify-content-end">
 
-                                                        <a href="{{ route('employees.edit', $employee) }}"
-                                                            class="btn btn-sm btn-outline-primary">
-                                                            <i class="ti ti-edit me-1"></i>
-                                                            Edit
-                                                        </a>
+                                                        <x-ui.action icon="pencil" label="Edit Karyawan" variant="primary" :href="route('employees.edit', $employee)" />
 
-                                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                        <x-ui.action icon="trash" label="Hapus Karyawan" variant="danger"
                                                             data-bs-toggle="modal" data-bs-target="#deleteEmployeeModal"
                                                             data-delete-url="{{ route('employees.destroy', $employee) }}"
-                                                            data-delete-name="{{ $employee->name }}">
-                                                            <i class="ti ti-trash me-1"></i>
-                                                            Hapus
-                                                        </button>
+                                                            data-delete-name="{{ $employee->name }}" />
 
                                                     </div>
                                                 </td>
@@ -208,7 +202,7 @@
 
                     <div class="modal-body text-center py-4">
 
-                        <i class="ti ti-alert-triangle text-danger fs-1"></i>
+                        <x-ui.icon name="alert-triangle" class="text-danger fs-1" />
 
                         <h3 id="deleteEmployeeModalLabel" class="mt-3">
                             Hapus Karyawan?

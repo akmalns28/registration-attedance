@@ -41,7 +41,7 @@
 
                     <div class="text-secondary mt-2 d-flex flex-wrap align-items-center gap-1">
                         <span>
-                            <i class="ti ti-calendar me-1" aria-hidden="true"></i>
+                            <x-ui.icon name="calendar" class="me-1" />
                             {{ $event->start_date->format('d M Y') }}
 
                             @if ($event->isMultiDay())
@@ -52,7 +52,7 @@
                         @if ($event->location)
                             <span class="mx-1" aria-hidden="true">•</span>
                             <span class="text-break">
-                                <i class="ti ti-map-pin me-1" aria-hidden="true"></i>
+                                <x-ui.icon name="map-pin" class="me-1" />
                                 {{ $event->location }}
                             </span>
                         @endif
@@ -66,14 +66,14 @@
                     <div class="btn-list">
 
                         <a href="{{ route('events.index') }}" class="btn btn-outline-secondary">
-                            <i class="ti ti-arrow-left me-1"></i>
+                            <x-ui.icon name="arrow-left" class="me-1" />
                             Kembali
                         </a>
 
                         @can('attendance.scan')
                             @if ($event->isPublished())
                                 <a href="{{ route('events.scanner', $event) }}" class="btn btn-success">
-                                    <i class="ti ti-qrcode me-1" aria-hidden="true"></i>
+                                    <x-ui.icon name="qrcode" class="me-1" />
                                     Scan QR
                                 </a>
                             @endif
@@ -81,7 +81,7 @@
 
                         @can('events.update')
                             <a href="{{ route('events.edit', $event) }}" class="btn btn-primary">
-                                <i class="ti ti-edit me-1"></i>
+                                <x-ui.icon name="pencil" class="me-1" />
                                 Edit Event
                             </a>
                         @endcan
@@ -94,7 +94,7 @@
         {{-- Statistics --}}
         <div class="row row-cards mt-3" role="group" aria-label="Ringkasan event">
 
-            <div class="col-sm-6 col-lg-3">
+            <div class="col-6 col-lg-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">Durasi Event</div>
@@ -107,7 +107,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-3">
+            <div class="col-6 col-lg-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">Event Days</div>
@@ -119,7 +119,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-3">
+            <div class="col-6 col-lg-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">Total Rundown</div>
@@ -131,7 +131,7 @@
                 </div>
             </div>
 
-            <div class="col-sm-6 col-lg-3">
+            <div class="col-6 col-lg-3">
                 <div class="card">
                     <div class="card-body">
                         <div class="subheader">PERSENTASE KEHADIRAN EVENT</div>
@@ -155,7 +155,7 @@
                     <li class="nav-item" role="presentation">
                         <a href="#event-overview" class="nav-link active" data-bs-toggle="tab" role="tab"
                             aria-controls="event-overview" aria-selected="true">
-                            <i class="ti ti-info-circle me-2"></i>
+                            <x-ui.icon name="info-circle" class="me-2" />
                             Overview
                         </a>
                     </li>
@@ -163,7 +163,7 @@
                     <li class="nav-item" role="presentation">
                         <a href="#event-days" class="nav-link" data-bs-toggle="tab" role="tab"
                             aria-controls="event-days" aria-selected="false">
-                            <i class="ti ti-calendar-event me-2"></i>
+                            <x-ui.icon name="calendar-event" class="me-2" />
                             Event Days & Rundown
 
                             <span class="badge bg-primary-lt ms-2">
@@ -177,7 +177,7 @@
                         <a href="#event-participants" class="nav-link" data-bs-toggle="tab" role="tab"
                             aria-controls="event-participants" aria-selected="false">
 
-                            <i class="ti ti-users me-2"></i>
+                            <x-ui.icon name="users" class="me-2" />
 
                             Participants
 
@@ -193,7 +193,7 @@
                         <li class="nav-item" role="presentation">
                             <a href="#event-reports" id="event-reports-tab" class="nav-link" data-bs-toggle="tab" role="tab"
                                 aria-controls="event-reports" aria-selected="false">
-                                <i class="ti ti-report-analytics me-2" aria-hidden="true"></i>Reports
+                                <x-ui.icon name="report-analytics" class="me-2" />Reports
                             </a>
                         </li>
                     @endcan
@@ -322,7 +322,7 @@
 
                             @can('events.update')
                                 <a href="{{ route('events.days.create', $event) }}" class="btn btn-primary">
-                                    <i class="ti ti-plus me-2"></i>
+                                    <x-ui.icon name="plus" class="me-2" />
                                     Tambah Event Day
                                 </a>
                             @endcan
@@ -345,7 +345,7 @@
                                         </h3>
 
                                         <div class="text-secondary small mt-1">
-                                            <i class="ti ti-calendar me-1"></i>
+                                            <x-ui.icon name="calendar" class="me-1" />
                                             {{ $day->date->format('d M Y') }}
                                         </div>
 
@@ -359,24 +359,15 @@
                                                 {{ $day->is_active ? 'Active' : 'Inactive' }}
                                             </span>
 
-                                            <a href="{{ route('events.days.show', [$event, $day]) }}"
-                                                class="btn btn-sm btn-outline-secondary">
-                                                <i class="ti ti-eye me-1" aria-hidden="true"></i>Detail
-                                            </a>
+                                            <x-ui.action icon="eye" label="Detail Event Day" :href="route('events.days.show', [$event, $day])" />
 
                                             @can('events.update')
-                                                <a href="{{ route('events.days.edit', [$event, $day]) }}"
-                                                    class="btn btn-sm btn-outline-primary">
-                                                    <i class="ti ti-edit me-1"></i>
-                                                    Edit
-                                                </a>
+                                                <x-ui.action icon="pencil" label="Edit Event Day" variant="primary" :href="route('events.days.edit', [$event, $day])" />
 
-                                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                                <x-ui.action icon="trash" :label="'Hapus Day '.$day->day_number" variant="danger"
                                                     data-bs-toggle="modal" data-bs-target="#deleteEventDayModal"
                                                     data-delete-url="{{ route('events.days.destroy', [$event, $day]) }}"
-                                                    data-delete-name="Day {{ $day->day_number }}" aria-label="Hapus Day {{ $day->day_number }}">
-                                                    <i class="ti ti-trash"></i>
-                                                </button>
+                                                    data-delete-name="Day {{ $day->day_number }}" />
                                             @endcan
 
                                         </div>
@@ -386,12 +377,12 @@
                                 </div>
 
                                 <div class="card-body py-3 d-flex flex-wrap gap-3">
-                                    <span><i class="ti ti-list-details me-1" aria-hidden="true"></i>{{ $day->schedules_count }} kegiatan rundown</span>
+                                    <span><x-ui.icon name="list-details" class="me-1" />{{ $day->schedules_count }} kegiatan rundown</span>
                                     <span class="text-secondary">
-                                        <i class="ti ti-clock me-1" aria-hidden="true"></i>
+                                        <x-ui.icon name="clock" class="me-1" />
                                         {{ $day->schedules_min_start_time ? substr($day->schedules_min_start_time, 0, 5).' - '.substr($day->schedules_max_end_time, 0, 5) : 'Belum ada rundown' }}
                                     </span>
-                                    <span><i class="ti ti-users me-1" aria-hidden="true"></i>{{ $day->checked_in_count }} / {{ $event->registered_participants_count }} peserta hadir</span>
+                                    <span><x-ui.icon name="users" class="me-1" />{{ $day->checked_in_count }} / {{ $event->registered_participants_count }} peserta hadir</span>
                                 </div>
 
                             </div>
@@ -401,7 +392,7 @@
                             <div class="empty">
 
                                 <div class="empty-icon">
-                                    <i class="ti ti-calendar-off fs-1 text-secondary"></i>
+                                    <x-ui.icon name="calendar-off" class="fs-1 text-secondary" />
                                 </div>
 
                                 <p class="empty-title">
@@ -458,7 +449,7 @@
 
                         <div class="modal-body text-center py-4">
 
-                            <i class="ti ti-alert-triangle text-danger fs-1"></i>
+                            <x-ui.icon name="alert-triangle" class="text-danger fs-1" />
 
                             <h3 class="mt-3">
                                 {{ $modal['title'] }}

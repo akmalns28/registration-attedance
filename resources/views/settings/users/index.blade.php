@@ -25,9 +25,11 @@
                 </div>
 
                 <div class="col-auto ms-auto">
-
+                    @can('users.manage')
+                        <a href="{{ route('settings.users.import.index') }}" class="btn btn-outline-primary"><x-ui.icon name="file-spreadsheet" class="me-2" />Import Excel</a>
+                    @endcan
                     <a href="{{ route('settings.users.create') }}" class="btn btn-primary">
-                        <i class="ti ti-plus me-2"></i>
+                        <x-ui.icon name="plus" class="me-2" />
                         Tambah Pengguna
                     </a>
 
@@ -53,12 +55,12 @@
                         <div class="table-responsive">
 
                             <table id="usersTable" class="table table-vcenter table-hover w-100" data-datatable
-                                data-export="true" data-filename="user-management">
+                                data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}" data-filename="user-management">
 
                                 <thead>
                                     <tr>
                                         <th>No.</th>
-                                        <th>Pengguna</th>
+                                        <th class="all">Pengguna</th>
                                         <th>Role</th>
                                         <th>SSO</th>
                                         <th>Status</th>
@@ -146,11 +148,7 @@
                                             <td class="text-end">
 
                                                 @if (auth()->id() !== $user->id && !$user->hasRole('super-admin'))
-                                                    <a href="{{ route('settings.users.edit', $user) }}"
-                                                        class="btn btn-sm btn-outline-primary">
-                                                        <i class="ti ti-edit me-1"></i>
-                                                        Edit
-                                                    </a>
+                                                    <x-ui.action icon="pencil" label="Edit Pengguna" variant="primary" :href="route('settings.users.edit', $user)" />
                                                 @else
                                                     <span class="text-secondary small">
                                                         Protected

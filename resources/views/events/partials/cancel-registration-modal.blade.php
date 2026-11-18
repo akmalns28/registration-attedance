@@ -9,7 +9,7 @@
 
                 <div class="modal-body text-center py-4">
 
-                    <i class="ti ti-user-x text-danger fs-1"></i>
+                    <x-ui.icon name="user-x" class="text-danger fs-1" />
 
                     <h3 class="mt-3" id="cancelRegistrationModalLabel">
                         Batalkan Registrasi?
@@ -25,7 +25,7 @@
 
                     <div class="alert alert-warning text-start mb-0">
 
-                        <i class="ti ti-alert-triangle me-1"></i>
+                        <x-ui.icon name="alert-triangle" class="me-1" />
 
                         Peserta yang dibatalkan tidak dihitung
                         dalam kapasitas event.

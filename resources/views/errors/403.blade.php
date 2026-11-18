@@ -25,7 +25,7 @@
 
             <a href="{{ auth()->check() && auth()->user()->can('dashboard.view') ? route('dashboard') : route('login') }}"
                 class="btn btn-primary">
-                <i class="ti ti-home me-2"></i>
+                <x-ui.icon name="home" class="me-2" />
                 {{ auth()->check() && auth()->user()->can('dashboard.view') ? 'Dashboard' : 'Login' }}
             </a>
 

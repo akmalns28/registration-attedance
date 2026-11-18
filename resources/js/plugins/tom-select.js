@@ -9,10 +9,18 @@ export function initializeTomSelect(root = document) {
             return;
         }
 
+        const dropdownParent = element.closest("[data-tom-select-dropdown-parent]");
+
         new TomSelect(element, {
             create: false,
             allowEmptyOption: true,
             maxItems: element.multiple ? null : 1,
+            ...(dropdownParent && {
+                dropdownParent,
+                copyClassesToDropdown: false,
+                hideSelected: false,
+                clearAfterSelect: true,
+            }),
             plugins: {
                 ...(element.multiple ? { remove_button: { title: "Hapus peserta" } } : {}),
                 clear_button: {

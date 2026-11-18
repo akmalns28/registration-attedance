@@ -151,16 +151,7 @@
                 </label>
 
                 <div class="text-secondary small mt-3">
-                    Peserta aktif dapat dipilih dalam
-                    proses registrasi event.
-                </div>
-
-                <div class="alert alert-info mt-3 mb-0">
-                    <i class="ti ti-info-circle me-1"></i>
-
-                    Peserta nonaktif tetap tersimpan
-                    untuk kebutuhan histori registrasi
-                    dan absensi event.
+                    Hanya peserta aktif yang dapat diregistrasikan. Menonaktifkan peserta tetap menyimpan riwayat registrasi dan absensi.
                 </div>
 
                 @error('is_active')
@@ -184,7 +175,7 @@
             </a>
 
             <button type="submit" class="btn btn-primary">
-                <i class="ti ti-device-floppy me-2"></i>
+                <x-ui.icon name="device-floppy" class="me-2" />
 
                 {{ $isEdit ? 'Simpan Perubahan' : 'Simpan Peserta' }}
             </button>

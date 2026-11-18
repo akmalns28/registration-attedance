@@ -1,6 +1,6 @@
 <div data-attendance-scanner data-validate-url="{{ $validationUrl }}" data-checkin-url="{{ $checkinUrl }}" data-timezone="{{ config('app.timezone') }}" data-fixed-event-id="{{ $fixedEvent?->id }}" data-fixed-day-id="{{ $fixedDay?->id }}" data-auto-resume-delay="1200" data-duplicate-suppression-ms="8000">
     <div class="alert alert-info" role="note">
-        <i class="ti ti-info-circle me-2" aria-hidden="true"></i>
+        <x-ui.icon name="info-circle" class="me-2" />
         Kehadiran belum dicatat. Periksa hasil validasi, lalu tekan Konfirmasi Check-in untuk mencatat kehadiran.
         Check-in hanya tersedia pada tanggal hari pelaksanaan sesuai zona waktu {{ config('app.timezone') }}.
     </div>
@@ -47,7 +47,7 @@
                     <div class="attendance-camera-stage mb-3">
                         <div id="qr-reader" aria-label="Pratinjau kamera QR"></div>
                         <div data-scanner-placeholder class="attendance-camera-placeholder text-center text-white p-3">
-                            <i class="ti ti-camera fs-1 d-block mb-2" aria-hidden="true"></i>
+                            <x-ui.icon name="camera" class="fs-1 d-block mb-2" />
                             {{ $fixedDay ? 'Tekan Mulai Kamera untuk memindai QR peserta.' : 'Pilih event dan hari pelaksanaan, lalu mulai kamera.' }}
                         </div>
                     </div>
@@ -59,17 +59,17 @@
                     <div class="row g-2 attendance-scanner-controls">
                         <div class="col-12 col-sm-4">
                             <button type="button" data-scanner-start class="btn btn-primary w-100" disabled>
-                                <i class="ti ti-camera me-2" aria-hidden="true"></i>Mulai Kamera
+                                <x-ui.icon name="camera" class="me-2" />Mulai Kamera
                             </button>
                         </div>
                         <div class="col-6 col-sm-4">
                             <button type="button" data-scanner-stop class="btn btn-outline-secondary w-100" disabled>
-                                <i class="ti ti-player-stop me-2" aria-hidden="true"></i>Hentikan
+                                <x-ui.icon name="player-stop" class="me-2" />Hentikan
                             </button>
                         </div>
                         <div class="col-6 col-sm-4">
                             <button type="button" data-scanner-restart class="btn btn-outline-primary w-100" disabled>
-                                <i class="ti ti-refresh me-2" aria-hidden="true"></i>Mulai Ulang
+                                <x-ui.icon name="refresh" class="me-2" />Mulai Ulang
                             </button>
                         </div>
                     </div>
@@ -104,7 +104,7 @@
                         Konfirmasi Check-in
                     </button>
                     <button type="button" data-scanner-again class="btn btn-primary btn-lg w-100" disabled>
-                        <i class="ti ti-scan me-2" aria-hidden="true"></i>Pindai Lagi
+                        <x-ui.icon name="scan" class="me-2" />Pindai Lagi
                     </button>
                 </div>
             </section>

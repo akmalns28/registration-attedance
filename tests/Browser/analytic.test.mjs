@@ -369,6 +369,7 @@ test("Analytic in a real browser", { skip: !browser, timeout: 180000 }, async (s
             `);
             assert.deepEqual(result, { aborted: true, charts: 0, destroyed: 4 });
         });
+        assert.equal(await client.evaluate('return Boolean(document.querySelector("[data-analytic-refresh] svg"));'), true);
         assert.deepEqual(client.errors, []);
     } finally {
         if (client) { await client.send("Page.close").catch(() => {}); client.socket.close(); }

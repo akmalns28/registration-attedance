@@ -8,7 +8,7 @@
 
     <meta name="color-scheme" content="light">
 
-    <title>{{ $heading }}</title>
+    <title>{{ $heading }} - {{ config('app.name') }}</title>
 </head>
 
 <body
@@ -53,7 +53,7 @@
                             font-weight: 700;
                             letter-spacing: .3px;
                         ">
-                                Registration Attendance
+                                {{ config('app.name') }}
                             </div>
 
                             <div
@@ -62,7 +62,7 @@
                             font-size: 13px;
                             margin-top: 8px;
                         ">
-                                Event Registration & Attendance System
+                                Notifikasi registrasi dan kehadiran event
                             </div>
 
                         </td>
@@ -391,7 +391,7 @@
                             color: #334155;
                             margin-bottom: 8px;
                         ">
-                                Registration Attendance
+                                {{ config('app.name') }}
                             </div>
 
                             <div

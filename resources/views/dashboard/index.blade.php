@@ -14,7 +14,7 @@
                 <div class="col">
 
                     <div class="page-pretitle">
-                        Registration Attendance
+                        {{ config('app.name') }}
                     </div>
 
                     <h2 class="page-title">
@@ -39,27 +39,6 @@
 
         </div>
 
-        {{-- Development Information --}}
-        <div class="alert alert-info mt-3" role="alert">
-
-            <div class="d-flex align-items-start gap-2">
-
-                <i class="ti ti-info-circle fs-2"></i>
-
-                <div>
-                    <strong>Dashboard Preview</strong>
-
-                    <div class="mt-1">
-                        Statistik event, registrasi, dan absensi akan
-                        ditampilkan setelah modul terkait selesai
-                        diimplementasikan.
-                    </div>
-                </div>
-
-            </div>
-
-        </div>
-
         {{-- Statistics --}}
         <div class="row row-deck row-cards mt-3">
 
@@ -68,28 +47,28 @@
                     [
                         'title' => 'Total Events',
                         'value' => $stats['total_events'],
-                        'icon' => 'ti ti-calendar-event',
+                        'icon' => 'calendar-event',
                     ],
                     [
                         'title' => 'Total Participants',
                         'value' => $stats['total_participants'],
-                        'icon' => 'ti ti-users',
+                        'icon' => 'users',
                     ],
                     [
                         'title' => 'Registered',
                         'value' => $stats['total_registered'],
-                        'icon' => 'ti ti-ticket',
+                        'icon' => 'ticket',
                     ],
                     [
                         'title' => 'Attendance',
                         'value' => $stats['total_attendance'],
-                        'icon' => 'ti ti-clipboard-check',
+                        'icon' => 'clipboard-check',
                     ],
                 ];
             @endphp
 
             @foreach ($statCards as $card)
-                <div class="col-sm-6 col-lg-3">
+                <div class="col-6 col-lg-3">
 
                     <div class="card h-100">
 
@@ -101,7 +80,7 @@
                                     {{ $card['title'] }}
                                 </div>
 
-                                <i class="{{ $card['icon'] }} fs-2 text-secondary"></i>
+                                <x-ui.icon :name="$card['icon']" class="fs-2 text-secondary" />
 
                             </div>
 
@@ -109,10 +88,9 @@
                                 {{ $card['value'] ?? '—' }}
                             </div>
 
-                            <div class="text-secondary small">
-                                {{ $card['value'] === null ? 'Belum tersedia' : 'Data tersedia' }}
-                            </div>
-
+                            @if ($card['value'] === null)
+                                <div class="text-secondary small">Belum tersedia</div>
+                            @endif
                         </div>
 
                     </div>
@@ -147,7 +125,7 @@
                                     <div class="col-sm-6">
 
                                         <a href="{{ route('events.create') }}" class="btn btn-outline-primary w-100">
-                                            <i class="ti ti-calendar-plus me-2"></i>
+                                            <x-ui.icon name="calendar-plus" class="me-2" />
                                             Create Event
                                         </a>
 
@@ -162,7 +140,7 @@
                                     <div class="col-sm-6">
 
                                         <a href="{{ route('registrations.index') }}" class="btn btn-outline-primary w-100">
-                                            <i class="ti ti-ticket me-2"></i>
+                                            <x-ui.icon name="ticket" class="me-2" />
                                             Registrations
                                         </a>
 
@@ -177,7 +155,7 @@
                                     <div class="col-sm-6">
 
                                         <a href="{{ route('attendance.scanner') }}" class="btn btn-outline-success w-100">
-                                            <i class="ti ti-qrcode me-2"></i>
+                                            <x-ui.icon name="qrcode" class="me-2" />
                                             QR Scanner
                                         </a>
 
@@ -192,7 +170,7 @@
                                     <div class="col-sm-6">
 
                                         <a href="{{ route('attendance.index') }}" class="btn btn-outline-primary w-100">
-                                            <i class="ti ti-clipboard-check me-2"></i>
+                                            <x-ui.icon name="clipboard-check" class="me-2" />
                                             Attendance
                                         </a>
 
@@ -233,7 +211,7 @@
 
                                 <div class="empty-icon mb-3">
 
-                                    <i class="ti ti-calendar-off fs-1 text-secondary"></i>
+                                    <x-ui.icon name="calendar-off" class="fs-1 text-secondary" />
 
                                 </div>
 
@@ -242,8 +220,7 @@
                                 </p>
 
                                 <p class="empty-subtitle text-secondary">
-                                    Daftar event terbaru akan tampil setelah
-                                    modul Event Management tersedia.
+                                    Event terbaru akan tampil di sini setelah dibuat.
                                 </p>
 
                             </div>

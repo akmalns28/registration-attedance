@@ -13,7 +13,7 @@
     <x-ui.page-header title="Role Management" subtitle="Kelola role dan hak akses pengguna aplikasi">
         <x-slot:actions>
             <x-ui.button href="{{ route('settings.roles.create') }}">
-                Tambah Role
+                <x-ui.icon name="plus" class="me-2" />Tambah Role
             </x-ui.button>
         </x-slot:actions>
     </x-ui.page-header>
@@ -24,12 +24,12 @@
 
             <div class="table-responsive">
 
-                <table id="rolesTable" class="table table-vcenter table-hover" data-datatable data-export="true"
+                <table id="rolesTable" class="table table-vcenter table-hover" data-datatable data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}"
                     data-filename="role-management">
                     <thead>
                         <tr>
                             <th width="60">No.</th>
-                            <th>Role</th>
+                            <th class="all">Role</th>
                             <th>Permissions</th>
                             <th>Guard</th>
                             <th class="text-end no-export no-sort">
@@ -76,15 +76,10 @@
                                     @if ($role->name !== 'super-admin')
                                         <div class="btn-list justify-content-end">
 
-                                            <x-ui.button variant="primary" size="sm" :outline="true"
-                                                href="{{ route('settings.roles.edit', $role) }}">
-                                                Edit
-                                            </x-ui.button>
+                                            <x-ui.action icon="pencil" label="Edit Role" variant="primary" :href="route('settings.roles.edit', $role)" />
 
-                                            <x-ui.button variant="danger" size="sm" :outline="true"
-                                                data-bs-toggle="modal" data-bs-target="#deleteRoleModal{{ $role->id }}">
-                                                Hapus
-                                            </x-ui.button>
+                                            <x-ui.action icon="trash" label="Hapus Role" variant="danger"
+                                                data-bs-toggle="modal" data-bs-target="#deleteRoleModal{{ $role->id }}" />
 
                                         </div>
                                     @else

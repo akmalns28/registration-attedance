@@ -8,11 +8,11 @@
             :subtitle="$event->title.' - '.$day->date->format('d M Y')">
             <x-slot:actions>
                 <a href="{{ route('events.show', $event) }}#event-days" class="btn btn-outline-secondary">
-                    <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Kembali ke Event
+                    <x-ui.icon name="arrow-left" class="me-1" />Kembali ke Event
                 </a>
                 @can('events.update')
                     <a href="{{ route('events.days.edit', [$event, $day]) }}" class="btn btn-primary">
-                        <i class="ti ti-edit me-1" aria-hidden="true"></i>Edit Hari
+                        <x-ui.icon name="pencil" class="me-1" />Edit Hari
                     </a>
                 @endcan
             </x-slot:actions>
@@ -74,7 +74,7 @@
                     <section id="day-attendees" class="tab-pane fade" role="tabpanel" aria-labelledby="day-attendees-tab">
                         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
                             <h3 class="mb-0">Peserta Hadir</h3>
-                            <button type="button" data-attendance-refresh class="btn btn-outline-primary"><i class="ti ti-refresh me-1" aria-hidden="true"></i>Perbarui Kehadiran</button>
+                            <button type="button" data-attendance-refresh class="btn btn-outline-primary"><x-ui.icon name="refresh" class="me-1" />Perbarui Kehadiran</button>
                         </div>
                         <div data-attendance-refresh-feedback class="d-none" role="status" aria-live="polite"></div>
                         <div class="table-responsive">

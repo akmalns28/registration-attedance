@@ -133,7 +133,7 @@ export class AttendanceReports {
         this.updateExportButtons();
         this.page.setAttribute("aria-busy", String(loading));
         this.refreshButton.disabled = loading;
-        this.refreshButton.textContent = loading ? "Memuat..." : "Perbarui";
+        (this.refreshButton.querySelector("[data-button-label]") ?? this.refreshButton).textContent = loading ? "Memuat..." : "Perbarui";
         if (loading) {
             this.feedback.className = "alert alert-info";
             this.feedback.textContent = "Memuat laporan dan ringkasan kehadiran...";

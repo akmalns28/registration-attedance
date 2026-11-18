@@ -117,7 +117,7 @@
             </a>
 
             <button type="submit" class="btn btn-primary">
-                <i class="ti ti-device-floppy me-2"></i>
+                <x-ui.icon name="device-floppy" class="me-2" />
                 {{ $isEdit ? 'Simpan Perubahan' : 'Simpan Event Day' }}
             </button>
 

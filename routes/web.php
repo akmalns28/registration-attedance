@@ -6,11 +6,13 @@ use App\Http\Controllers\AttendanceReportController;
 use App\Http\Controllers\AttendanceReportExportController;
 use App\Http\Controllers\AttendanceScannerController;
 use App\Http\Controllers\Auth\KeycloakController;
+use App\Http\Controllers\BulkImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\EventDayController;
+use App\Http\Controllers\EventInvitationExportController;
 use App\Http\Controllers\EventNotificationController;
 use App\Http\Controllers\EventParticipantController;
 use App\Http\Controllers\EventRegistrationController;
@@ -53,6 +55,19 @@ Route::middleware('guest')->group(function () {
 */
 
 Route::middleware(['auth', 'active'])->group(function () {
+    foreach (\App\Services\BulkImportService::MODULES as $module => $definition) {
+        $prefix = $module === 'users' ? 'settings/users' : $module;
+        Route::prefix($prefix.'/import')->name($definition['route'].'.import.')
+            ->middleware('can:'.$definition['permission'])->group(function () use ($module) {
+                Route::get('/', [BulkImportController::class, 'index'])->defaults('module', $module)->name('index');
+                Route::get('/template', [BulkImportController::class, 'template'])->defaults('module', $module)->name('template');
+                Route::post('/preview', [BulkImportController::class, 'preview'])->defaults('module', $module)->name('preview');
+                Route::get('/{import}', [BulkImportController::class, 'show'])->whereUuid('import')->defaults('module', $module)->name('show');
+                Route::post('/{import}/confirm', [BulkImportController::class, 'confirm'])->whereUuid('import')->defaults('module', $module)->name('confirm');
+                Route::get('/{import}/result', [BulkImportController::class, 'result'])->whereUuid('import')->defaults('module', $module)->name('result');
+                Route::get('/{import}/errors', [BulkImportController::class, 'errors'])->whereUuid('import')->defaults('module', $module)->name('errors');
+            });
+    }
     /*
     |--------------------------------------------------------------------------
     | Dashboard
@@ -201,6 +216,12 @@ Route::middleware(['auth', 'active'])->group(function () {
 
         Route::get('events/{event}/participants/{registration}/qr', EventRegistrationQrController::class)
             ->middleware('can:events.view')->name('events.participants.qr');
+
+        Route::get('events/{event}/participants/invitations/export', [EventInvitationExportController::class, 'bulk'])
+            ->whereUuid('event')->middleware(['can:events.view', 'can:registrations.manage'])->name('events.participants.invitations.export');
+
+        Route::get('events/{event}/participants/{registration}/invitation', [EventInvitationExportController::class, 'download'])
+            ->whereUuid(['event', 'registration'])->middleware(['can:events.view', 'can:registrations.view'])->name('events.participants.invitation');
 
         /*
         |--------------------------------------------------------------------------

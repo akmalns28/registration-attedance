@@ -12,7 +12,7 @@
     <x-ui.page-header title="Notifications" subtitle="Pantau pengiriman undangan dan notifikasi peserta.">
         <x-slot:actions>
             <x-ui.button :href="route('notifications.index', request()->only('event', 'status', 'type'))" outline>
-                <i class="ti ti-refresh me-2"></i> Refresh status
+                <x-ui.icon name="refresh" class="me-2" /> Refresh status
             </x-ui.button>
             @if ($selectedEvent)
                 <x-ui.button :href="route('events.show', $selectedEvent).'#event-participants'" variant="secondary" outline>
@@ -39,10 +39,10 @@
     @endif
 
     <div class="row row-cards mb-4">
-        <div class="col-sm-6 col-lg-3"><x-ui.stat-card title="Total notifikasi" :value="$counts->sum()" /></div>
-        <div class="col-sm-6 col-lg-3"><x-ui.stat-card title="Terkirim" :value="$counts['sent'] ?? 0" color="success" /></div>
-        <div class="col-sm-6 col-lg-3"><x-ui.stat-card title="Menunggu / diproses" :value="($counts['pending'] ?? 0) + ($counts['queued'] ?? 0) + ($counts['processing'] ?? 0)" /></div>
-        <div class="col-sm-6 col-lg-3"><x-ui.stat-card title="Gagal / dilewati" :value="($counts['failed'] ?? 0) + ($counts['skipped'] ?? 0)" color="danger" /></div>
+        <div class="col-6 col-lg-3"><x-ui.stat-card title="Total notifikasi" :value="$counts->sum()" /></div>
+        <div class="col-6 col-lg-3"><x-ui.stat-card title="Terkirim" :value="$counts['sent'] ?? 0" color="success" /></div>
+        <div class="col-6 col-lg-3"><x-ui.stat-card title="Menunggu / diproses" :value="($counts['pending'] ?? 0) + ($counts['queued'] ?? 0) + ($counts['processing'] ?? 0)" /></div>
+        <div class="col-6 col-lg-3"><x-ui.stat-card title="Gagal / dilewati" :value="($counts['failed'] ?? 0) + ($counts['skipped'] ?? 0)" color="danger" /></div>
     </div>
 
     @can('events.update')
@@ -109,7 +109,7 @@
                     <form method="POST" action="{{ route('events.notifications.invitations', $selectedEvent) }}" data-form>
                         @csrf
                         <x-ui.button type="submit" :disabled="! $delivery['ready'] || ! $selectedEvent->isPublished()">
-                            <i class="ti ti-send me-2"></i> Kirim undangan yang belum dikirim
+                            <x-ui.icon name="send" class="me-2" /> Kirim undangan yang belum dikirim
                         </x-ui.button>
                     </form>
                     <span class="text-secondary small">Undangan yang sudah ada tidak dibuat ulang. Catatan Terkirim dapat dikirim ulang secara terpisah.</span>
@@ -178,13 +178,11 @@
                             @can('events.update')
                                 <td class="text-end">
                                     @if (in_array($notification->status, ['sent', 'skipped'], true))
-                                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resendNotification{{ $notification->id }}" @disabled(! $delivery['ready'])>
-                                            Kirim ulang
-                                        </button>
+                                        <x-ui.action icon="send" label="Kirim Ulang Notifikasi" variant="primary" data-bs-toggle="modal" data-bs-target="#resendNotification{{ $notification->id }}" :disabled="! $delivery['ready']" />
                                     @else
                                         <form method="POST" action="{{ route('notifications.retry', $notification) }}" data-form>
                                             @csrf
-                                            <x-ui.button type="submit" size="sm" outline :disabled="! $delivery['ready'] || $notification->attempts >= config('event_notifications.tries', 3)">Coba lagi</x-ui.button>
+                                            <x-ui.action type="submit" icon="refresh" label="Coba Lagi Pengiriman" variant="primary" :disabled="! $delivery['ready'] || $notification->attempts >= config('event_notifications.tries', 3)" />
                                         </form>
                                     @endif
                                 </td>
