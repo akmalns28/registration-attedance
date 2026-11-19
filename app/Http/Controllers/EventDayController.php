@@ -29,7 +29,7 @@ class EventDayController extends Controller
             'day' => $day,
             'attendanceSummary' => $attendance->summary($event, $day),
             'attendees' => auth()->user()->can('attendance.view') ? $attendance->attendees($event, $day) : [],
-            'attendanceRefreshUrl' => auth()->user()->can('attendance.view') ? route('events.days.attendance', [$event, $day]) : null,
+            'attendanceRefreshUrl' => auth()->user()->can('attendance.view') ? route('events.days.attendance', [$event, $day], absolute: false) : null,
             'scannerData' => $canScan ? $scannerContext->viewData($event, $day) : null,
         ]);
     }

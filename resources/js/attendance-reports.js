@@ -7,6 +7,46 @@ const filters = {
     report_day: "event_day", report_type: "participant_type", report_status: "attendance_status", report_department: "department_id",
 };
 const number = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
+const requestOptions = {
+    mode: "same-origin", credentials: "same-origin", redirect: "manual",
+    headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+};
+
+function responseError(response, body, fallback) {
+    if (response.type === "opaqueredirect" || response.redirected || [401, 419].includes(response.status)) {
+        return new Error("Sesi Anda telah berakhir. Muat ulang halaman dan login kembali.");
+    }
+    if (response.status >= 500) {
+        return new Error("Server belum dapat memproses laporan. Silakan coba kembali.");
+    }
+    const validation = Object.values(body?.errors ?? {}).flat().join(" ");
+    if (validation) {
+        return new Error(validation);
+    }
+    if (response.status === 403) {
+        return new Error("Anda tidak memiliki izin untuk mengakses laporan ini.");
+    }
+    return new Error(fallback);
+}
+
+function requestErrorMessage(error, timeoutMessage) {
+    if (error.name === "AbortError") {
+        return timeoutMessage;
+    }
+    return error instanceof TypeError ? "Koneksi ke server gagal. Periksa jaringan lalu coba kembali." : error.message;
+}
+
+async function readJson(response) {
+    if (!response.headers.get("content-type")?.includes("application/json")) {
+        return null;
+    }
+    return response.json().catch((error) => {
+        if (!(error instanceof SyntaxError)) {
+            throw error;
+        }
+        return null;
+    });
+}
 
 export class AttendanceReports {
     constructor(page, { request = window.fetch.bind(window) } = {}) {
@@ -47,6 +87,9 @@ export class AttendanceReports {
             this.applyFilters();
         }, options);
         this.form.addEventListener("change", (event) => {
+            if (event.target === this.search) {
+                return;
+            }
             if (event.target === this.type) {
                 this.department.disabled = this.type.value === "external";
                 if (this.department.disabled) {
@@ -185,14 +228,11 @@ export class AttendanceReports {
         const timeout = window.setTimeout(() => abort.abort(), 120000);
         const mime = { excel: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv", pdf: "application/pdf", print: "text/html" }[format];
         try {
-            const response = await this.request(`${button.dataset.url}?${parameters}`, {
-                credentials: "same-origin", headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" }, signal: abort.signal,
-            });
+            const response = await this.request(`${button.dataset.url}?${parameters}`, { ...requestOptions, signal: abort.signal });
             const contentType = response.headers.get("content-type") || "";
             if (!response.ok || response.redirected || !contentType.includes(mime)) {
-                const body = contentType.includes("application/json") ? await response.json() : null;
-                throw new Error(Object.values(body?.errors ?? {}).flat().join(" ") ||
-                    (response.redirected || [401, 403, 419].includes(response.status) ? "Akses ekspor berakhir. Muat ulang halaman atau login kembali." : "Ekspor belum dapat dibuat. Silakan coba kembali."));
+                const body = await readJson(response);
+                throw responseError(response, body, "Ekspor belum dapat dibuat. Silakan coba kembali.");
             }
             const blob = await response.blob();
             if (this.destroyed || abort.signal.aborted) {
@@ -220,7 +260,7 @@ export class AttendanceReports {
         } catch (error) {
             popup?.close();
             if (!this.destroyed) {
-                this.showExportMessage(error.name === "AbortError" ? "Ekspor melewati batas waktu. Persempit filter atau coba kembali." : error.message, true);
+                this.showExportMessage(requestErrorMessage(error, "Ekspor melewati batas waktu. Persempit filter atau coba kembali."), true);
             }
         } finally {
             window.clearTimeout(timeout);
@@ -266,16 +306,16 @@ export class AttendanceReports {
         this.setLoading(true);
         const timeout = window.setTimeout(() => abort.abort(), 20000);
         try {
-            const response = await this.request(`${this.page.dataset.url}?${parameters}`, {
-                credentials: "same-origin", headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" }, signal: abort.signal,
-            });
-            const body = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
+            const response = await this.request(`${this.page.dataset.url}?${parameters}`, { ...requestOptions, signal: abort.signal });
+            const body = await readJson(response);
             if (sequence !== this.sequence || this.destroyed) {
                 return;
             }
-            if (!response.ok || !Array.isArray(body?.data) || !body.summary || body.draw !== data.draw) {
-                throw new Error(Object.values(body?.errors ?? {}).flat().join(" ") ||
-                    (response.redirected || [401, 403, 419].includes(response.status) ? "Akses laporan berakhir. Muat ulang halaman atau login kembali." : "Laporan belum dapat dimuat. Tekan Perbarui untuk mencoba kembali."));
+            if (!response.ok || response.redirected) {
+                throw responseError(response, body, "Laporan belum dapat dimuat. Tekan Perbarui untuk mencoba kembali.");
+            }
+            if (!Array.isArray(body?.data) || !body.summary || body.draw !== data.draw) {
+                throw new Error("Respons laporan tidak valid. Tekan Perbarui untuk mencoba kembali.");
             }
             this.lastFilters = { ...selected, report_search: data.search.value };
             this.summary(body.summary);
@@ -287,7 +327,7 @@ export class AttendanceReports {
                 this.lastFilters = null;
                 this.summary(null);
                 callback({ draw: data.draw, recordsTotal: 0, recordsFiltered: 0, data: [] });
-                const message = error.name === "AbortError" ? "Permintaan melewati batas waktu. Tekan Perbarui untuk mencoba kembali." : error.message;
+                const message = requestErrorMessage(error, "Permintaan melewati batas waktu. Tekan Perbarui untuk mencoba kembali.");
                 this.feedback.className = "alert alert-danger";
                 this.feedback.textContent = message;
                 window.notify?.error(message);

@@ -228,7 +228,7 @@ class AttendanceScannerTest extends TestCase
 
     public function test_scanner_page_only_exposes_eligible_events_and_days(): void
     {
-        [$event, $day] = $this->registration();
+        [$event, $day, $registration] = $this->registration();
         $inactiveDay = EventDay::factory()->for($event)->inactive()->create(['day_number' => 2, 'date' => '2027-01-17', 'title' => 'Inactive day must stay hidden']);
         $outsideDay = EventDay::factory()->for($event)->create(['day_number' => 3, 'date' => '2027-01-20', 'title' => 'Outside event range']);
         $draft = Event::factory()->create(['title' => 'Draft event must stay hidden']);
@@ -238,7 +238,7 @@ class AttendanceScannerTest extends TestCase
             ->assertSee($event->title)->assertSee('data-attendance-scanner', false)
             ->assertSee('id="qr-reader"', false)->assertSee('Pindai Lagi')->assertSee('Kehadiran belum dicatat.')
             ->assertDontSee($draft->title)->assertDontSee($inactiveDay->title)->assertDontSee($outsideDay->title)
-            ->assertDontSee('NIP')->assertDontSee('cdn.jsdelivr.net');
+            ->assertSee('Manual Check-in')->assertDontSee($registration->employee->nip)->assertDontSee('cdn.jsdelivr.net');
     }
 
     public function test_unauthenticated_requests_are_rejected(): void

@@ -20,7 +20,7 @@
 
 <body>
 
-    <div class="page">
+    <div class="page min-vh-100">
 
         {{-- Sidebar --}}
         @include('partials.sidebar')
@@ -36,6 +36,11 @@
 
                 <div class="container-xl">
 
+                    @auth
+                        <x-ui.breadcrumb class="app-breadcrumb mb-3 d-print-none"
+                            :items="app(\App\Services\NavigationService::class)->getBreadcrumbs(request(), html_entity_decode($__env->yieldContent('title', 'Dashboard'), ENT_QUOTES, 'UTF-8'))" />
+                    @endauth
+
                     @yield('content')
 
                 </div>
@@ -49,6 +54,7 @@
 
     </div>
 
+    @include('partials.contact-us-modal')
     @stack('scripts')
     @include('partials.notifications')
 </body>

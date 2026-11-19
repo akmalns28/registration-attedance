@@ -16,6 +16,12 @@ function initializeApp() {
     initializeEventPage();
     initializeDataTables();
 
+    if (document.querySelector("[data-dashboard-chart]")) {
+        import("./dashboard").then(({ initializeDashboardCharts }) => initializeDashboardCharts()).catch(() => {
+            document.querySelector("[data-dashboard-chart-error]").classList.remove("d-none");
+        });
+    }
+
     if (document.querySelector("[data-attendance-reports]")) {
         import("./attendance-reports").then(({ initializeAttendanceReports }) => {
             initializeAttendanceReports();
@@ -42,6 +48,14 @@ function initializeApp() {
         }).catch(() => {
             document.querySelector("[data-scanner-feedback]").textContent =
                 "QR Scanner gagal dimuat. Muat ulang halaman untuk mencoba kembali.";
+        });
+    }
+
+    if (document.querySelector("[data-manual-attendance]")) {
+        import("./manual-attendance").then(({ initializeManualAttendance }) => {
+            initializeManualAttendance();
+        }).catch(() => {
+            document.getElementById("manual-status").textContent = "Manual Check-in gagal dimuat. Muat ulang halaman.";
         });
     }
 

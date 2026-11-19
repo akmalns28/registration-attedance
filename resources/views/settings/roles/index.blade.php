@@ -4,12 +4,6 @@
 
 @section('content')
 
-    <x-ui.breadcrumb class="mb-3" :items="[
-        ['label' => 'Dashboard', 'url' => route('dashboard')],
-        ['label' => 'Settings'],
-        ['label' => 'Role Management'],
-    ]" />
-
     <x-ui.page-header title="Role Management" subtitle="Kelola role dan hak akses pengguna aplikasi">
         <x-slot:actions>
             <x-ui.button href="{{ route('settings.roles.create') }}">

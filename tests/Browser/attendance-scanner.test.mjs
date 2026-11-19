@@ -87,6 +87,7 @@ test("attendance scanner in a real browser with a virtual webcam", { skip: !brow
     suite.diagnostic(`Browser artifacts: ${artifacts}`);
     const requests = [];
     const checkinRequests = [];
+    const manualRequests = [];
     let attendanceRecorded = false;
     let processHandle;
     let server;
@@ -106,6 +107,8 @@ test("attendance scanner in a real browser with a virtual webcam", { skip: !brow
         const eventHtml = await readFile(join(artifacts, "event-scanner.html"), "utf8");
         const dayHtml = await readFile(join(artifacts, "day-detail.html"), "utf8");
         const adminDayHtml = await readFile(join(artifacts, "day-detail-admin.html"), "utf8");
+        const manifest = JSON.parse(await readFile(resolve("public/build/manifest.json"), "utf8"));
+        const manualModule = `/build/${manifest["resources/js/manual-attendance.js"].file}`;
         const bundle = await build({
             configFile: false, logLevel: "silent", root: project,
             build: { write: false, minify: false, lib: {
@@ -133,7 +136,25 @@ test("attendance scanner in a real browser with a virtual webcam", { skip: !brow
 
         server = createServer(async (request, response) => {
             try {
-                const path = new URL(request.url, "http://localhost").pathname;
+                const url = new URL(request.url, "http://localhost");
+                const path = url.pathname;
+                if (path === "/attendance/manual/participants") {
+                    const parameters = Object.fromEntries(url.searchParams);
+                    manualRequests.push(parameters);
+                    response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ data: [{
+                        registration_id: 73, participant_type: "external", participant_name: "Budi Guest",
+                        phone: "0812799999", attendance_status: "not_present",
+                    }] }));
+                    return;
+                }
+                if (path === "/attendance/manual/check-in") {
+                    let body = "";
+                    for await (const chunk of request) { body += chunk; }
+                    manualRequests.push({ checkIn: JSON.parse(body), hasCsrfToken: Boolean(request.headers["x-csrf-token"]) });
+                    response.writeHead(201, { "Content-Type": "application/json" })
+                        .end(JSON.stringify({ ...fixture.checkin_response, message: "Check-in peserta berhasil." }));
+                    return;
+                }
                 if (request.method === "POST" && path === "/attendance/scanner/validate") {
                     let body = "";
                     for await (const chunk of request) { body += chunk; }
@@ -270,6 +291,95 @@ test("attendance scanner in a real browser with a virtual webcam", { skip: !brow
                 }
             `);
         }
+
+        await suite.test("manual check-in debounces search, confirms by registration ID and retains event context", async () => {
+            await fresh(true);
+            const result = await tools.evaluate(`
+                await import("/day-ui-module.js");
+                const { initializeManualAttendance } = await import(${JSON.stringify(manualModule)});
+                initializeManualAttendance();
+                await scanner.start();
+                const activeBefore = FakeScanner.active;
+                const tab = document.getElementById("attendance-manual-tab");
+                const shown = new Promise((resolve) => tab.addEventListener("shown.bs.tab", resolve, { once: true }));
+                tab.click(); await shown;
+                const event = document.getElementById("manual-event");
+                const day = document.getElementById("manual-day");
+                const search = document.getElementById("manual-search");
+                const results = document.querySelector("[data-manual-results]");
+                const confirm = document.querySelector("[data-manual-confirm]");
+                const confirmation = document.querySelector("[data-manual-confirmation]");
+                const set = (element, value) => { element.value = value; element.dispatchEvent(new Event("change", { bubbles: true })); };
+                const waitUntil = async (check) => {
+                    const limit = Date.now() + 5000;
+                    while (!check()) {
+                        if (Date.now() > limit) throw new Error(document.getElementById("manual-status").textContent);
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                    }
+                };
+                await waitUntil(() => FakeScanner.active === 0);
+                set(event, fixture.payload.event_id); set(day, fixture.payload.event_day_id);
+                document.querySelector('label[for="manual-external"]').click();
+                const placeholder = search.placeholder;
+                for (const term of ["B", "Bu", "Budi"]) {
+                    search.value = term; search.dispatchEvent(new Event("input", { bubbles: true }));
+                }
+                await waitUntil(() => results.firstElementChild);
+                const row = results.textContent;
+                results.firstElementChild.click();
+                const name = confirmation.querySelector("[data-manual-name]").textContent;
+                let notification;
+                window.notify = { success: (message) => { notification = message; } };
+                confirm.click(); confirm.click();
+                await waitUntil(() => confirmation.hidden && document.activeElement === search);
+                return { activeBefore, placeholder, row, name, notification, value: search.value, event: event.value, day: day.value };
+            `);
+            const { event_id, event_day_id } = fixture.payload;
+            assert.equal(result.activeBefore, 1);
+            assert.match(result.placeholder, /nama atau nomor telepon/);
+            assert.match(result.row, /External.*0812799999.*Belum check-in/);
+            assert.equal(result.name, "Budi Guest");
+            assert.equal(result.notification, "Check-in peserta berhasil.");
+            assert.deepEqual([result.value, result.event, result.day], ["", String(event_id), String(event_day_id)]);
+            assert.deepEqual(manualRequests, [
+                { event_id: String(event_id), event_day_id: String(event_day_id), search: "Budi", participant_type: "external" },
+                { checkIn: { event_id: String(event_id), event_day_id: String(event_day_id), registration_id: 73 }, hasCsrfToken: true },
+            ]);
+        });
+
+        await suite.test("Event Day manual check-in uses locked selections and refreshes the attendance list", async () => {
+            await fresh(true, false, true);
+            const result = await tools.evaluate(`
+                const { initializeManualAttendance } = await import(${JSON.stringify(manualModule)});
+                initializeManualAttendance();
+                await showDayTab("#day-scanner-tab"); await scanner.start();
+                await showDayTab("#day-manual-tab"); await scanner.stopTask;
+                const event = document.getElementById("manual-event");
+                const day = document.getElementById("manual-day");
+                const search = document.getElementById("manual-search");
+                const results = document.getElementById("manual-results");
+                const waitUntil = async (check) => {
+                    const deadline = Date.now() + 5000;
+                    while (!check()) {
+                        if (Date.now() > deadline) throw new Error(document.getElementById("manual-status").textContent);
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                    }
+                };
+                document.querySelector('label[for="manual-external"]').click();
+                search.focus(); search.value = "Budi";
+                search.dispatchEvent(new Event("input", { bubbles: true }));
+                await waitUntil(() => results.firstElementChild);
+                search.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+                const optionFocused = document.activeElement === results.firstElementChild;
+                document.activeElement.click();
+                document.querySelector("[data-manual-confirm]").click();
+                await waitUntil(() => document.querySelector("[data-attendance-table] tbody").textContent.includes(fixture.response.data.registration_number));
+                return { event: event.value, day: day.value, locked: event.disabled && day.disabled, optionFocused,
+                    activeCameras: FakeScanner.active, checkedIn: document.querySelector('[data-attendance-summary="checked_in"] .h1').textContent.trim() };
+            `);
+            assert.deepEqual(result, { event: String(fixture.payload.event_id), day: String(fixture.payload.event_day_id),
+                locked: true, optionFocused: true, activeCameras: 0, checkedIn: "1" });
+        });
 
         await suite.test("Event Day derives fixed context without selectors and tab changes release the virtual webcam", async () => {
             const errorCount = tools.errors.length;
