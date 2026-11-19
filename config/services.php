@@ -1,5 +1,7 @@
 <?php
 
+$roleList = static fn (string $value): array => array_values(array_filter(array_map(trim(...), explode(',', $value)), fn (string $role): bool => $role !== ''));
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -41,5 +43,13 @@ return [
 
         'base_url' => env('KEYCLOAK_BASE_URL'),
         'realms' => env('KEYCLOAK_REALM'),
+        'sso_roles' => $roleList((string) env('KEYCLOAK_SSO_ROLES', '')),
+        'sso_privileged_roles' => $roleList((string) env('KEYCLOAK_SSO_PRIVILEGED_ROLES', '')),
+        'protected_roles' => $roleList((string) env('KEYCLOAK_PROTECTED_ROLES', '')),
+        'guzzle' => [
+            'connect_timeout' => 5,
+            'timeout' => 10,
+            'allow_redirects' => false,
+        ],
     ],
 ];
