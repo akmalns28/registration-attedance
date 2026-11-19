@@ -2,10 +2,10 @@
 
 namespace App\Providers;
 
+use App\Services\KeycloakProvider;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
-use SocialiteProviders\Keycloak\Provider as KeycloakProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 
 class AppServiceProvider extends ServiceProvider

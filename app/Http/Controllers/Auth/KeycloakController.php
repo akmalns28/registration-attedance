@@ -3,105 +3,99 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Services\KeycloakAccounts;
+use App\Services\KeycloakProvider;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Exception\TransferException;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\InvalidStateException;
 use Throwable;
 
 class KeycloakController extends Controller
 {
+    private const RETRY_MESSAGE = 'Autentikasi SSO gagal. Silakan coba lagi.';
+
+    private const EXPIRED_MESSAGE = 'Sesi login SSO berakhir. Silakan login kembali.';
+
     /**
      * Redirect user to Keycloak.
      */
     public function redirect(Request $request): RedirectResponse
     {
-        $parameters = $request->session()->get('keycloak.force_login', false)
+        $session = $request->session();
+        $session->forget('keycloak.login_error');
+        $parameters = $session->get('keycloak.force_login', false)
             ? ['prompt' => 'login']
             : [];
 
-        return Socialite::driver('keycloak')
-            ->scopes(['openid', 'profile', 'email'])
-            ->with($parameters)
-            ->redirect();
+        try {
+            return Socialite::driver('keycloak')
+                ->setRequest($request)
+                ->scopes(['openid', 'profile', 'email'])
+                ->with($parameters)
+                ->redirect()
+                ->header('Cache-Control', 'no-store, private');
+        } catch (Throwable $exception) {
+            $response = $this->failedLogin($request, self::RETRY_MESSAGE);
+            report($exception);
+
+            return $response;
+        }
     }
 
     /**
      * Handle callback from Keycloak.
      */
-    public function callback(Request $request): RedirectResponse
+    public function callback(Request $request, KeycloakAccounts $accounts): RedirectResponse
     {
         try {
-            $keycloakUser = Socialite::driver('keycloak')->user();
+            if ($request->query->has('error')) {
+                $expectedState = $request->session()->get('state');
+                $state = $request->query('state');
+                if (! is_string($expectedState) || $expectedState === '' || ! is_string($state) || ! hash_equals($expectedState, $state)) {
+                    throw new InvalidStateException;
+                }
 
-            $keycloakId = $keycloakUser->getId();
-            $email = $keycloakUser->getEmail();
-
-            if (! $keycloakId || ! $email) {
-                return $this->denyAccess();
+                return $this->failedLogin($request, $request->query('error') === 'access_denied'
+                    ? 'Login SSO dibatalkan. Silakan coba lagi.'
+                    : self::RETRY_MESSAGE);
             }
 
-            $claims = $keycloakUser->user ?? [];
+            $keycloakUser = Socialite::driver('keycloak')->setRequest($request)->with([])->user();
 
-            if (($claims['email_verified'] ?? false) !== true) {
-                return $this->denyAccess(
-                    'Email akun Keycloak Anda belum terverifikasi. Silakan verifikasi email terlebih dahulu.'
-                );
-            }
-
-            /*
-             * Access policy:
-             * Only previously authorized local users
-             * are allowed to sign in.
-             */
-            $user = User::query()
-                ->where('keycloak_id', $keycloakId)
-                ->first();
-
-            if (! $user) {
-                $user = User::query()
-                    ->whereNull('keycloak_id')
-                    ->where('email', $email)
-                    ->first();
-            }
-
-            if (! $user || ! $user->canAccessApplication()) {
-                return $this->denyAccess();
-            }
-
-            /*
-             * Bind local account to Keycloak identity.
-             * Existing bindings cannot be overwritten.
-             */
-            if (! $user->keycloak_id) {
-                $user->keycloak_id = $keycloakId;
-            }
-
-            $user->name = $keycloakUser->getName()
-                ?: $user->name;
-
-            $user->save();
-
-            Auth::login($user);
-
-            $request->session()->regenerate();
+            DB::transaction(function () use ($accounts, $keycloakUser): void {
+                Auth::guard('web')->login($accounts->synchronize($keycloakUser));
+            });
             $request->session()->forget('keycloak.force_login');
 
-            return redirect()->intended(
-                route('dashboard')
-            );
+            return redirect()->intended(route('dashboard'))->header('Cache-Control', 'no-store, private');
+        } catch (AuthorizationException $exception) {
+            return $this->failedLogin($request, $exception->getMessage());
+        } catch (InvalidStateException) {
+            return $this->failedLogin($request, self::EXPIRED_MESSAGE);
+        } catch (TransferException $exception) {
+            $response = $exception instanceof RequestException ? $exception->getResponse() : null;
+            if ($response?->getStatusCode() === 400 && (json_decode((string) $response->getBody(), true)['error'] ?? null) === 'invalid_grant') {
+                return $this->failedLogin($request, self::EXPIRED_MESSAGE);
+            }
 
+            Log::warning('Keycloak authentication request failed.', [
+                'type' => $exception::class,
+                'status' => $response?->getStatusCode(),
+            ]);
+
+            return $this->failedLogin($request, 'Layanan SSO sedang tidak dapat diakses. Silakan coba lagi.');
         } catch (Throwable $exception) {
-
+            $response = $this->failedLogin($request, self::RETRY_MESSAGE);
             report($exception);
 
-            return redirect()
-                ->route('login')
-                ->with(
-                    'error',
-                    'Autentikasi SSO gagal. Silakan coba kembali.'
-                );
+            return $response;
         }
     }
 
@@ -110,22 +104,22 @@ class KeycloakController extends Controller
      */
     public function logout(Request $request): RedirectResponse
     {
-        Auth::logout();
+        Auth::guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         $request->session()->put('keycloak.force_login', true);
 
-        return redirect()->route('login');
+        return redirect()->route('login')->header('Cache-Control', 'no-store, private');
     }
 
-    private function denyAccess(string $message = 'Akun Anda belum memiliki akses ke aplikasi.'): RedirectResponse
+    private function failedLogin(Request $request, string $message): RedirectResponse
     {
-        return redirect()
-            ->route('login')
-            ->with(
-                'error',
-                $message
-            );
+        $guard = Auth::guard('web');
+        $request->session()->forget(['state', KeycloakProvider::NONCE_SESSION_KEY, $guard->getName(), 'password_hash_web']);
+        $guard->forgetUser();
+        $request->session()->put('keycloak.force_login', true);
+
+        return redirect()->route('login')->header('Cache-Control', 'no-store, private')->with('keycloak.login_error', $message);
     }
 }

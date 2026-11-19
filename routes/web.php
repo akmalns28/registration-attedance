@@ -38,12 +38,14 @@ Route::get('/registrations/{registration}', EventRegistrationController::class)
 */
 
 Route::middleware('guest')->group(function () {
-    Route::view('/login', 'auth.login')->name('login');
+    Route::view('/login', 'auth.login')->middleware('cache.headers:private;no_store')->name('login');
 
     Route::get('/auth/keycloak/redirect', [KeycloakController::class, 'redirect'])->name('auth.keycloak.redirect');
 
     Route::get('/auth/keycloak/callback', [KeycloakController::class, 'callback'])->name('auth.keycloak.callback');
 });
+
+Route::post('/logout', [KeycloakController::class, 'logout'])->middleware('auth')->name('logout');
 
 /*
 |--------------------------------------------------------------------------
@@ -84,14 +86,6 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/analytic', [AnalyticController::class, 'index'])->name('analytic.index');
         Route::get('/analytic/data', [AnalyticController::class, 'data'])->name('analytic.data');
     });
-
-    /*
-    |--------------------------------------------------------------------------
-    | Logout
-    |--------------------------------------------------------------------------
-    */
-
-    Route::post('/logout', [KeycloakController::class, 'logout'])->name('logout');
 
     Route::get('/notifications', [EventNotificationController::class, 'index'])
         ->middleware('can:events.view')->name('notifications.index');

@@ -24,10 +24,10 @@
             Sign In
         </h2>
 
-        @if(session('error'))
+        @if (session('keycloak.login_error'))
 
             <x-ui.alert variant="danger">
-                {{ session('error') }}
+                {{ session('keycloak.login_error') }}
             </x-ui.alert>
 
         @endif
@@ -40,7 +40,7 @@
             href="{{ route('auth.keycloak.redirect') }}"
             class="btn btn-primary w-100"
         >
-            Login with Company SSO
+            {{ session('keycloak.login_error') ? 'Login ulang dengan SSO' : 'Login with Company SSO' }}
         </a>
 
     </div>
