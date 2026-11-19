@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\ExternalParticipant;
@@ -10,6 +9,7 @@ use App\Models\User;
 use App\Services\BulkImportService;
 use App\Services\BulkImportStore;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -22,6 +22,7 @@ use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PHPUnit\Framework\Attributes\TestWith;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class BulkImportTest extends TestCase
@@ -44,7 +45,7 @@ class BulkImportTest extends TestCase
         $department = Department::factory()->create();
         $this->actingAs($this->admin());
         DB::enableQueryLog();
-        $response = $this->post($this->url('employees', 'preview'), ['file' => $this->excel('employees', [['0000123', ' Éka   Putra ', $department->id, 'EKA@EXAMPLE.TEST', '0812-0034', 1]], $format)])->assertRedirect();
+        $response = $this->post($this->url('employees', 'preview'), ['file' => $this->excel('employees', [['0000123', ' Éka   Putra ', $department->id, 'EKA@EXAMPLE.TEST', '0812-0034', 1]], $format, [' NIP ', 'name', 'department_id', 'email', 'phone', 'is_active'])])->assertRedirect();
         $queries = DB::getQueryLog();
         DB::disableQueryLog();
         $this->assertSame([], array_values(array_filter($queries, fn (array $query): bool => preg_match('/^\s*(insert|update|delete|alter|create|drop)\b/i', $query['query']) === 1)));
@@ -65,7 +66,7 @@ class BulkImportTest extends TestCase
             ['NEW1', 'New Employee', $department->id, 'valid@example.test', '000123', 1],
             ['dupe', 'Duplicate A', $department->id, null, null, 1], ['DUPE', 'Duplicate B', $department->id, null, null, 1],
             ['existing', 'Replacement', $department->id, null, null, 1], ['BAD-DEPT', 'Department', 999999, null, null, 1],
-            ['BAD-EMAIL', 'Email', $department->id, 'invalid', null, 1], ['', 'Missing NIP', $department->id, null, null, 1], ['BAD-STATUS', 'Status', $department->id, null, null, 'yes'],
+            ['BAD-EMAIL', 'Email', $department->id, 'invalid', null, 1], ['', 'Missing NIP', $department->id, null, null, 1], ['BAD-STATUS', 'Status', $department->id, null, null, 'maybe'],
         ]);
         $this->get($this->url('employees', 'show', $id))->assertViewHas('snapshot', fn (array $s): bool => $s['summary'] === ['total' => 8, 'valid' => 2, 'invalid' => 4, 'existing' => 1, 'duplicate' => 2, 'create' => 1, 'skip' => 7]);
         $this->post($this->url('employees', 'confirm', $id), ['confirm' => 1])->assertRedirect();
@@ -77,13 +78,48 @@ class BulkImportTest extends TestCase
         $this->assertStringContainsString('Departemen tidak tersedia', $csv);
     }
 
+    public function test_employees_resolve_names_and_codes_and_reject_unavailable_or_ambiguous_departments(): void
+    {
+        $technology = Department::factory()->create(['code' => 'IT', 'name' => 'Teknologi Informasi']);
+        $operations = Department::factory()->create(['code' => '00077', 'name' => 'Operasional']);
+        $inactive = Department::factory()->create(['code' => 'CLOSED', 'name' => 'Departemen Lama', 'is_active' => false]);
+        Department::factory()->create(['code' => 'SHARED', 'name' => 'Departemen Lain']);
+        Department::factory()->create(['code' => (string) $technology->id, 'name' => 'Shared', 'is_active' => false]);
+        $this->actingAs($this->admin());
+
+        $id = $this->preview('employees', [
+            ['BY-CODE', 'Kode', ' iT ', null, '08123456789', ' Active '],
+            ['BY-NAME', 'Nama', ' OPERASIONAL ', null, '08123456788', 'Tidak Aktif'],
+            ['PADDED-CODE', 'Nol di depan', '00077', null, null, 'aKtIf'],
+            ['MISSING-REF', 'Kosong', '', null, null, 'Inactive'],
+            ['UNKNOWN-REF', 'Tidak ditemukan', 'UNKNOWN', null, null, 'Inactive'],
+            ['INACTIVE-NAME', 'Tidak aktif', 'Departemen Lama', null, null, 'Inactive'],
+            ['INACTIVE-ID', 'ID tidak aktif', $inactive->id, null, null, 'Inactive'],
+            ['AMBIGUOUS-NAME', 'Nama dan kode', ' shared ', null, null, 'Inactive'],
+            ['AMBIGUOUS-ID', 'ID dan kode', $technology->id, null, null, 'Inactive'],
+        ]);
+
+        $preview = $this->get($this->url('employees', 'show', $id))->assertOk()
+            ->assertSee('IT — Teknologi Informasi')->assertSee('Isian:  iT ')->assertSee('Tidak Aktif')
+            ->assertSee('Departemen wajib diisi.')->assertSee('Departemen tidak tersedia.')
+            ->assertSee('Departemen sudah tidak aktif.')->assertSee('Departemen memiliki lebih dari satu kecocokan.');
+        $this->assertSame(['create', 'create', 'create', 'invalid', 'invalid', 'invalid', 'invalid', 'invalid', 'invalid'], array_column($preview->viewData('snapshot')['rows'], 'status'));
+
+        $this->post($this->url('employees', 'confirm', $id), ['confirm' => 1])->assertRedirect();
+        $this->assertDatabaseCount('employees', 3);
+        $this->assertDatabaseHas('employees', ['nip' => 'BY-CODE', 'department_id' => $technology->id, 'is_active' => true, 'phone' => '08123456789']);
+        $this->assertDatabaseHas('employees', ['nip' => 'BY-NAME', 'department_id' => $operations->id, 'is_active' => false]);
+        $this->assertDatabaseHas('employees', ['nip' => 'PADDED-CODE', 'department_id' => $operations->id, 'is_active' => true]);
+        $this->assertDatabaseCount('departments', 5);
+    }
+
     public function test_external_import_conservatively_skips_contacts_and_possible_identity_matches(): void
     {
         $existing = ExternalParticipant::factory()->create(['name' => 'Existing Person', 'email' => 'exists@example.test', 'phone' => '0812-4455', 'organization' => 'Example']);
         $this->actingAs($this->admin());
         $id = $this->preview('external-participants', [
-            [' New   Guest ', 'NEW@EXAMPLE.TEST', '0812-0000', ' Company ', ' Manager ', 1],
-            ['Contact Match', 'EXISTS@EXAMPLE.TEST', null, 'Other', null, 1], ['Phone Match', null, '08124455', 'Other', null, 0],
+            [' New   Guest ', 'NEW@EXAMPLE.TEST', '0812-0000', ' Company ', ' Manager ', 'Yes'],
+            ['Contact Match', 'EXISTS@EXAMPLE.TEST', null, 'Other', null, 1], ['Phone Match', null, '08124455', 'Other', null, 'No'],
             ['Existing Person', 'different@example.test', null, 'Example', null, 1], ['No Contact', null, null, null, null, 1], ['Bad Email', 'invalid', null, null, null, 1],
             ['Duplicate A', 'same@example.test', null, 'A', null, 1], ['Duplicate B', 'same@example.test', null, 'B', null, 1],
         ]);
@@ -94,26 +130,62 @@ class BulkImportTest extends TestCase
         $this->get($this->url('external-participants', 'result', $id))->assertViewHas('snapshot', fn (array $s): bool => $s['result_summary'] === ['created' => 1, 'skipped' => 5, 'failed' => 2]);
     }
 
+    public function test_external_import_normalizes_supported_statuses_and_rejects_unknown_or_missing_values(): void
+    {
+        $this->actingAs($this->admin());
+        $statuses = [' Active ', 'Aktif', 'YeS', 'TRUE', 1, 'Inactive', ' Tidak  Aktif ', 'nO', 'FALSE', 0, 'enabled', ''];
+        $rows = [];
+        foreach ($statuses as $index => $status) {
+            $rows[] = ['Guest '.$index, 'guest'.$index.'@example.test', null, null, null, $status];
+        }
+
+        $id = $this->preview('external-participants', $rows, ['name', 'email', 'phone', 'organization', 'position', 'is_active']);
+        $preview = $this->get($this->url('external-participants', 'show', $id))->assertOk()
+            ->assertSee('Status tidak dikenal.')->assertSee('Status peserta wajib diisi.');
+        $this->assertSame(10, $preview->viewData('snapshot')['summary']['create']);
+
+        $this->post($this->url('external-participants', 'confirm', $id), ['confirm' => 1])->assertRedirect();
+        $this->assertSame(array_fill(0, 5, true) + array_fill(5, 5, false), ExternalParticipant::query()->orderBy('id')->pluck('is_active')->all());
+    }
+
     public function test_users_are_local_inactive_without_passwords_keycloak_calls_or_super_admin_escalation(): void
     {
         $existing = User::factory()->create(['email' => 'existing@example.test', 'name' => 'Original User']);
         $this->actingAs($this->admin());
         Socialite::shouldReceive('driver')->never();
         Http::fake();
-        $id = $this->preview('users', [[' Local User ', ' LOCAL@EXAMPLE.TEST ', 1, 'panitia'], ['Existing Replacement', 'EXISTING@EXAMPLE.TEST', 0, 'monitoring'],
-            ['Unknown Role', 'unknown@example.test', 0, 'not-a-role'], ['Escalation', 'escalation@example.test', 0, 'super-admin'], ['Missing Email', '', 0, 'panitia'],
+        $panitia = Role::findByName('panitia', 'web');
+        $superAdmin = Role::findByName('super-admin', 'web');
+        $nonWeb = Role::create(['name' => 'non-web-role', 'guard_name' => 'api']);
+        Role::create(['name' => ' Monitoring ', 'guard_name' => 'web']);
+        $id = $this->preview('users', [[' Local User ', ' LOCAL@EXAMPLE.TEST ', 'TRUE', ' PaNiTiA '], ['Existing Replacement', 'EXISTING@EXAMPLE.TEST', 0, 'panitia'],
+            ['Unknown Role', 'unknown@example.test', 0, 'not-a-role'], ['Escalation', 'escalation@example.test', 0, 'SUPER-ADMIN'], ['Missing Email', '', 0, 'panitia'],
+            ['Numeric Role', 'numeric@example.test', 'Tidak Aktif', $panitia->id], ['Numeric Escalation', 'numeric-escalation@example.test', 0, $superAdmin->id],
+            ['Other Guard', 'guard@example.test', 0, $nonWeb->id], ['Ambiguous Role', 'ambiguous@example.test', 0, 'monitoring'], ['Missing Role', 'missing@example.test', 0, null],
             ['Duplicate A', 'duplicate@example.test', 0, 'panitia'], ['Duplicate B', 'DUPLICATE@EXAMPLE.TEST', 0, 'panitia']]);
-        $this->get($this->url('users', 'show', $id))->assertOk()->assertSee('Keycloak belum diverifikasi')->assertViewHas('snapshot', fn (array $s): bool => $s['rows'][0]['data']['is_active'] === '0');
+        $this->get($this->url('users', 'show', $id))->assertOk()
+            ->assertSee('Keycloak belum diverifikasi')->assertSee('Isian: TRUE')->assertSee('Status akun baru: Tidak Aktif')
+            ->assertSee('Role super-admin tidak boleh diberikan melalui impor.')->assertSee('Role tidak tersedia.')
+            ->assertSee('Role memiliki lebih dari satu kecocokan.')->assertSee('Role wajib diisi.')
+            ->assertViewHas('snapshot', fn (array $s): bool => $s['rows'][0]['data']['is_active'] === false && $s['rows'][0]['display']['status'] === 'Aktif');
+        DB::enableQueryLog();
         $this->post($this->url('users', 'confirm', $id), ['confirm' => 1])->assertRedirect();
+        $roleLookups = array_filter(DB::getQueryLog(), fn (array $query): bool => str_starts_with($query['query'], 'select * from "roles" where'));
+        DB::disableQueryLog();
+        $this->assertCount(1, $roleLookups);
         $user = User::where('email', 'local@example.test')->firstOrFail();
         $this->assertFalse($user->is_active);
         $this->assertNull($user->password);
         $this->assertNull($user->keycloak_id);
         $this->assertNull($user->email_verified_at);
         $this->assertTrue($user->hasRole('panitia'));
+        $this->assertTrue(User::where('email', 'numeric@example.test')->firstOrFail()->hasRole('panitia'));
         $this->assertFalse($user->hasRole('super-admin'));
         $this->assertSame('Original User', $existing->fresh()->name);
         $this->assertDatabaseMissing('users', ['email' => 'escalation@example.test']);
+        $this->assertDatabaseMissing('users', ['email' => 'numeric-escalation@example.test']);
+        $this->assertDatabaseMissing('users', ['email' => 'guard@example.test']);
+        $this->assertDatabaseMissing('users', ['email' => 'ambiguous@example.test']);
         $this->assertDatabaseMissing('users', ['email' => 'duplicate@example.test']);
         Http::assertNothingSent();
     }
@@ -133,28 +205,53 @@ class BulkImportTest extends TestCase
         $this->postJson($this->url($module, 'confirm', $id), ['confirm' => 1])->assertForbidden();
     }
 
-    #[TestWith(['employees'])]
-    #[TestWith(['external-participants'])]
-    #[TestWith(['users'])]
-    public function test_templates_use_supported_fields_and_text_formats(string $module): void
+    #[TestWith(['employees', ['nip', 'name', 'department', 'email', 'phone', 'status'], '0000123,Sample,IT,,08123456789,Active'])]
+    #[TestWith(['external-participants', ['name', 'email', 'phone', 'organization', 'position', 'status'], 'Sample,,08123456789,,,Inactive'])]
+    #[TestWith(['users', ['name', 'email', 'status', 'role'], 'Sample,sample@example.test,Tidak Aktif,panitia'])]
+    public function test_templates_use_supported_fields_and_text_formats(string $module, array $columns, string $csvRow): void
     {
+        Department::factory()->create(['code' => 'IT']);
         $this->actingAs($this->admin());
         $response = $this->get($this->url($module, 'template'))->assertOk()->assertDownload('template-'.$module.'.xlsx');
         $path = $response->baseResponse->getFile()->getPathname();
         try {
             $book = IOFactory::load($path);
             $sheet = $book->getActiveSheet();
-            $this->assertSame(BulkImportService::module($module)['columns'], $sheet->rangeToArray('A1:'.$sheet->getHighestDataColumn().'1')[0]);
-            $this->assertSame('@', $sheet->getStyle('A2')->getNumberFormat()->getFormatCode());
+            $this->assertSame($columns, $sheet->rangeToArray('A1:'.$sheet->getHighestDataColumn().'1')[0]);
+            foreach ($columns as $index => $column) {
+                $this->assertSame('@', $sheet->getStyle([$index + 1, 2])->getNumberFormat()->getFormatCode(), $column);
+                $this->assertNotEmpty($sheet->getComment([$index + 1, 1])->getText()->getPlainText());
+            }
             $this->assertSame('A2', $sheet->getFreezePane());
+            $this->assertSame(array_fill(0, count($columns), ''), $sheet->rangeToArray('A2:'.$sheet->getHighestDataColumn().'2')[0]);
+            foreach (explode(',', $csvRow) as $index => $value) {
+                $sheet->setCellValueExplicit([$index + 1, 2], $value, DataType::TYPE_STRING);
+            }
+            IOFactory::createWriter($book, 'Xlsx')->save($path);
+            $xlsx = UploadedFile::fake()->createWithContent('template-'.$module.'.xlsx', File::get($path));
             $book->disconnectWorksheets();
-        } finally { unlink($path); }
-        $this->get($this->url($module, 'index'))->assertOk()->assertSee('Validasi &amp; Preview', false);
+        } finally {
+            unlink($path);
+        }
+
+        $response = $this->post($this->url($module, 'preview'), ['file' => $xlsx])->assertRedirect();
+        $this->get($response->headers->get('Location'))->assertOk()->assertSee('Sample')->assertSee('Siap dibuat');
+
+        $csv = $this->get($this->url($module, 'template').'?format=csv')->assertOk()->assertDownload('template-'.$module.'.csv')->streamedContent();
+        $this->assertSame("\xEF\xBB\xBF".implode(',', $columns)."\r\n", $csv);
+        $file = UploadedFile::fake()->createWithContent('import.csv', $csv.$csvRow."\r\n");
+        $response = $this->post($this->url($module, 'preview'), ['file' => $file])->assertRedirect();
+        $id = basename($response->headers->get('Location'));
+        $this->get($this->url($module, 'show', $id))->assertOk()->assertSee('Sample')->assertSee('Siap dibuat');
+        $this->post($this->url($module, 'confirm', $id), ['confirm' => 1])->assertRedirect();
+        $this->get($this->url($module, 'result', $id))->assertOk()->assertSee('Tersimpan');
+
+        $this->get($this->url($module, 'index'))->assertOk()->assertSee('Validasi &amp; Preview', false)->assertSee('Template CSV');
     }
 
     #[TestWith(['broken.xlsx', 'not an Excel workbook'])]
     #[TestWith(['script.xls', '<html><script>alert(1)</script></html>'])]
-    #[TestWith(['text.csv', 'name,email'])]
+    #[TestWith(['invalid.csv', "nip,name,department,status\n001,Name,IT,\xFF"])]
     public function test_corrupted_and_unsupported_files_are_rejected(string $name, string $content): void
     {
         $this->actingAs($this->admin())->postJson($this->url('employees', 'preview'), ['file' => UploadedFile::fake()->createWithContent($name, $content)])->assertUnprocessable()->assertJsonValidationErrors('file');
@@ -174,6 +271,26 @@ class BulkImportTest extends TestCase
         $this->postJson($this->url('employees', 'preview'), ['file' => $this->excel('employees', [$row])])->assertUnprocessable();
         config(['bulk_imports.max_uncompressed_bytes' => 32 * 1024 * 1024]);
         $this->postJson($this->url('users', 'preview'), ['file' => $this->excel('users', [['Name', 'mail@example.test', 0, 'panitia']], headers: ['name', 'email', 'is_active', 'password'])])->assertUnprocessable();
+        $this->postJson($this->url('employees', 'preview'), ['file' => $this->excel('employees', [], headers: ['nip', 'name', 'department', 'department_id', 'status'])])
+            ->assertUnprocessable()->assertJsonValidationErrors(['file' => 'Judul kolom tidak valid atau berulang.']);
+    }
+
+    public function test_csv_preserves_leading_zeros_and_reports_invalid_records_with_valid_records_in_the_same_file(): void
+    {
+        $department = Department::factory()->create(['code' => '00105']);
+        $this->actingAs($this->admin());
+        $file = UploadedFile::fake()->createWithContent('import.csv', "nip;name;department;phone;status\r\n"
+            ."0000123;\"Putra; Akmal\";00105;08120034;Aktif\r\n"
+            ."=1+1;Formula;00105;08120035;Aktif\r\n"
+            ."0000125;Too many values;00105;08120036;Inactive;extra\r\n");
+        $response = $this->post($this->url('employees', 'preview'), ['file' => $file])->assertRedirect();
+        $id = basename($response->headers->get('Location'));
+
+        $this->get($this->url('employees', 'show', $id))->assertOk()->assertSee('Putra; Akmal')
+            ->assertSee('formula tidak diizinkan')->assertSee('Jumlah nilai melebihi jumlah kolom');
+        $this->post($this->url('employees', 'confirm', $id), ['confirm' => 1])->assertRedirect();
+        $this->assertDatabaseCount('employees', 1);
+        $this->assertDatabaseHas('employees', ['nip' => '0000123', 'phone' => '08120034', 'department_id' => $department->id]);
     }
 
     public function test_formula_and_numeric_identifier_rows_fail_without_blocking_other_rows(): void
@@ -218,6 +335,20 @@ class BulkImportTest extends TestCase
         $this->get($this->url('employees', 'result', $id))->assertViewHas('snapshot', fn (array $s): bool => $s['result_summary']['created'] === 1);
     }
 
+    public function test_confirmation_does_not_attach_a_reference_that_changed_to_a_different_record(): void
+    {
+        $original = Department::factory()->create(['code' => 'IT']);
+        $this->actingAs($this->admin());
+        $id = $this->preview('employees', [['REBIND', 'Name', 'IT', null, null, 'Aktif']]);
+        $original->update(['code' => 'OLD-IT']);
+        Department::factory()->create(['code' => 'IT']);
+
+        $this->post($this->url('employees', 'confirm', $id), ['confirm' => 1])->assertRedirect();
+
+        $this->assertDatabaseMissing('employees', ['nip' => 'REBIND']);
+        $this->get($this->url('employees', 'result', $id))->assertOk()->assertSee('Referensi berubah sejak preview.');
+    }
+
     public function test_snapshots_are_encrypted_private_module_scoped_and_expire(): void
     {
         $department = Department::factory()->create();
@@ -250,6 +381,7 @@ class BulkImportTest extends TestCase
     {
         $user = User::factory()->create(['is_active' => true]);
         $user->assignRole('super-admin');
+
         return $user;
     }
 
@@ -258,16 +390,20 @@ class BulkImportTest extends TestCase
         return route(BulkImportService::module($module)['route'].'.import.'.$action, $id === null ? [] : ['import' => $id]);
     }
 
-    /** @param array<int, array<int, mixed>> $rows */
-    private function preview(string $module, array $rows): string
+    /**
+     * @param  array<int, array<int, mixed>>  $rows
+     * @param  array<int, string>|null  $headers
+     */
+    private function preview(string $module, array $rows, ?array $headers = null): string
     {
-        $response = $this->post($this->url($module, 'preview'), ['file' => $this->excel($module, $rows)])->assertRedirect();
+        $response = $this->post($this->url($module, 'preview'), ['file' => $this->excel($module, $rows, headers: $headers)])->assertRedirect();
+
         return basename($response->headers->get('Location'));
     }
 
     /** @param array<int, array<int, mixed>> $rows
-     * @param array<int, string>|null $headers
-     * @param array<string, string> $types
+     * @param  array<int, string>|null  $headers
+     * @param  array<string, string>  $types
      */
     private function excel(string $module, array $rows, string $format = 'Xlsx', ?array $headers = null, array $types = []): UploadedFile
     {
@@ -283,7 +419,11 @@ class BulkImportTest extends TestCase
         $path = tempnam(sys_get_temp_dir(), 'bulk-import-test-');
         try {
             IOFactory::createWriter($book, $format)->setPreCalculateFormulas(false)->save($path);
+
             return UploadedFile::fake()->createWithContent('import.'.strtolower($format), File::get($path));
-        } finally { $book->disconnectWorksheets(); unlink($path); }
+        } finally {
+            $book->disconnectWorksheets();
+            unlink($path);
+        }
     }
 }

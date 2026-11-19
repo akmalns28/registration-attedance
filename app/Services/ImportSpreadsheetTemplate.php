@@ -37,11 +37,17 @@ class ImportSpreadsheetTemplate extends DefaultValueBinder implements FromArray,
             $sheet->getColumnDimension($column)->setWidth($field === 'name' || $field === 'email' ? 32 : 24);
             $sheet->getStyle($column.'2:'.$column.((int) config('bulk_imports.max_rows') + 1))->getNumberFormat()->setFormatCode('@');
             $hint = match ($field) {
-                'nip', 'phone' => 'Gunakan format Text. Nol di depan harus tetap tersimpan.',
-                'department_id' => 'ID departemen aktif. Lihat referensi departemen pada halaman Import Excel.',
-                'is_active' => $this->module === 'users' ? 'Isi 0. Akun impor selalu nonaktif sampai administrator memverifikasi identitas Keycloak.' : 'Isi 1 untuk aktif atau 0 untuk nonaktif.',
-                'role' => 'Nama role web yang sudah ada, selain super-admin. Lihat referensi pada halaman impor.',
-                default => 'Isi data sesuai nama kolom. Jangan menggunakan formula.',
+                'nip' => 'Contoh EMP000001 atau 0000123. Gunakan format Text untuk menjaga nol di depan.',
+                'phone' => 'Contoh 08123456789. Gunakan format Text untuk menjaga nol di depan.',
+                'department' => 'Gunakan kode atau nama unik dari daftar departemen aktif, misalnya IT atau Operasional jika tersedia.',
+                'status' => $this->module === 'users'
+                    ? 'Contoh Tidak Aktif. Akun baru selalu nonaktif sampai administrator memverifikasi identitas Keycloak.'
+                    : 'Gunakan Aktif atau Tidak Aktif. Active dan Inactive juga diterima.',
+                'role' => 'Gunakan nama role pada halaman impor, misalnya panitia jika tersedia.',
+                'name' => 'Contoh Akmal NS.',
+                'email' => 'Contoh akmal@example.com.',
+                'organization' => 'Contoh PT Nusantara.',
+                'position' => 'Contoh Manajer.',
             };
             $sheet->getComment($column.'1')->getText()->createTextRun($hint);
         }

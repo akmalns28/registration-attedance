@@ -6,8 +6,8 @@ use App\Http\Requests\BulkImport\UploadImportRequest;
 use App\Models\Department;
 use App\Services\BulkImportService;
 use App\Services\ImportSpreadsheetTemplate;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Maatwebsite\Excel\Excel;
@@ -22,14 +22,23 @@ class BulkImportController extends Controller
         $imports->authorize($request->user(), $module);
 
         return response()->view('imports.index', ['module' => $module, 'definition' => $imports::module($module),
-            'departments' => $module === 'employees' ? Department::query()->active()->orderBy('name')->get(['id', 'code', 'name']) : collect(),
-            'roles' => $module === 'users' ? Role::query()->where('guard_name', 'web')->where('name', '!=', 'super-admin')->orderBy('name')->pluck('name') : collect(),
+            'departments' => $module === 'employees' ? Department::query()->active()->orderBy('name')->get(['code', 'name']) : collect(),
+            'roles' => $module === 'users' ? Role::query()->where('guard_name', 'web')->whereRaw('lower(trim(name)) != ?', ['super-admin'])->orderBy('name')->pluck('name') : collect(),
         ])->withHeaders(['Cache-Control' => 'private, no-store']);
     }
 
-    public function template(Request $request, BulkImportService $imports, string $module): BinaryFileResponse
+    public function template(Request $request, BulkImportService $imports, string $module): BinaryFileResponse|StreamedResponse
     {
         $imports->authorize($request->user(), $module);
+
+        if ($request->query('format') === 'csv') {
+            return response()->streamDownload(function () use ($module): void {
+                $output = fopen('php://output', 'wb');
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, BulkImportService::module($module)['columns'], ',', '"', '', "\r\n");
+                fclose($output);
+            }, 'template-'.$module.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'private, no-store']);
+        }
 
         return app(Excel::class)->download(new ImportSpreadsheetTemplate($module), 'template-'.$module.'.xlsx', Excel::XLSX,
             ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Cache-Control' => 'private, no-store']);
@@ -89,14 +98,14 @@ class BulkImportController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $snapshot
-     * @param array<int, array<string, mixed>> $rows
+     * @param  array<string, mixed>  $snapshot
+     * @param  array<int, array<string, mixed>>  $rows
      */
     private function report(Request $request, string $view, array $snapshot, string $id, string $module, array $rows): Response
     {
         $filters = $request->validate(['page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
             'status' => ['nullable', 'in:create,invalid,existing,duplicate,created,skipped,failed']]);
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $rows = array_values(array_filter($rows, fn (array $row): bool => $row['status'] === $filters['status']));
         }
         $page = (int) ($filters['page'] ?? 1);

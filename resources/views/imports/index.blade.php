@@ -1,10 +1,11 @@
 @extends('layouts.app')
-@section('title', 'Import Excel — '.$definition['title'])
+@section('title', 'Import — '.$definition['title'])
 @section('content')
-    <x-ui.page-header :title="'Import Excel — '.$definition['title']">
+    <x-ui.page-header :title="'Import — '.$definition['title']">
         <x-slot:actions>
             <x-ui.button :href="route($definition['route'].'.index')" variant="secondary" outline>Kembali ke Daftar</x-ui.button>
-            <x-ui.button :href="route($definition['route'].'.import.template')" outline><x-ui.icon name="download" class="me-2" />Download Template</x-ui.button>
+            <x-ui.button :href="route($definition['route'].'.import.template')" outline><x-ui.icon name="download" class="me-2" />Template Excel</x-ui.button>
+            <x-ui.button :href="route($definition['route'].'.import.template', ['format' => 'csv'])" outline><x-ui.icon name="download" class="me-2" />Template CSV</x-ui.button>
         </x-slot:actions>
     </x-ui.page-header>
     @if ($module === 'users')
@@ -12,14 +13,20 @@
     @else
         <p class="text-secondary">Impor hanya membuat data baru. Data existing dan duplikat akan dilewati tanpa ditimpa.</p>
     @endif
-    <x-ui.card title="1. Upload Excel">
-        <p>Gunakan kolom <code>{{ implode(', ', $definition['columns']) }}</code>. Isi <code>is_active</code> dengan 1 atau 0. @if ($module === 'users')Akun hasil impor tetap memakai 0.@endif</p>
-        <form method="POST" action="{{ route($definition['route'].'.import.preview') }}" enctype="multipart/form-data" data-form data-loading-text="Memvalidasi Excel...">
+    <x-ui.card title="Unggah Berkas">
+        <p>Gunakan kolom <code>{{ implode(', ', $definition['columns']) }}</code>. Isi <code>status</code> dengan Aktif atau Tidak Aktif. Active dan Inactive juga diterima.</p>
+        <form method="POST" action="{{ route($definition['route'].'.import.preview') }}" enctype="multipart/form-data" data-form data-loading-text="Memvalidasi berkas...">
             @csrf
             <div class="mb-3">
-                <label for="import-file" class="form-label required">Berkas Excel</label>
-                <input id="import-file" type="file" name="file" class="form-control @error('file') is-invalid @enderror" accept=".xlsx,.xls" required aria-describedby="import-file-help @error('file') import-file-error @enderror">
-                <div id="import-file-help" class="form-hint">XLSX/XLS · maksimal {{ number_format(config('bulk_imports.max_upload_kb') / 1024, 1) }} MB · {{ number_format(config('bulk_imports.max_rows'), 0, ',', '.') }} baris. NIP dan telepon harus memakai format Text untuk menjaga nol di depan. Formula dan macro tidak didukung.</div>
+                <label for="import-file" class="form-label required">Berkas impor</label>
+                <input id="import-file" type="file" name="file" class="form-control @error('file') is-invalid @enderror" accept=".xlsx,.xls,.csv" required aria-describedby="import-file-help @error('file') import-file-error @enderror">
+                <div id="import-file-help" class="form-hint">
+                    XLSX, XLS, atau CSV UTF-8 · maksimal {{ number_format(config('bulk_imports.max_upload_kb') / 1024, 1) }} MB · {{ number_format(config('bulk_imports.max_rows'), 0, ',', '.') }} baris.
+                    @if ($module !== 'users')
+                        Gunakan format Text untuk @if ($module === 'employees') NIP, kode departemen, dan @endif nomor telepon saat mengedit di Excel agar nol di depan tetap tersimpan.
+                    @endif
+                    Gunakan nilai biasa tanpa formula atau macro.
+                </div>
                 @error('file')<div id="import-file-error" class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
             @if ($errors->any() && !$errors->has('file'))
@@ -33,10 +40,10 @@
     </x-ui.card>
     @if ($module === 'employees')
         <x-ui.card title="Referensi Departemen Aktif" class="mt-3">
-            <p class="text-secondary">Isi <code>department_id</code> menggunakan ID berikut. Impor tidak membuat departemen baru.</p>
-            <div class="table-responsive"><table class="table table-vcenter"><thead><tr><th>ID</th><th>Kode</th><th>Departemen</th></tr></thead><tbody>
-                @forelse ($departments as $department)<tr><td>{{ $department->id }}</td><td>{{ $department->code }}</td><td>{{ $department->name }}</td></tr>
-                @empty<tr><td colspan="3">Belum ada departemen aktif. Siapkan departemen sebelum mengimpor karyawan.</td></tr>@endforelse
+            <p class="text-secondary">Isi <code>department</code> dengan kode atau nama unik dari daftar berikut.</p>
+            <div class="table-responsive"><table class="table table-vcenter"><thead><tr><th>Kode</th><th>Departemen</th></tr></thead><tbody>
+                @forelse ($departments as $department)<tr><td>{{ $department->code }}</td><td>{{ $department->name }}</td></tr>
+                @empty<tr><td colspan="2">Belum ada departemen aktif. Siapkan departemen sebelum mengimpor karyawan.</td></tr>@endforelse
             </tbody></table></div>
         </x-ui.card>
     @elseif ($module === 'users')

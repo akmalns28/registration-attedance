@@ -31,10 +31,10 @@ class BulkImportStore
         try {
             $payload = json_decode(Crypt::decryptString(File::get($path)), true, flags: JSON_THROW_ON_ERROR);
         } catch (DecryptException|\JsonException) {
-            abort(422, 'Preview tidak valid. Unggah kembali berkas Excel.');
+            abort(422, 'Preview tidak valid. Unggah kembali berkas impor.');
         }
         abort_unless($payload['owner'] === $user->id && $payload['module'] === $module, 404);
-        abort_if($payload['expires_at'] < now()->timestamp, 410, 'Preview kedaluwarsa. Unggah kembali berkas Excel.');
+        abort_if($payload['expires_at'] < now()->timestamp, 410, 'Preview kedaluwarsa. Unggah kembali berkas impor.');
 
         return $payload;
     }
@@ -51,7 +51,7 @@ class BulkImportStore
     /**
      * Serializes confirmations without using a database-backed cache or new tables.
      *
-     * @param Closure(): mixed $callback
+     * @param  Closure(): mixed  $callback
      */
     public function locked(Closure $callback): mixed
     {
@@ -59,7 +59,7 @@ class BulkImportStore
         File::ensureDirectoryExists(dirname($path), 0700, true);
         $handle = fopen($path, 'c');
         abort_unless($handle !== false, 503, 'Penyimpanan impor tidak tersedia. Coba kembali nanti.');
-        if (!flock($handle, LOCK_EX | LOCK_NB)) {
+        if (! flock($handle, LOCK_EX | LOCK_NB)) {
             fclose($handle);
             abort(409, 'Impor lain sedang diproses. Coba kembali setelah selesai.');
         }

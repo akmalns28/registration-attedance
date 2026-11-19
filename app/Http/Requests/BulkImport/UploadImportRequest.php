@@ -23,7 +23,7 @@ class UploadImportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file' => ['required', 'file', 'extensions:xlsx,xls', 'max:'.max(1, (int) config('bulk_imports.max_upload_kb'))],
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv', 'max:'.max(1, (int) config('bulk_imports.max_upload_kb'))],
             'module' => ['prohibited'], 'rows' => ['prohibited'], 'summary' => ['prohibited'],
         ];
     }
@@ -31,7 +31,7 @@ class UploadImportRequest extends FormRequest
     /** @return array<string, string> */
     public function messages(): array
     {
-        return ['file.required' => 'Pilih berkas Excel terlebih dahulu.', 'file.extensions' => 'Unggah berkas .xlsx atau .xls.',
+        return ['file.required' => 'Pilih berkas impor terlebih dahulu.', 'file.extensions' => 'Unggah berkas .xlsx, .xls, atau .csv.',
             'file.max' => 'Berkas melebihi batas ukuran impor.'];
     }
 }

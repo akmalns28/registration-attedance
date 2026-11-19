@@ -26,7 +26,7 @@
 
                 <div class="col-auto ms-auto">
                     @can('users.manage')
-                        <a href="{{ route('settings.users.import.index') }}" class="btn btn-outline-primary"><x-ui.icon name="file-spreadsheet" class="me-2" />Import Excel</a>
+                        <a href="{{ route('settings.users.import.index') }}" class="btn btn-outline-primary"><x-ui.icon name="file-spreadsheet" class="me-2" />Import</a>
                     @endcan
                     <a href="{{ route('settings.users.create') }}" class="btn btn-primary">
                         <x-ui.icon name="plus" class="me-2" />
