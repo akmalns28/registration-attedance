@@ -25,7 +25,7 @@ class EnsureUserIsActive
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            if ($request->expectsJson()) {
+            if ($request->expectsJson() || $request->routeIs('events.reports.data')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Akun Anda telah dinonaktifkan.',

@@ -28,10 +28,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->shouldRenderJsonWhen(fn (Request $request) => $request->is('api/*') || $request->expectsJson());
+        $exceptions->shouldRenderJsonWhen(fn (Request $request) => $request->routeIs('events.reports.data')
+            || $request->is('api/*') || $request->expectsJson());
 
         $exceptions->render(function (Throwable $exception, Request $request): ?JsonResponse {
-            if (! $request->routeIs('attendance.scanner.validate', 'attendance.check-in', 'events.days.attendance')) {
+            if (! $request->routeIs('attendance.scanner.validate', 'attendance.check-in', 'attendance.manual.*', 'events.days.attendance')) {
                 return null;
             }
 

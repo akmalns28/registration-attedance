@@ -19,6 +19,7 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
     const requests = [];
     const exportRequests = [];
     let exportFailure = null;
+    let reportRedirect = false;
     try {
         const generated = await promisify(execFile)("php", ["vendor/bin/phpunit", "tests/Feature/AttendanceReportTest.php",
             "--filter=test_browser_fixtures_preserve_multi_day_scope_and_existing_scanner_entry"], {
@@ -68,6 +69,10 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
                 if (url.pathname.endsWith("/reports/data")) {
                     const parameters = Object.fromEntries(url.searchParams);
                     requests.push(parameters);
+                    if (reportRedirect) {
+                        response.writeHead(302, { Location: "/login" }).end();
+                        return;
+                    }
                     let rows = fixture.rows.filter((row) => (!parameters.event_day || row.event_day_date === fixture.day_date)
                         && (!parameters.participant_type || row.participant_type === parameters.participant_type)
                         && (!parameters.attendance_status || row.attendance_status === parameters.attendance_status)
@@ -233,6 +238,8 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
             const result = await client.evaluate(`
                 for (const term of ["C", "Car", "Carla"]) { reports.search.value = term; reports.search.dispatchEvent(new Event("input", { bubbles: true })); }
                 await waitForReports("Carla");
+                reports.search.dispatchEvent(new Event("change", { bubbles: true }));
+                await waitForReports("Carla");
                 const searched = { rows: reports.table.page.info().recordsDisplay,
                     expected: reports.page.querySelector('[data-report-summary="expected"] .h1').textContent,
                     present: reports.page.querySelector('[data-report-summary="present"] .h1').textContent };
@@ -263,7 +270,7 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
             await fresh();
             const result = await client.evaluate(`
                 const pending = [];
-                reports.request = (url, options) => new Promise((resolve) => pending.push({ resolve, signal: options.signal, draw: Number(new URL(url).searchParams.get("draw")) }));
+                reports.request = (url, options) => new Promise((resolve) => pending.push({ resolve, signal: options.signal, draw: Number(new URL(url, location.href).searchParams.get("draw")) }));
                 reports.search.value = "Alice"; reports.applyFilters();
                 reports.search.value = "Carla"; reports.applyFilters();
                 const respond = (index, name, present) => {
@@ -299,6 +306,38 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
             assert.equal(result.failed.retry, true);
             assert.equal(result.failed.rows, 0);
             assert.equal(result.recovered, 24);
+        });
+
+        await suite.test("report errors distinguish session, permission, network and server failures", async () => {
+            await fresh();
+            const messages = await client.evaluate(`
+                const messages = [];
+                for (const status of [401, 403, 503, 200, "network"]) {
+                    reports.request = async (url, options) => {
+                        if (!url.startsWith("/events/") || options.redirect !== "manual" || options.mode !== "same-origin") {
+                            throw new Error("Reports must make same-origin requests without following redirects.");
+                        }
+                        if (status === "network") throw new TypeError("Failed to fetch");
+                        return new Response(status === 200 ? "invalid JSON" : "<html>Error</html>",
+                            { status, headers: { "content-type": status === 200 ? "application/json" : "text/html" } });
+                    };
+                    reports.applyFilters(); await waitForReports();
+                    messages.push(reports.feedback.textContent);
+                }
+                return messages;
+            `);
+            assert.match(messages[0], /login kembali/);
+            assert.match(messages[1], /tidak memiliki izin/);
+            assert.match(messages[2], /Server belum dapat/);
+            assert.match(messages[3], /Respons laporan tidak valid/);
+            assert.match(messages[4], /Koneksi ke server gagal/);
+            reportRedirect = true;
+            try {
+                await fresh();
+                assert.match(await client.evaluate(`return reports.feedback.textContent;`), /login kembali/);
+            } finally {
+                reportRedirect = false;
+            }
         });
 
         await suite.test("exports retain every filter and sorting, omit pagination and prevent repeated clicks", async () => {
@@ -412,7 +451,7 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
         await suite.test("participant text is escaped before DataTables renders it", async () => {
             await fresh();
             const result = await client.evaluate(`
-                reports.request = async (url) => new Response(JSON.stringify({ draw: Number(new URL(url).searchParams.get("draw")), recordsTotal: 1, recordsFiltered: 1,
+                reports.request = async (url) => new Response(JSON.stringify({ draw: Number(new URL(url, location.href).searchParams.get("draw")), recordsTotal: 1, recordsFiltered: 1,
                     data: [{ ...fixture.rows[0], participant_name: '<img src=x onerror="window.reportXss=true">' }],
                     summary: { expected: 1, present: 1, not_present: 0, percentage: 100 } }), { headers: { "content-type": "application/json" } });
                 reports.applyFilters(); await waitForReports();

@@ -54,7 +54,7 @@ class AttendanceQrValidationService
         return $this->validateRegistration($this->resolve($payload), $event, $day);
     }
 
-    private function validateContext(Event $event, EventDay $day): void
+    public function validateContext(Event $event, EventDay $day): void
     {
         if (! $event->isPublished()) {
             throw ValidationException::withMessages([

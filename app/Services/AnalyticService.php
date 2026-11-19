@@ -155,6 +155,6 @@ class AnalyticService
 
     private function percentage(int $checkedIn, int $expected): float
     {
-        return $expected === 0 ? 0.0 : round($checkedIn / $expected * 100, 2);
+        return $expected === 0 ? 0.0 : min(100.0, round($checkedIn / $expected * 100, 2));
     }
 }

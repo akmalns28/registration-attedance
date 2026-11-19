@@ -48,6 +48,10 @@
                             <a href="#day-scanner" id="day-scanner-tab" class="nav-link" data-bs-toggle="tab" role="tab"
                                 aria-controls="day-scanner" aria-selected="false">Scan QR</a>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <a href="#day-manual" id="day-manual-tab" class="nav-link" data-bs-toggle="tab" role="tab"
+                                aria-controls="day-manual" aria-selected="false">Manual Check-in</a>
+                        </li>
                     @endcan
                     @can('attendance.view')
                         <li class="nav-item" role="presentation">
@@ -67,6 +71,13 @@
                             @include('attendance._scanner', $scannerData)
                         @else
                             <div class="alert alert-warning mb-0">Validasi QR hanya tersedia untuk Event Published dengan hari pelaksanaan aktif dalam rentang tanggal event.</div>
+                        @endif
+                    </section>
+                    <section id="day-manual" class="tab-pane fade" role="tabpanel" aria-labelledby="day-manual-tab">
+                        @if ($scannerData)
+                            @include('attendance._manual', $scannerData)
+                        @else
+                            <div class="alert alert-warning mb-0">Manual Check-in hanya tersedia untuk Event Published dengan hari pelaksanaan aktif dalam rentang tanggal event.</div>
                         @endif
                     </section>
                 @endcan

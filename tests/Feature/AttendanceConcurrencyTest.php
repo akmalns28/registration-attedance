@@ -9,6 +9,7 @@ use App\Models\EventRegistration;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\TestWith;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\Process\Process;
@@ -16,7 +17,10 @@ use Tests\TestCase;
 
 class AttendanceConcurrencyTest extends TestCase
 {
-    public function test_two_processes_confirming_the_same_registration_create_only_one_attendance(): void
+    #[TestWith(['qr', 'qr'])]
+    #[TestWith(['manual', 'manual'])]
+    #[TestWith(['qr', 'manual'])]
+    public function test_two_processes_confirming_the_same_registration_create_only_one_attendance(string $firstMethod, string $secondMethod): void
     {
         $database = tempnam(sys_get_temp_dir(), 'attendance-concurrency-');
         $this->assertIsString($database);
@@ -55,17 +59,21 @@ class AttendanceConcurrencyTest extends TestCase
                     }
                     usleep(10000);
                 }
-                $result = app(App\Services\AttendanceCheckinService::class)->checkIn(
-                    $argv[4], App\Models\Event::findOrFail($argv[5]),
-                    App\Models\EventDay::findOrFail($argv[6]), App\Models\User::findOrFail($argv[7]),
-                );
+                $service = app(App\Services\AttendanceCheckinService::class);
+                $event = App\Models\Event::findOrFail($argv[5]);
+                $day = App\Models\EventDay::findOrFail($argv[6]);
+                $operator = App\Models\User::findOrFail($argv[7]);
+                $result = $argv[9] === 'manual'
+                    ? $service->checkInRegistration((int) $argv[4], $event, $day, $operator)
+                    : $service->checkIn($argv[4], $event, $day, $operator);
                 echo json_encode(['created' => $result['created'], 'id' => $result['attendance']->id], JSON_THROW_ON_ERROR);
                 PHP;
 
-            for ($index = 0; $index < 2; $index++) {
+            foreach ([$firstMethod, $secondMethod] as $index => $method) {
                 $process = new Process([
                     PHP_BINARY, '-r', $worker, base_path(), json_encode($connection, JSON_THROW_ON_ERROR), $gate,
-                    'RA1:'.$registration->uuid, (string) $event->id, (string) $day->id, (string) $operator->id, (string) $index,
+                    $method === 'manual' ? (string) $registration->id : 'RA1:'.$registration->uuid,
+                    (string) $event->id, (string) $day->id, (string) $operator->id, (string) $index, $method,
                 ], base_path(), ['APP_ENV' => 'testing', 'CACHE_STORE' => 'array'], timeout: 30);
                 $process->start();
                 $processes[] = $process;

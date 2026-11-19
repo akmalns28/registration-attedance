@@ -16,9 +16,11 @@ use DOMXPath;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\TestWith;
+use RuntimeException;
 use Tests\TestCase;
 
 class AttendanceReportTest extends TestCase
@@ -54,7 +56,7 @@ class AttendanceReportTest extends TestCase
 
         $this->get(route('events.show', $fixture['event']))->assertOk()
             ->assertDontSee('href="#event-reports"', false)->assertDontSee('data-attendance-report-table', false);
-        $this->getJson($this->url($fixture['event']))->assertForbidden()->assertJsonMissingPath('data');
+        $this->get($this->url($fixture['event']))->assertForbidden()->assertHeader('Content-Type', 'application/json')->assertJsonMissingPath('data');
         $user = User::factory()->create(['is_active' => true]);
         $user->givePermissionTo('reports.view');
         $this->actingAs($user)->getJson($this->url($fixture['event']))->assertForbidden();
@@ -63,13 +65,41 @@ class AttendanceReportTest extends TestCase
     public function test_guest_and_inactive_users_cannot_access_reports(): void
     {
         $event = Event::factory()->create();
-        $this->getJson($this->url($event))->assertUnauthorized();
+        $this->get($this->url($event))->assertUnauthorized()->assertHeader('Content-Type', 'application/json');
         $user = $this->user();
         $user->is_active = false;
         $user->save();
 
-        $this->actingAs($user)->getJson($this->url($event))->assertForbidden();
+        $this->actingAs($user)->get($this->url($event))->assertForbidden()->assertHeader('Content-Type', 'application/json');
         $this->assertGuest();
+    }
+
+    public function test_report_urls_use_the_browser_origin_when_the_proxy_forwards_over_http(): void
+    {
+        $fixture = $this->fixture();
+        $event = $fixture['event'];
+        $path = route('events.reports.data', $event, absolute: false);
+        config(['trustedproxy.proxies' => null]);
+
+        $page = $this->actingAs($this->user())->withHeaders(['X-Forwarded-Proto' => 'https'])
+            ->get('http://rams.example.test'.route('events.show', $event, absolute: false))->assertOk();
+
+        $this->assertSame(1, preg_match('/data-attendance-reports data-url="([^"]+)"/', $page->getContent(), $endpoint));
+        $this->assertSame($path, $endpoint[1]);
+        $this->get('https://rams.example.test'.$endpoint[1].'?attendance_status=present')->assertOk()
+            ->assertHeader('Content-Type', 'application/json')->assertJsonPath('summary.expected', 4);
+    }
+
+    public function test_report_backend_errors_return_json_without_exposing_internal_details(): void
+    {
+        config(['app.debug' => false]);
+        Exceptions::fake();
+        $event = Event::factory()->create();
+        $this->mock(AttendanceReportService::class)->shouldReceive('data')->once()
+            ->andThrow(new RuntimeException('Internal report failure detail'));
+
+        $this->actingAs($this->user())->get($this->url($event))->assertInternalServerError()
+            ->assertHeader('Content-Type', 'application/json')->assertDontSee('Internal report failure detail');
     }
 
     public function test_multi_day_report_has_one_row_per_active_registration_day_and_correct_summary(): void

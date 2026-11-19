@@ -193,33 +193,47 @@ body > .notifyjs-corner {
     outline-offset: 3px;
 }
 .ui-action[aria-disabled="true"] { pointer-events: none; }
-#addEmployeeModal .employee-select {
-    --bs-body-bg: #fff;
-    --bs-body-color: #182433;
-    --bs-border-color: #d9e1eb;
-    --bs-border-color-translucent: #d9e1eb;
+.ts-wrapper,
+[data-tom-select-dropdown-parent] {
+    --bs-body-bg: var(--tblr-bg-surface, #fff);
+    --bs-body-color: light-dark(#182433, var(--tblr-body-color));
+    --bs-border-color: var(--tblr-border-color);
+    --bs-border-color-translucent: var(--tblr-border-color-translucent);
     --bs-border-radius: var(--tblr-border-radius);
     --bs-border-width: var(--tblr-border-width);
     --bs-form-invalid-color: var(--tblr-danger);
-    --bs-tertiary-bg: #edf4ff;
+    --bs-form-valid-color: var(--tblr-success);
+    --bs-secondary-bg: var(--tblr-bg-surface-secondary);
+    --bs-tertiary-bg: var(--tblr-bg-surface-secondary);
+}
+[data-tom-select-dropdown-parent] {
     position: relative;
 }
-#addEmployeeModal .employee-select > .ts-dropdown {
+.ts-wrapper > .ts-dropdown,
+[data-tom-select-dropdown-parent] > .ts-dropdown {
     inset: 100% 0 auto;
-    z-index: 2;
+    z-index: var(--tblr-dropdown-zindex, 1000);
     background-color: var(--bs-body-bg);
     color: var(--bs-body-color);
 }
-#addEmployeeModal .employee-select .ts-dropdown-content {
+.ts-dropdown .ts-dropdown-content {
     max-height: min(14rem, 35dvh);
     overscroll-behavior: contain;
 }
-#addEmployeeModal .employee-select .ts-dropdown .option {
+.ts-dropdown .option {
     padding: 0.5rem 0.75rem;
     overflow-wrap: anywhere;
 }
-#addEmployeeModal .employee-select .ts-dropdown .option.selected { background-color: #dbeaff; }
-#addEmployeeModal .employee-select .ts-dropdown .option:is(.active, :hover) { background-color: #cce1ff; }
+.ts-dropdown .option.selected {
+    background-color: color-mix(in srgb, var(--bs-body-bg) 84%, var(--tblr-primary));
+}
+.ts-dropdown .option:is(.active, :hover) {
+    background-color: color-mix(in srgb, var(--bs-body-bg) 76%, var(--tblr-primary));
+    color: var(--bs-body-color);
+}
+.ts-control .item { min-width: 0; overflow-wrap: anywhere; }
+.app-breadcrumb .breadcrumb { row-gap: 0.25rem; }
+.app-breadcrumb .breadcrumb-item { min-width: 0; overflow-wrap: anywhere; }
 .page-wrapper, .card, .card-body, .page-header .col { min-width: 0; }
 .page-title { overflow-wrap: anywhere; }
 .table-responsive { max-width: 100%; }

@@ -22,15 +22,27 @@ class AttendanceCheckinService
      */
     public function checkIn(string $payload, Event $event, EventDay $day, User $operator): array
     {
+        return $this->record($payload, $event, $day, $operator);
+    }
+
+    /** @return array{attendance: Attendance, created: bool} */
+    public function checkInRegistration(int $registrationId, Event $event, EventDay $day, User $operator): array
+    {
+        return $this->record($registrationId, $event, $day, $operator);
+    }
+
+    /** @return array{attendance: Attendance, created: bool} */
+    private function record(string|int $identifier, Event $event, EventDay $day, User $operator): array
+    {
         Gate::forUser($operator)->authorize('attendance.scan');
         abort_unless($operator->is_active, 403);
 
-        return DB::transaction(function () use ($payload, $event, $day, $operator): array {
+        return DB::transaction(function () use ($identifier, $event, $day, $operator): array {
             $lockedEvent = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
             $lockedDay = EventDay::query()->whereKey($day->id)->lockForUpdate()->firstOrFail();
             $lockedDay->setRelation('event', $lockedEvent);
-            $resolved = $this->validator->resolve($payload);
-            $registration = EventRegistration::query()->whereKey($resolved->id)
+            $registrationId = is_int($identifier) ? $identifier : $this->validator->resolve($identifier)->id;
+            $registration = EventRegistration::query()->whereKey($registrationId)
                 ->with(['event', 'employee', 'externalParticipant'])->lockForUpdate()->firstOrFail();
             $this->validator->validateRegistration($registration, $lockedEvent, $lockedDay);
             $this->datePolicy->ensureAllowed($lockedDay);

@@ -7,17 +7,6 @@
     {{-- Page Header --}}
     <x-ui.page-header title="UI Components" :subtitle="'Preview dan pengujian komponen '.config('app.name')" />
 
-    {{-- Breadcrumb --}}
-    <x-ui.breadcrumb class="mb-4" :items="[
-        [
-            'label' => 'Dashboard',
-            'url' => route('dashboard'),
-        ],
-        [
-            'label' => 'UI Components',
-        ],
-    ]" />
-
     {{-- Stats --}}
     <div class="row row-deck row-cards mb-4">
 

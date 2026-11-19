@@ -322,7 +322,9 @@ class AttendanceReportExportTest extends TestCase
             ->assertSee('data-attendance-report-table', false)->assertDontSee('data-report-export=', false);
         $response = $this->actingAs($this->user('event-admin'))->get(route('events.show', $event))->assertOk();
         foreach (['excel', 'csv', 'pdf', 'print'] as $format) {
-            $response->assertSee('data-report-export="'.$format.'"', false)->assertSee($this->url($event, $format), false);
+            $route = $format === 'print' ? 'events.reports.print' : 'events.reports.export.'.$format;
+            $response->assertSee('data-report-export="'.$format.'"', false)
+                ->assertSee('data-url="'.route($route, $event, absolute: false).'"', false);
         }
     }
 

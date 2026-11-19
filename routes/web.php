@@ -19,6 +19,7 @@ use App\Http\Controllers\EventRegistrationController;
 use App\Http\Controllers\EventRegistrationQrController;
 use App\Http\Controllers\EventScheduleController;
 use App\Http\Controllers\ExternalParticipantController;
+use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\Settings\RoleController;
 use App\Http\Controllers\Settings\UserController;
 use Illuminate\Http\RedirectResponse;
@@ -291,6 +292,11 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     Route::post('/attendance/check-in', AttendanceCheckinController::class)
         ->middleware(['can:attendance.scan', 'throttle:60,1'])->name('attendance.check-in');
+
+    Route::middleware(['can:attendance.scan', 'throttle:60,1'])->prefix('attendance/manual')->name('attendance.manual.')->group(function () {
+        Route::get('/participants', [ManualAttendanceController::class, 'search'])->name('search');
+        Route::post('/check-in', [ManualAttendanceController::class, 'checkIn'])->name('check-in');
+    });
 });
 
 /*

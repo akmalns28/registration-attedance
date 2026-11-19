@@ -1,4 +1,4 @@
-<div data-attendance-reports data-url="{{ route('events.reports.data', $event) }}">
+<div data-attendance-reports data-url="{{ route('events.reports.data', $event, absolute: false) }}">
     <h3 class="mb-1">Reports</h3>
     <p class="text-secondary">Registrasi aktif · Waktu check-in: {{ config('app.timezone') }}.</p>
 
@@ -57,7 +57,7 @@
         <div class="d-flex flex-wrap gap-2 mb-2" role="group" aria-label="Ekspor laporan kehadiran">
             @foreach (['excel' => ['Export Excel', 'file-spreadsheet'], 'csv' => ['Export CSV', 'file-type-csv'], 'pdf' => ['Export PDF', 'file-type-pdf'], 'print' => ['Print', 'printer']] as $format => [$label, $icon])
                 <button type="button" class="btn btn-outline-primary" data-report-export="{{ $format }}"
-                    data-url="{{ route($format === 'print' ? 'events.reports.print' : 'events.reports.export.'.$format, $event) }}" disabled>
+                    data-url="{{ route($format === 'print' ? 'events.reports.print' : 'events.reports.export.'.$format, $event, absolute: false) }}" disabled>
                     <x-ui.icon :name="$icon" class="me-1" /><span>{{ $label }}</span>
                 </button>
             @endforeach

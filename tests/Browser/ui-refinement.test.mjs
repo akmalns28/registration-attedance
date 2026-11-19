@@ -80,6 +80,11 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 if (!document.querySelector('script[type="module"][src*="/build/"]') || document.querySelector('script[src*="@vite/client"]')) {
                     throw new Error("UI verification must use production Vite assets");
                 }
+                const breadcrumbs = document.querySelectorAll('nav[aria-label="breadcrumb"]');
+                if (breadcrumbs.length !== 1 || !breadcrumbs[0].querySelector('li[aria-current="page"]:not(:has(a))')
+                    || document.querySelectorAll('footer a[href="#contactUsModal"]').length !== 1) {
+                    throw new Error("Shared breadcrumbs and footer did not render correctly");
+                }
             `);
         }
         async function downloadDirectory(page, suffix = "all") {
@@ -162,6 +167,21 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
             });
         }
 
+        await suite.test("Dashboard renders all three charts from server data", async () => {
+            const errorCount = client.errors.length;
+            await fresh("dashboard");
+            const result = await client.evaluate(`
+                await until(() => document.querySelectorAll("[data-dashboard-chart] .apexcharts-svg").length === 3);
+                const data = JSON.parse(document.querySelector("[data-dashboard-chart-data]").textContent);
+                return { charts: Object.keys(data), registrations: data.registrations.find((event) => event.label === "UI Refinement").count,
+                    present: data.attendance[0].present, absent: data.attendance[0].absent, participants: data.participants,
+                    visibleError: !document.querySelector("[data-dashboard-chart-error]").classList.contains("d-none") };
+            `);
+            assert.deepEqual(result, { charts: ["registrations", "attendance", "participants"], registrations: 14,
+                present: 0, absent: 14, participants: [13, 1], visibleError: false });
+            assert.deepEqual(client.errors.slice(errorCount), []);
+        });
+
         await suite.test("toast variants are escaped, deduplicated, announced and individually dismissible", async () => {
             await fresh("dashboard");
             await client.evaluate(`
@@ -224,6 +244,75 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
         });
 
         for (const [width, height] of [[1440, 900], [375, 620]]) {
+            await suite.test(`Department and external participant selects share readable dropdowns at ${width}px`, async () => {
+                await client.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 800 });
+                for (const [page, selector] of [["employeeForm", "#department_id"], ["event", "#external_ids"]]) {
+                    await fresh(page, page === "event" ? "#event-participants" : "");
+                    const errorCount = client.errors.length;
+                    const style = await client.evaluate(`
+                        const select = document.querySelector(${JSON.stringify(selector)});
+                        const modal = select.closest(".modal");
+                        if (modal) {
+                            document.querySelector('[data-bs-target="#' + modal.id + '"]').click();
+                            await until(() => modal.getAttribute("aria-modal") === "true" && !modal.querySelector(".modal-dialog").getAnimations().length);
+                        }
+                        window.picker = select.tomselect;
+                        picker.control.scrollIntoView({ block: "center" });
+                        picker.control.click(); await until(() => picker.isOpen);
+                        const option = picker.dropdown.querySelector(".option.active");
+                        const box = option.getBoundingClientRect();
+                        return { background: getComputedStyle(picker.dropdown).backgroundColor, color: getComputedStyle(option).color,
+                            active: getComputedStyle(option).backgroundColor !== "rgba(0, 0, 0, 0)",
+                            hit: option.contains(document.elementFromPoint(box.left + 5, box.top + box.height / 2)),
+                            inside: picker.dropdown.parentElement === picker.wrapper && (!modal || modal.contains(picker.dropdown)),
+                            controlClass: picker.dropdown.classList.contains("form-select") };
+                    `);
+                    assert.deepEqual(style, { background: "rgb(255, 255, 255)", color: "rgb(24, 36, 51)", active: true, hit: true,
+                        inside: true, controlClass: false });
+                    await client.send("Input.insertText", { text: "Participant Nine" });
+                    const id = await client.evaluate(`
+                        await until(() => picker.dropdown.querySelectorAll(".option").length === 1
+                            && picker.dropdown.querySelector(".option").textContent.includes("Participant Nine"));
+                        return picker.dropdown.querySelector(".option").dataset.value;
+                    `);
+                    await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+                    assert.equal(await client.evaluate("return picker.input.value;"), id);
+                    assert.deepEqual(client.errors.slice(errorCount), []);
+                }
+            });
+
+            await suite.test(`footer and Contact Us support keyboard and fit at ${width}px`, async () => {
+                await client.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 800 });
+                await fresh("notifications");
+                const layout = await client.evaluate(`
+                    const footer = document.querySelector("footer");
+                    const notice = footer.querySelector("p").getBoundingClientRect();
+                    window.contactLink = footer.querySelector("a");
+                    const link = contactLink.getBoundingClientRect();
+                    contactLink.focus();
+                    return { aligned: ${width < 800} ? link.top >= notice.bottom : link.left >= notice.right && link.top < notice.bottom,
+                        atBottom: footer.getBoundingClientRect().bottom >= innerHeight - 1,
+                        breadcrumbs: Array.from(document.querySelectorAll(".app-breadcrumb li"), (item) => item.textContent.trim()),
+                        overflow: document.documentElement.scrollWidth > innerWidth };
+                `);
+                assert.deepEqual(layout, { aligned: true, atBottom: true, breadcrumbs: ["Home", "Notifications"], overflow: false });
+                await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+                const content = await client.evaluate(`
+                    window.contactModal = document.querySelector("#contactUsModal");
+                    await until(() => contactModal.contains(document.activeElement));
+                    const dialog = contactModal.querySelector(".modal-dialog");
+                    const bounds = dialog.getBoundingClientRect();
+                    const chat = contactModal.querySelector('a[href^="https://wa.me/"]');
+                    const button = chat.getBoundingClientRect();
+                    return { whatsapp: chat.getAttribute("href"), email: contactModal.querySelector(".modal-footer a[href^='mailto:']").getAttribute("href"),
+                        visible: chat.contains(document.elementFromPoint(button.x + button.width / 2, button.y + button.height / 2)),
+                        fits: bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight };
+                `);
+                assert.deepEqual(content, { whatsapp: "https://wa.me/6281111189864", email: "mailto:it@ptaun.com", visible: true, fits: true });
+                await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+                await client.evaluate("await until(() => !contactModal.classList.contains('show') && document.activeElement === contactLink);");
+            });
+
             await suite.test(`employee picker layers, searches and submits multiple employees at ${width}px`, async () => {
                 await client.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 800 });
                 await fresh("event", "#event-participants");

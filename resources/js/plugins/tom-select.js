@@ -15,9 +15,9 @@ export function initializeTomSelect(root = document) {
             create: false,
             allowEmptyOption: true,
             maxItems: element.multiple ? null : 1,
+            copyClassesToDropdown: false,
             ...(dropdownParent && {
                 dropdownParent,
-                copyClassesToDropdown: false,
                 hideSelected: false,
                 clearAfterSelect: true,
             }),
