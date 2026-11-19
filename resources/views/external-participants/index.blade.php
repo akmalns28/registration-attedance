@@ -26,7 +26,7 @@
 
                 @can('external-participants.manage')
                     <div class="col-auto ms-auto">
-                        <a href="{{ route('external-participants.import.index') }}" class="btn btn-outline-primary"><x-ui.icon name="file-spreadsheet" class="me-2" />Import Excel</a>
+                        <a href="{{ route('external-participants.import.index') }}" class="btn btn-outline-primary"><x-ui.icon name="file-spreadsheet" class="me-2" />Import</a>
                         <a href="{{ route('external-participants.create') }}" class="btn btn-primary">
                             <x-ui.icon name="plus" class="me-2" />
                             Tambah Peserta

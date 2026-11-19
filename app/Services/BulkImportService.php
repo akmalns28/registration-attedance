@@ -10,10 +10,10 @@ use App\Models\Employee;
 use App\Models\ExternalParticipant;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Unique;
 use Spatie\Permission\Models\Role;
 use Throwable;
@@ -22,12 +22,14 @@ class BulkImportService
 {
     public const MODULES = [
         'employees' => ['title' => 'Employees', 'permission' => 'employees.manage', 'route' => 'employees',
-            'columns' => ['nip', 'name', 'department_id', 'email', 'phone', 'is_active'], 'required' => ['nip', 'name', 'department_id', 'is_active']],
+            'columns' => ['nip', 'name', 'department', 'email', 'phone', 'status'], 'required' => ['nip', 'name', 'department', 'status']],
         'external-participants' => ['title' => 'External Participants', 'permission' => 'external-participants.manage', 'route' => 'external-participants',
-            'columns' => ['name', 'email', 'phone', 'organization', 'position', 'is_active'], 'required' => ['name', 'is_active']],
+            'columns' => ['name', 'email', 'phone', 'organization', 'position', 'status'], 'required' => ['name', 'status']],
         'users' => ['title' => 'Application Users', 'permission' => 'users.manage', 'route' => 'settings.users',
-            'columns' => ['name', 'email', 'is_active', 'role'], 'required' => ['name', 'email', 'is_active', 'role']],
+            'columns' => ['name', 'email', 'status', 'role'], 'required' => ['name', 'email', 'status', 'role']],
     ];
+
+    public const LEGACY_HEADERS = ['department_id' => 'department', 'is_active' => 'status'];
 
     public function __construct(private BulkImportStore $store, private ImportSpreadsheetReader $reader) {}
 
@@ -49,8 +51,8 @@ class BulkImportService
     {
         $this->authorize($user, $module);
         $definition = self::module($module);
-        $raw = $this->reader->read($file, $definition['columns'], $definition['required']);
-        $rows = $this->validateRows($module, $raw);
+        $raw = $this->reader->read($file, $definition['columns'], $definition['required'], self::LEGACY_HEADERS);
+        $rows = $this->validateRows($module, $raw, $this->references($module));
 
         return $this->store->create($user, $module, ['raw' => $raw, 'rows' => $rows, 'summary' => $this->summary($rows)]);
     }
@@ -75,20 +77,27 @@ class BulkImportService
             }
             abort_if($snapshot['state'] !== 'preview', 409, 'Impor sedang diproses atau terhenti. Periksa hasil sebelum mengunggah ulang.');
             abort_unless($snapshot['summary']['create'] > 0, 422, 'Tidak ada baris valid untuk diimpor.');
-            $eligible = array_column(array_filter($snapshot['rows'], fn (array $row): bool => $row['status'] === 'create'), 'row');
-            $rows = $this->validateRows($module, $snapshot['raw']);
+            $eligible = array_column(array_filter($snapshot['rows'], fn (array $row): bool => $row['status'] === 'create'), 'data', 'row');
+            $references = $this->references($module);
+            $rows = $this->validateRows($module, $snapshot['raw'], $references);
             $snapshot['state'] = 'processing';
             $snapshot['results'] = [];
             $this->store->write($id, $snapshot);
             foreach (array_chunk($rows, 100) as $batch) {
                 foreach ($batch as $row) {
-                    $status = match ($row['status']) { 'invalid' => 'failed', 'create' => 'created', default => 'skipped' };
-                    if ($row['status'] === 'create' && !in_array($row['row'], $eligible, true)) {
+                    $status = match ($row['status']) {
+                        'invalid' => 'failed', 'create' => 'created', default => 'skipped'
+                    };
+                    $approved = $eligible[$row['row']] ?? null;
+                    if ($status === 'created' && $approved === null) {
                         $status = 'skipped';
                         $row['errors'][] = 'Baris ini belum disetujui sebagai data baru pada preview. Unggah ulang untuk meninjaunya.';
+                    } elseif ($status === 'created' && ! $this->referenceStillApproved($module, $approved, $row['data'], $references)) {
+                        $status = 'failed';
+                        $row['errors'][] = 'Referensi berubah sejak preview. Unggah ulang untuk meninjau referensi terbaru.';
                     } elseif ($status === 'created') {
                         try {
-                            DB::transaction(fn () => $this->persist($module, $row['data']));
+                            DB::transaction(fn () => $this->persist($module, $row['data'], $references));
                         } catch (Throwable $exception) {
                             report($exception);
                             $status = 'failed';
@@ -110,12 +119,13 @@ class BulkImportService
 
     /**
      * Existing FormRequest rules remain the source of field validation.
-     * Reference sets replace per-row database validators to keep queries bounded.
+     * Reference lookups replace per-row database validators to keep queries bounded.
      *
-     * @param array<int, array{row: int, data: array<string, mixed>, errors: array<int, string>}> $raw
-     * @return array<int, array{row: int, data: array<string, mixed>, errors: array<int, string>, warnings: array<int, string>, status: string}>
+     * @param  array<int, array{row: int, data: array<string, mixed>, errors: array<int, string>}>  $raw
+     * @param  Collection<int, Department|Role>  $references
+     * @return array<int, array{row: int, input: array<string, mixed>, data: array<string, mixed>, display: array<string, string>, errors: array<int, string>, warnings: array<int, string>, status: string}>
      */
-    private function validateRows(string $module, array $raw): array
+    private function validateRows(string $module, array $raw, Collection $references): array
     {
         $rules = match ($module) {
             'employees' => (new StoreEmployeeRequest)->rules(),
@@ -127,17 +137,25 @@ class BulkImportService
             'external-participants' => (new StoreExternalParticipantRequest)->messages(),
             default => [],
         };
-        $messages = [...$messages, 'is_active.boolean' => 'Status aktif harus 1 atau 0.', 'role.in' => 'Role tidak ditemukan atau tidak boleh diberikan melalui impor.',
-            'department_id.in' => 'Departemen tidak tersedia atau sudah tidak aktif.'];
+        $messages['is_active.required'] ??= 'Status wajib diisi.';
+        $messages['is_active.boolean'] = 'Status tidak dikenal. Gunakan Aktif, Tidak Aktif, Active, Inactive, Yes, No, True, False, 1, atau 0.';
         if ($module === 'employees') {
-            $rules['nip'] = array_values(array_filter($rules['nip'], fn (mixed $rule): bool => !$rule instanceof Unique));
-            $rules['department_id'] = ['required', 'integer', Rule::in(Department::query()->active()->pluck('id')->all())];
+            $rules['nip'] = array_values(array_filter($rules['nip'], fn (mixed $rule): bool => ! $rule instanceof Unique));
+            unset($rules['department_id']);
         } elseif ($module === 'users') {
-            $rules['email'] = array_values(array_filter($rules['email'], fn (mixed $rule): bool => !$rule instanceof Unique));
+            $rules['email'] = array_values(array_filter($rules['email'], fn (mixed $rule): bool => ! $rule instanceof Unique));
             unset($rules['roles'], $rules['roles.*']);
-            $rules['role'] = ['required', 'string', Rule::in(Role::query()->where('guard_name', 'web')->where('name', '!=', 'super-admin')->pluck('name')->all())];
+            $messages['name.required'] = 'Nama pengguna wajib diisi.';
+            $messages['email.required'] = 'Email pengguna wajib diisi.';
+            $messages['email.email'] = 'Format email tidak valid.';
         }
-        $normalized = array_map(fn (array $row): array => [...$row, 'data' => $this->normalize($row['data'])], $raw);
+        $referenceField = match ($module) {
+            'employees' => 'department',
+            'users' => 'role',
+            default => null,
+        };
+        $aliases = $this->referenceAliases($references);
+        $normalized = array_map(fn (array $row): array => $this->prepareRow($row, $referenceField, $references, $aliases), $raw);
         $counts = [];
         foreach ($normalized as $row) {
             foreach ($this->keys($module, $row['data']) as $key) {
@@ -163,7 +181,7 @@ class BulkImportService
             $warnings = [];
             if ($module === 'users') {
                 $warnings[] = 'Akun lokal akan tetap nonaktif. Identitas Keycloak belum diverifikasi; aktivasi dilakukan administrator setelah verifikasi.';
-                $row['data']['is_active'] = '0';
+                $row['data']['is_active'] = false;
             }
             $rows[] = [...$row, 'errors' => array_values(array_unique($errors)), 'warnings' => $warnings, 'status' => $status];
         }
@@ -172,7 +190,133 @@ class BulkImportService
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array{row: int, data: array<string, mixed>, errors: array<int, string>}  $row
+     * @param  Collection<int, Department|Role>  $references
+     * @param  array<string, array<int, Department|Role>>  $aliases
+     * @return array{row: int, input: array<string, mixed>, data: array<string, mixed>, display: array<string, string>, errors: array<int, string>}
+     */
+    private function prepareRow(array $row, ?string $referenceField, Collection $references, array $aliases): array
+    {
+        $input = $row['data'];
+        foreach (self::LEGACY_HEADERS as $legacy => $field) {
+            if (array_key_exists($legacy, $input)) {
+                $input[$field] = $input[$legacy];
+                unset($input[$legacy]);
+            }
+        }
+
+        $data = $this->normalize($input);
+        $display = [];
+        $errors = $row['errors'];
+        $status = $this->booleanStatus($data['status']);
+        $data['is_active'] = $status ?? $data['status'];
+        unset($data['status']);
+        if ($status !== null) {
+            $display['status'] = $status ? 'Aktif' : 'Tidak Aktif';
+        }
+
+        if ($referenceField !== null) {
+            $label = $referenceField === 'department' ? 'Departemen' : 'Role';
+            $reference = $this->resolveReference($input[$referenceField], $label, $references, $aliases);
+            unset($data[$referenceField]);
+            if (is_string($reference)) {
+                $errors[] = $reference;
+            } else {
+                $data[$referenceField.'_id'] = $reference->getKey();
+                $display[$referenceField] = $reference instanceof Department ? $reference->code.' — '.$reference->name : $reference->name;
+            }
+        }
+
+        $originalValues = array_filter($input, fn (?string $value, string $field): bool => $value !== ($data[$field] ?? null), ARRAY_FILTER_USE_BOTH);
+
+        return ['row' => $row['row'], 'input' => $originalValues, 'data' => $data, 'display' => $display, 'errors' => $errors];
+    }
+
+    private function booleanStatus(?string $value): ?bool
+    {
+        return match (Str::lower($value ?? '')) {
+            'active', 'aktif', 'yes', 'true', '1' => true,
+            'inactive', 'tidak aktif', 'no', 'false', '0' => false,
+            default => null,
+        };
+    }
+
+    /** @return Collection<int, Department|Role> */
+    private function references(string $module): Collection
+    {
+        return match ($module) {
+            'employees' => Department::query()->get(['id', 'code', 'name', 'is_active'])->keyBy('id'),
+            'users' => Role::query()->where('guard_name', 'web')->get()->keyBy('id'),
+            default => collect(),
+        };
+    }
+
+    /**
+     * @param  Collection<int, Department|Role>  $references
+     * @return array<string, array<int, Department|Role>>
+     */
+    private function referenceAliases(Collection $references): array
+    {
+        $aliases = [];
+        foreach ($references as $reference) {
+            $values = $reference instanceof Department ? [$reference->code, $reference->name] : [$reference->name];
+            foreach ($values as $value) {
+                $aliases[Str::lower(Str::trim($value))][$reference->getKey()] = $reference;
+            }
+        }
+
+        return $aliases;
+    }
+
+    /**
+     * @param  Collection<int, Department|Role>  $references
+     * @param  array<string, array<int, Department|Role>>  $aliases
+     */
+    private function resolveReference(?string $input, string $label, Collection $references, array $aliases): Department|Role|string
+    {
+        $key = Str::lower(Str::trim($input ?? ''));
+        if ($key === '') {
+            return "{$label} wajib diisi.";
+        }
+
+        $matches = $aliases[$key] ?? [];
+        $byId = ctype_digit($key) ? $references->get(ltrim($key, '0') ?: '0') : null;
+        if ($byId !== null) {
+            $matches[$byId->getKey()] = $byId;
+        }
+
+        if (count($matches) > 1) {
+            return "{$label} memiliki lebih dari satu kecocokan. Gunakan referensi yang unik.";
+        }
+
+        $reference = reset($matches);
+
+        return match (true) {
+            $reference === false => "{$label} tidak tersedia. Gunakan referensi dari daftar pada halaman impor.",
+            $reference instanceof Department && ! $reference->is_active => 'Departemen sudah tidak aktif.',
+            $reference instanceof Role && Str::lower(Str::trim($reference->name)) === 'super-admin' => 'Role super-admin tidak boleh diberikan melalui impor.',
+            default => $reference,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $approved
+     * @param  array<string, mixed>  $data
+     * @param  Collection<int, Department|Role>  $references
+     */
+    private function referenceStillApproved(string $module, array $approved, array $data, Collection $references): bool
+    {
+        return match ($module) {
+            'employees' => (string) $approved['department_id'] === (string) $data['department_id'],
+            'users' => isset($approved['role_id'])
+                ? $approved['role_id'] === $data['role_id']
+                : $approved['role'] === $references[$data['role_id']]->name,
+            default => true,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     private function normalize(array $data): array
@@ -197,7 +341,7 @@ class BulkImportService
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array<int, string>
      */
     private function keys(string $module, array $data): array
@@ -222,7 +366,7 @@ class BulkImportService
     }
 
     /**
-     * @param array<int, array{data: array<string, mixed>}> $rows
+     * @param  array<int, array{data: array<string, mixed>}>  $rows
      * @return array<string, true>
      */
     private function existing(string $module, array $rows): array
@@ -254,18 +398,20 @@ class BulkImportService
         return $found;
     }
 
-    /** @param array<string, mixed> $data */
-    private function persist(string $module, array $data): void
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  Collection<int, Department|Role>  $references
+     */
+    private function persist(string $module, array $data, Collection $references): void
     {
         if ($module === 'users') {
-            $role = Role::query()->where('guard_name', 'web')->where('name', $data['role'])->where('name', '!=', 'super-admin')->firstOrFail();
             $user = new User;
             $user->name = $data['name'];
             $user->email = $data['email'];
             $user->is_active = false;
             $user->password = null;
             $user->save();
-            $user->syncRoles([$role]);
+            $user->syncRoles([$references[$data['role_id']]]);
         } elseif ($module === 'employees') {
             Employee::create($data);
         } else {
@@ -274,7 +420,7 @@ class BulkImportService
     }
 
     /**
-     * @param array<int, array{status: string}> $rows
+     * @param  array<int, array{status: string}>  $rows
      * @return array{total: int, valid: int, invalid: int, existing: int, duplicate: int, create: int, skip: int}
      */
     private function summary(array $rows): array
@@ -287,7 +433,7 @@ class BulkImportService
     }
 
     /**
-     * @param array<int, array{status: string}> $rows
+     * @param  array<int, array{status: string}>  $rows
      * @return array{created: int, skipped: int, failed: int}
      */
     private function resultSummary(array $rows): array
