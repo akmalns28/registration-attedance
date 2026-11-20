@@ -12,6 +12,7 @@ use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\EventDayController;
+use App\Http\Controllers\EventDayInvitationController;
 use App\Http\Controllers\EventInvitationExportController;
 use App\Http\Controllers\EventNotificationController;
 use App\Http\Controllers\EventParticipantController;
@@ -22,6 +23,7 @@ use App\Http\Controllers\ExternalParticipantController;
 use App\Http\Controllers\ManualAttendanceController;
 use App\Http\Controllers\Settings\RoleController;
 use App\Http\Controllers\Settings\UserController;
+use App\Services\BulkImportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -58,7 +60,7 @@ Route::post('/logout', [KeycloakController::class, 'logout'])->middleware('auth'
 */
 
 Route::middleware(['auth', 'active'])->group(function () {
-    foreach (\App\Services\BulkImportService::MODULES as $module => $definition) {
+    foreach (BulkImportService::MODULES as $module => $definition) {
         $prefix = $module === 'users' ? 'settings/users' : $module;
         Route::prefix($prefix.'/import')->name($definition['route'].'.import.')
             ->middleware('can:'.$definition['permission'])->group(function () use ($module) {
@@ -217,6 +219,17 @@ Route::middleware(['auth', 'active'])->group(function () {
 
         Route::get('events/{event}/participants/{registration}/invitation', [EventInvitationExportController::class, 'download'])
             ->whereUuid(['event', 'registration'])->middleware(['can:events.view', 'can:registrations.view'])->name('events.participants.invitation');
+
+        Route::prefix('events/{event}/participants/{registration}/invitations')->name('events.participants.invitations.')
+            ->middleware('can:events.view')->group(function () {
+                Route::get('preview', [EventDayInvitationController::class, 'preview'])
+                    ->middleware('can:registrations.view')->name('preview');
+                Route::middleware('can:events.update')->group(function () {
+                    Route::get('/', [EventDayInvitationController::class, 'edit'])->name('edit');
+                    Route::put('/', [EventDayInvitationController::class, 'update'])->name('update');
+                    Route::post('send', [EventDayInvitationController::class, 'send'])->name('send');
+                });
+            });
 
         /*
         |--------------------------------------------------------------------------

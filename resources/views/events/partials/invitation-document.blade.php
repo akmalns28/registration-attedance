@@ -35,7 +35,13 @@
     <table class="details">
         <tr>
             <th scope="row">Tanggal</th>
-            <td>{{ $event->start_date->locale('id')->translatedFormat('j F Y') }} &ndash; {{ $event->end_date->locale('id')->translatedFormat('j F Y') }}</td>
+            <td>
+                @forelse ($registration->activeInvitedDays as $day)
+                    <div>Day {{ $day->day_number }} · {{ $day->date->locale('id')->translatedFormat('j F Y') }}{{ $day->title ? ' · '.$day->title : '' }}</div>
+                @empty
+                    Hari undangan belum ditetapkan.
+                @endforelse
+            </td>
         </tr>
         <tr>
             <th scope="row">Lokasi</th>

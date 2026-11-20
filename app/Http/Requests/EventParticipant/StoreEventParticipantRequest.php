@@ -35,6 +35,9 @@ class StoreEventParticipantRequest extends FormRequest
                 'min:1',
                 'distinct',
             ],
+            'day_selection' => ['sometimes', 'required', Rule::in(['all', 'selected'])],
+            'day_ids' => ['required_if:day_selection,selected', 'array', 'max:366'],
+            'day_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
         ];
     }
 
@@ -74,6 +77,8 @@ class StoreEventParticipantRequest extends FormRequest
             'participant_ids.*.min' => 'ID peserta tidak valid.',
 
             'participant_ids.*.distinct' => 'Terdapat peserta duplikat dalam pilihan.',
+            'day_selection.in' => 'Pilih semua hari atau hari tertentu.',
+            'day_ids.required_if' => 'Pilih minimal satu hari undangan.',
         ];
     }
 }

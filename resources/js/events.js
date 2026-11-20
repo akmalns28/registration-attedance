@@ -1,6 +1,7 @@
 import { Modal, Tab } from "@tabler/core";
 import { adjustDataTables } from "./plugins/datatables";
 import DataTable from "datatables.net-bs5";
+import { initializeEventDayInvitations } from "./event-day-invitations";
 
 export function initializeEventPage(root = document) {
     const page = root.querySelector("[data-event-details]");
@@ -10,6 +11,7 @@ export function initializeEventPage(root = document) {
     }
 
     page.dataset.initialized = "true";
+    initializeEventDayInvitations(page, root);
     const refreshButton = page.querySelector("[data-attendance-refresh]");
     let refreshingAttendance = false;
     let attendanceRefreshPending = false;
@@ -47,6 +49,24 @@ export function initializeEventPage(root = document) {
                 return;
             }
             updateSummary(data.summary);
+            const invitedTable = page.querySelector("[data-day-invitations-table]");
+            if (invitedTable) {
+                const present = new Set(data.attendees.map((attendee) => attendee.registration_number));
+                const updateInvitationStatus = (row) => {
+                    const cell = row.querySelector("[data-invitation-attendance]");
+                    if (cell) {
+                        cell.textContent = present.has(cell.dataset.invitationAttendance) ? "Hadir" : "Belum hadir";
+                    }
+                };
+                if (DataTable.isDataTable(invitedTable)) {
+                    new DataTable(invitedTable).rows().every(function () {
+                        updateInvitationStatus(this.node());
+                        this.invalidate("dom");
+                    });
+                } else {
+                    invitedTable.querySelectorAll("tbody tr").forEach(updateInvitationStatus);
+                }
+            }
             const table = page.querySelector("[data-attendance-table]");
             const rows = data.attendees.map((attendee) => {
                 const row = document.createElement("tr");
@@ -78,6 +98,7 @@ export function initializeEventPage(root = document) {
         }
     };
     refreshButton?.addEventListener("click", refreshAttendance);
+    page.addEventListener("invitation:updated", refreshAttendance);
     page.addEventListener("attendance:updated", (event) => {
         if (String(event.detail.eventId) === page.dataset.eventId && String(event.detail.dayId) === page.dataset.dayId) {
             updateSummary(event.detail.summary);

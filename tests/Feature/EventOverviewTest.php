@@ -73,7 +73,7 @@ class EventOverviewTest extends TestCase
     public function test_overview_renders_exactly_four_ordered_cards_and_keeps_existing_navigation_and_actions(): void
     {
         [$event, $days] = $this->eventDays();
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count(2)->create();
         EventSchedule::factory()->for($days[0], 'eventDay')->count(2)->create();
         Attendance::factory()->create(['event_day_id' => $days[0]->id, 'event_registration_id' => $registrations[0]->id]);
 
@@ -116,7 +116,7 @@ class EventOverviewTest extends TestCase
     public function test_single_day_percentage_is_rounded_without_unnecessary_decimal_places(int $registrationCount, int $checkedInCount, float $percentage, string $display): void
     {
         [$event, $days] = $this->eventDays(1);
-        $registrations = EventRegistration::factory()->for($event)->count($registrationCount)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count($registrationCount)->create();
         foreach ($registrations->take($checkedInCount) as $registration) {
             Attendance::factory()->create(['event_day_id' => $days[0]->id, 'event_registration_id' => $registration->id]);
         }
@@ -135,7 +135,7 @@ class EventOverviewTest extends TestCase
     public function test_multi_day_percentage_counts_each_registration_day_combination(int $dayCount, array $attendedDayIndexes, int $checkedIn, int $expectedAttendance, float $percentage): void
     {
         [$event, $days] = $this->eventDays($dayCount);
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count(2)->create();
         foreach ($attendedDayIndexes as $index) {
             Attendance::factory()->create(['event_day_id' => $days[$index]->id, 'event_registration_id' => $registrations[0]->id]);
         }
@@ -149,7 +149,7 @@ class EventOverviewTest extends TestCase
     {
         [$event, $days] = $this->eventDays();
         $days[1]->update(['is_active' => false]);
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count(2)->create();
         Attendance::factory()->create(['event_day_id' => $days[1]->id, 'event_registration_id' => $registrations[0]->id]);
 
         $response = $this->actingAs($this->viewer())->get(route('events.show', $event))->assertOk();
@@ -160,7 +160,7 @@ class EventOverviewTest extends TestCase
     public function test_other_events_and_mismatched_registration_day_pairs_are_excluded(): void
     {
         [$event, $days] = $this->eventDays();
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count(2)->create();
         Attendance::factory()->create(['event_day_id' => $days[0]->id, 'event_registration_id' => $registrations[0]->id]);
         $otherAttendance = Attendance::factory()->create();
         Attendance::factory()->create(['event_day_id' => $days[1]->id, 'event_registration_id' => $otherAttendance->event_registration_id]);
@@ -174,7 +174,7 @@ class EventOverviewTest extends TestCase
     public function test_cancelled_registrations_and_their_history_are_excluded_without_deleting_attendance(): void
     {
         [$event, $days] = $this->eventDays();
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count(2)->create();
         $cancelled = EventRegistration::factory()->for($event)->cancelled()->create();
         Attendance::factory()->create(['event_day_id' => $days[0]->id, 'event_registration_id' => $registrations[0]->id]);
         Attendance::factory()->create(['event_day_id' => $days[0]->id, 'event_registration_id' => $cancelled->id]);
@@ -193,7 +193,7 @@ class EventOverviewTest extends TestCase
     {
         [$event, $days] = $this->eventDays();
         $this->travelTo($days[0]->date->copy()->setTime(9, 30));
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count(2)->create();
         $payload = ['event_id' => $event->id, 'event_day_id' => $days[0]->id, 'qr_code' => 'RA1:'.$registrations[0]->uuid];
         $this->actingAs($this->viewer(['attendance.scan']));
 
@@ -208,7 +208,7 @@ class EventOverviewTest extends TestCase
     public function test_fully_attended_event_displays_one_hundred_percent(): void
     {
         [$event, $days] = $this->eventDays();
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count(2)->create();
         foreach ($days as $day) {
             foreach ($registrations as $registration) {
                 Attendance::factory()->create(['event_day_id' => $day->id, 'event_registration_id' => $registration->id]);
@@ -225,7 +225,7 @@ class EventOverviewTest extends TestCase
     public function test_repeated_query_rows_do_not_count_the_same_registration_day_pair_twice(): void
     {
         [$event, $days] = $this->eventDays();
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count(2)->create();
         Attendance::factory()->create(['event_day_id' => $days[0]->id, 'event_registration_id' => $registrations[0]->id]);
         $originalScopes = Attendance::getAllGlobalScopes();
         Attendance::addGlobalScope('repeated_attendance_rows', function (Builder $query) use ($event): void {

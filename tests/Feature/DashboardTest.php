@@ -29,11 +29,11 @@ class DashboardTest extends TestCase
         $historical = Event::factory()->closed()->create(['title' => 'Historical event']);
         $firstDay = EventDay::factory()->for($event)->create(['date' => '2027-01-15']);
         $secondDay = EventDay::factory()->for($event)->create(['date' => '2027-01-16', 'day_number' => 2, 'is_active' => false]);
-        EventDay::factory()->for($historical)->create(['date' => '2027-01-17']);
-        $employee = EventRegistration::factory()->for($event)->create();
-        $external = EventRegistration::factory()->for($event)->external()->create();
-        $cancelled = EventRegistration::factory()->for($event)->cancelled()->create();
-        EventRegistration::factory()->for($historical)->for($employee->employee)->create();
+        $historicalDay = EventDay::factory()->for($historical)->create(['date' => '2027-01-17']);
+        $employee = EventRegistration::factory()->for($event)->invitedTo($firstDay, $secondDay)->create();
+        $external = EventRegistration::factory()->for($event)->invitedTo($firstDay, $secondDay)->external()->create();
+        $cancelled = EventRegistration::factory()->for($event)->invitedTo($firstDay)->cancelled()->create();
+        EventRegistration::factory()->for($historical)->invitedTo($historicalDay)->for($employee->employee)->create();
         Attendance::factory()->for($employee, 'registration')->for($firstDay)->create();
         Attendance::factory()->for($external, 'registration')->for($firstDay)->create();
         Attendance::factory()->for($employee, 'registration')->for($secondDay)->create();
@@ -46,8 +46,8 @@ class DashboardTest extends TestCase
             ->assertSee('data-dashboard-chart="participants"', false)
             ->assertSee('href="'.route('events.show', $event).'"', false);
         $this->assertSame([
-            'total_events' => 2, 'active_events' => 1, 'total_participants' => 2, 'total_registered' => 3,
-            'total_attendance' => 4, 'attendance_percentage' => 60.0, 'employee_registrations' => 2, 'external_registrations' => 1,
+            'total_events' => 2, 'active_events' => 1, 'total_participants' => 2, 'total_registered' => 3, 'day_invitations' => 5,
+            'total_attendance' => 3, 'attendance_percentage' => 60.0, 'employee_registrations' => 2, 'external_registrations' => 1,
         ], $dashboard->viewData('stats'));
         $this->assertSame(75.0, $dashboard->viewData('attendanceByEvent')->get($event->uuid)['percentage']);
 
@@ -62,8 +62,8 @@ class DashboardTest extends TestCase
         $this->assertTrue($filtered->viewData('selectedEvent')->is($event));
         $this->assertSame([$event->id], $filtered->viewData('recentEvents')->modelKeys());
         $this->assertSame([
-            'total_events' => 1, 'active_events' => 1, 'total_participants' => 2, 'total_registered' => 2,
-            'total_attendance' => 4, 'attendance_percentage' => 75.0, 'employee_registrations' => 1, 'external_registrations' => 1,
+            'total_events' => 1, 'active_events' => 1, 'total_participants' => 2, 'total_registered' => 2, 'day_invitations' => 4,
+            'total_attendance' => 3, 'attendance_percentage' => 75.0, 'employee_registrations' => 1, 'external_registrations' => 1,
         ], $filtered->viewData('stats'));
         $this->assertSame([
             'registrations' => [['label' => $event->title, 'count' => 2]],
@@ -78,7 +78,7 @@ class DashboardTest extends TestCase
             ->assertSee('All Events')->assertSee('Belum ada event.')->assertSee('Belum ada hari pelaksanaan.')
             ->assertSee('Belum ada registrasi aktif.')->assertSee('0%')->assertDontSee('data-dashboard-chart=', false);
 
-        $this->assertSame([0, 0, 0, 0, 0, 0.0, 0, 0], array_values($page->viewData('stats')));
+        $this->assertSame([0, 0, 0, 0, 0, 0, 0.0, 0, 0], array_values($page->viewData('stats')));
     }
 
     public function test_recent_events_are_limited_to_the_five_latest_and_event_links_require_permission(): void

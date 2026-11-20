@@ -48,7 +48,7 @@ class EventNotificationPageTest extends TestCase
     private function notification(array $attributes = [], ?Event $event = null): EventRegistrationNotification
     {
         $event ??= Event::factory()->create(['status' => Event::STATUS_PUBLISHED]);
-        $registration = EventRegistration::factory()->create(['event_id' => $event->id]);
+        $registration = EventRegistration::factory()->invitedTo()->create(['event_id' => $event->id]);
 
         return EventRegistrationNotification::factory()->create([
             'event_id' => $event->id,
@@ -221,10 +221,10 @@ class EventNotificationPageTest extends TestCase
         $pending->update(['dedupe_key' => 'event:'.$event->id.':registration:'.$pending->event_registration_id.':invitation:v1']);
         $sent = $this->notification(['status' => EventRegistrationNotification::STATUS_SENT], $event);
         $sent->update(['dedupe_key' => 'event:'.$event->id.':registration:'.$sent->event_registration_id.':invitation:v1']);
-        $newRegistration = EventRegistration::factory()->create(['event_id' => $event->id]);
+        $newRegistration = EventRegistration::factory()->invitedTo()->create(['event_id' => $event->id]);
         $newRegistration->employee->update(['email' => 'new-invitation@example.test']);
         EventRegistration::factory()->cancelled()->create(['event_id' => $event->id]);
-        $withoutEmail = EventRegistration::factory()->create(['event_id' => $event->id]);
+        $withoutEmail = EventRegistration::factory()->invitedTo()->create(['event_id' => $event->id]);
         $withoutEmail->employee->update(['email' => null]);
         $this->actingAs($this->user());
 

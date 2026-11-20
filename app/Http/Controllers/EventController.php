@@ -8,9 +8,9 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Event;
 use App\Models\ExternalParticipant;
+use App\Services\EventDayAttendanceService;
 use App\Services\EventPublicationNotificationService;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
@@ -57,7 +57,7 @@ class EventController extends Controller
     /**
      * Display event details.
      */
-    public function show(Event $event): View
+    public function show(Event $event, EventDayAttendanceService $attendance): View
     {
         /*
     |--------------------------------------------------------------------------
@@ -66,13 +66,7 @@ class EventController extends Controller
     */
 
         $event->load(['days' => fn (HasMany $days): HasMany => $days
-            ->withCount([
-                'schedules',
-                'attendances as checked_in_count' => fn (Builder $query): Builder => $query
-                    ->select(DB::raw('count(distinct attendances.event_registration_id)'))
-                    ->whereHas('registration', fn (Builder $registrations): Builder => $registrations
-                        ->where('event_id', $event->id)->registered()),
-            ])
+            ->withCount('schedules')
             ->withMin('schedules', 'start_time')
             ->withMax('schedules', 'end_time')]);
 
@@ -83,7 +77,12 @@ class EventController extends Controller
             'registrations as cancelled_registrations_count' => fn ($query) => $query->cancelled(),
         ]);
 
-        $expectedAttendance = (int) $event->registered_participants_count * $event->days->count();
+        $dayCounts = $attendance->countsByDay($event);
+        foreach ($event->days as $day) {
+            $day->invited_count = (int) ($dayCounts->get($day->id)?->invited ?? 0);
+            $day->checked_in_count = (int) ($dayCounts->get($day->id)?->checked_in ?? 0);
+        }
+        $expectedAttendance = (int) $event->days->sum('invited_count');
         $totalCheckedIn = (int) $event->days->sum('checked_in_count');
         $eventAttendanceSummary = [
             'checked_in' => $totalCheckedIn,
@@ -99,7 +98,7 @@ class EventController extends Controller
 
         $registrations = $event
             ->registrations()
-            ->with(['employee.department', 'externalParticipant'])
+            ->with(['employee.department', 'externalParticipant', 'invitedDays'])
             ->orderByDesc('registered_at')
             ->orderByDesc('id')
             ->get();

@@ -387,6 +387,143 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
             });
         }
 
+        await suite.test("Kelola Hari Undangan saves through one accessible modal and updates the participant table", async () => {
+            await client.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+            await fresh("event", "#event-participants");
+            await client.evaluate(`
+                const originalFetch = window.fetch;
+                window.invitationButton = document.querySelector("#eventParticipantsTable [data-invitation-url]");
+                window.invitationModal = document.querySelector("#eventDayInvitationModal");
+                window.invitationCheckboxes = () => [...invitationModal.querySelectorAll('input[type="checkbox"]')];
+                window.invitationSave = invitationModal.querySelector('[type="submit"]');
+                window.invitationPage = location.href;
+                window.invitationData = {
+                    participant_name: "Employee <Test>", event_name: "UI Refinement",
+                    days: [
+                        { id: 1, number: 1, date: "15/01/2027", title: "Opening", assigned: true, available: true, protected: true },
+                        { id: 2, number: 2, date: "16/01/2027", title: "Workshop", assigned: false, available: true, protected: false },
+                        { id: 3, number: 3, date: "17/01/2027", title: "Unavailable", assigned: false, available: false, protected: false }
+                    ],
+                };
+                window.jsonResponse = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+                window.fetch = (url, options) => {
+                    if (!url.endsWith("/invitations")) return originalFetch(url, options);
+                    if (options.method === "PUT") {
+                        window.invitationSubmission = { url, dayIds: JSON.parse(options.body).day_ids, csrf: options.headers["X-CSRF-TOKEN"] };
+                        return new Promise((resolve) => { window.finishSave = resolve; });
+                    }
+                    return new Promise((resolve) => { window.finishLoad = resolve; });
+                };
+                await until(() => invitationButton.getClientRects().length && document.querySelector("#event-participants").classList.contains("show"));
+                invitationButton.focus();
+                if (document.activeElement !== invitationButton) throw new Error("Invitation action did not receive focus");
+            `);
+            await client.evaluate("invitationButton.click();");
+            const loading = await client.evaluate(`
+                await until(() => invitationModal.classList.contains("show") && window.finishLoad).catch(() => {
+                    throw new Error(JSON.stringify({ visible: invitationModal.classList.contains("show"), requested: Boolean(window.finishLoad),
+                        focused: document.activeElement?.getAttribute("aria-label"), error: invitationModal.querySelector("[data-invitation-error]").textContent }));
+                });
+                const pending = !invitationModal.querySelector("[data-invitation-loading]").hidden && invitationSave.disabled;
+                finishLoad(jsonResponse(invitationData));
+                await until(() => invitationCheckboxes().length === 3);
+                const [protectedDay, editableDay, unavailableDay] = invitationCheckboxes();
+                const initial = protectedDay.checked && protectedDay.disabled && !editableDay.checked && unavailableDay.disabled;
+                invitationModal.querySelector("[data-invitation-clear-all]").click();
+                const afterClear = protectedDay.checked && !editableDay.checked;
+                invitationModal.querySelector("[data-invitation-select-all]").click();
+                const afterSelect = protectedDay.checked && editableDay.checked && !unavailableDay.checked;
+                const bounds = invitationModal.querySelector(".modal-dialog").getBoundingClientRect();
+                return { pending, initial, afterClear, afterSelect, fits: bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight,
+                    title: invitationModal.querySelector("[data-invitation-participant]").textContent, date: invitationModal.textContent.includes("16/01/2027"),
+                    oneModal: document.querySelectorAll("#eventDayInvitationModal").length === 1, stays: location.href === invitationPage };
+            `);
+            assert.deepEqual(loading, { pending: true, initial: true, afterClear: true, afterSelect: true, fits: true,
+                title: "Employee <Test>", date: true, oneModal: true, stays: true });
+            const failed = await client.evaluate(`
+                await until(() => !invitationSave.disabled);
+                invitationSave.click();
+                await until(() => window.finishSave);
+                const busy = invitationSave.disabled && !invitationModal.querySelector("[data-invitation-saving]").hidden;
+                finishSave(jsonResponse({ errors: { day_ids: ["Hari dengan kehadiran tercatat tidak dapat dicabut."] } }, 422));
+                const alert = invitationModal.querySelector("[data-invitation-error]");
+                await until(() => !alert.hidden && !invitationSave.disabled);
+                return { busy, message: alert.textContent, open: invitationModal.classList.contains("show"), focused: document.activeElement === alert,
+                    ids: invitationSubmission.dayIds, csrf: Boolean(invitationSubmission.csrf) };
+            `);
+            assert.deepEqual(failed, { busy: true, message: "Hari dengan kehadiran tercatat tidak dapat dicabut.", open: true,
+                focused: true, ids: [1, 2], csrf: true });
+            const updated = await client.evaluate(`
+                window.finishSave = null;
+                invitationSave.click();
+                await until(() => window.finishSave);
+                finishSave(jsonResponse({ message: "Hari undangan peserta diperbarui.", day_ids: [1, 2], days_label: "Day 1, Day 2" }));
+                await until(() => !invitationModal.classList.contains("show") && document.activeElement === invitationButton);
+                await until(() => document.querySelector(".app-toast")?.textContent.includes("Hari undangan peserta diperbarui."));
+                const row = invitationButton.closest("tr");
+                const summary = row.querySelector("[data-invitation-summary]");
+                const qr = row.querySelector('a[href$="/qr"]');
+                const pdf = row.querySelector('a[href$="/invitation"]');
+                const container = document.querySelector("#eventParticipantsTable_wrapper");
+                const search = container.querySelector('input[type="search"]');
+                search.value = '"Day 1, Day 2"';
+                search.dispatchEvent(new Event("input", { bubbles: true }));
+                search.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+                await until(() => container.querySelector(".dt-info").textContent.includes("difilter"));
+                return { summary: summary.textContent, foundAfterFiltering: container.querySelector("tbody tr") === row, qr: Boolean(qr), pdf: Boolean(pdf),
+                    stillOnPage: location.href === invitationPage };
+            `);
+            assert.deepEqual(updated, { summary: "Day 1, Day 2", foundAfterFiltering: true, qr: true, pdf: true, stillOnPage: true });
+            await client.evaluate(`
+                const search = document.querySelector("#eventParticipantsTable_wrapper input[type=search]");
+                search.value = "External";
+                search.dispatchEvent(new Event("input", { bubbles: true }));
+                search.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+                await until(() => document.querySelector("#eventParticipantsTable tbody tr")?.textContent.includes("External"));
+                window.externalButton = document.querySelector("#eventParticipantsTable [data-invitation-url]");
+                window.finishLoad = null;
+                externalButton.click();
+                await until(() => window.finishLoad);
+                finishLoad(jsonResponse({ ...invitationData, participant_name: "External Guest", days: [invitationData.days[1]] }));
+                await until(() => invitationCheckboxes().length === 1 && invitationModal.contains(document.activeElement));
+                if (invitationModal.querySelector("[data-invitation-participant]").textContent !== "External Guest" || invitationCheckboxes()[0].checked) {
+                    throw new Error("The modal retained the previous participant's assignments");
+                }
+            `);
+            await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+            await client.evaluate("await until(() => !invitationModal.classList.contains('show') && document.activeElement === externalButton);");
+
+            await fresh("day", "#day-invitations");
+            const dayUpdate = await client.evaluate(`
+                const trigger = document.querySelector("[data-day-invitations-table] [data-invitation-url]");
+                const row = trigger.closest("tr");
+                const modal = document.querySelector("#eventDayInvitationModal");
+                const asJson = (data) => new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } });
+                const originalFetch = window.fetch;
+                window.fetch = (url, options) => {
+                    if (url.endsWith("/attendance")) return Promise.resolve(asJson({
+                        success: true, attendees: [], summary: { invited: 0, checked_in: 0, not_checked_in: 0, percentage: 0 },
+                    }));
+                    if (!url.endsWith("/invitations")) return originalFetch(url, options);
+                    if (options.method === "PUT") return Promise.resolve(asJson({
+                        message: "Hari undangan peserta diperbarui.", day_ids: [], days_label: "Belum ditetapkan",
+                    }));
+                    return Promise.resolve(asJson({ participant_name: "Employee", event_name: "UI Refinement", days: [
+                        { id: 1, number: 1, date: "15/01/2027", title: "Opening", assigned: true, available: true, protected: false },
+                    ] }));
+                };
+                await until(() => trigger.getClientRects().length && document.querySelector("#day-invitations").classList.contains("show"));
+                trigger.click();
+                await until(() => modal.classList.contains("show") && modal.contains(document.activeElement) && !modal.querySelector('[type="submit"]').disabled);
+                modal.querySelector("[data-invitation-clear-all]").click();
+                modal.querySelector('[type="submit"]').click();
+                const status = row.querySelector("[data-invitation-status]");
+                await until(() => status.textContent === "Undangan dicabut" && document.activeElement === trigger);
+                return { status: status.textContent, stays: location.hash === "#day-invitations" };
+            `);
+            assert.deepEqual(dayUpdate, { status: "Undangan dicabut", stays: true });
+        });
+
         for (const [width, height] of [[375, 812], [768, 1024], [1440, 900]]) {
             await suite.test(`responsive navigation, actions, export columns and toasts at ${width}px`, async () => {
                 await client.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 800 });

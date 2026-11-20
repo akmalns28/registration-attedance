@@ -100,6 +100,12 @@ class AttendanceQrValidationService
             ]);
         }
 
+        if (! $registration->invitedDays()->whereKey($day->id)->exists()) {
+            throw ValidationException::withMessages([
+                'event_day_id' => 'Peserta tidak memiliki undangan aktif untuk hari pelaksanaan ini.',
+            ]);
+        }
+
         return $registration;
     }
 }

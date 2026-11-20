@@ -257,7 +257,7 @@ class AttendanceReportExportTest extends TestCase
     public function test_pdf_is_real_landscape_multi_page_and_large_pdf_is_rejected_without_limiting_csv(): void
     {
         $fixture = $this->fixture();
-        EventRegistration::factory()->for($fixture['event'])->count(30)->create();
+        EventRegistration::factory()->for($fixture['event'])->invitedTo(...$fixture['days'])->count(30)->create();
         $this->actingAs($this->user());
         $response = $this->getJson($this->url($fixture['event'], 'pdf'))->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertStringStartsWith('%PDF-', $response->getContent());
@@ -271,7 +271,7 @@ class AttendanceReportExportTest extends TestCase
     public function test_csv_crosses_query_chunks_with_continuous_numbers_and_no_per_row_queries(): void
     {
         $fixture = $this->fixture();
-        EventRegistration::factory()->for($fixture['event'])->count(170)->create();
+        EventRegistration::factory()->for($fixture['event'])->invitedTo(...$fixture['days'])->count(170)->create();
         $this->actingAs($this->user());
         DB::enableQueryLog();
         try {
@@ -408,11 +408,11 @@ class AttendanceReportExportTest extends TestCase
             $days[] = EventDay::factory()->for($event)->create(['day_number' => $day, 'date' => '2027-01-'.(14 + $day)]);
         }
         $department = Department::factory()->create(['name' => 'Department Alpha']);
-        $alice = EventRegistration::factory()->for($event)->for(Employee::factory()->for($department)->create(['name' => 'Alice Employee']))->create();
-        $budi = EventRegistration::factory()->for($event)->for(Employee::factory()->create(['name' => 'Budi Employee']))->create();
-        $external = EventRegistration::factory()->external()->for($event)->create();
+        $alice = EventRegistration::factory()->for($event)->invitedTo(...$days)->for(Employee::factory()->for($department)->create(['name' => 'Alice Employee']))->create();
+        $budi = EventRegistration::factory()->for($event)->invitedTo(...$days)->for(Employee::factory()->create(['name' => 'Budi Employee']))->create();
+        $external = EventRegistration::factory()->external()->for($event)->invitedTo(...$days)->create();
         $external->externalParticipant->update(['name' => 'Carla External']);
-        $cancelled = EventRegistration::factory()->cancelled()->for($event)->create();
+        $cancelled = EventRegistration::factory()->cancelled()->for($event)->invitedTo(...$days)->create();
         $cancelled->employee->update(['name' => 'Cancelled Participant']);
         $operator = User::factory()->create(['name' => 'Check-in Operator']);
         foreach ([[$alice, $days[0]], [$alice, $days[1]], [$budi, $days[1]], [$external, $days[0]], [$cancelled, $days[0]]] as [$registration, $day]) {

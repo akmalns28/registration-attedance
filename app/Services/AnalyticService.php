@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Attendance;
 use App\Models\Event;
 use App\Models\EventDay;
 use App\Models\EventRegistration;
@@ -14,6 +13,8 @@ use Illuminate\Support\Facades\DB;
 
 class AnalyticService
 {
+    public function __construct(private readonly EventDayAttendanceService $attendance) {}
+
     /** @return Collection<int, Event> */
     public function events(): Collection
     {
@@ -47,12 +48,13 @@ class AnalyticService
         $days = (clone $includedDays)->orderBy('date')->orderBy('event_id')->orderBy('day_number')
             ->get(['id', 'event_id', 'date', 'day_number', 'title']);
 
-        $slots = Attendance::query()
-            ->join('event_registrations', 'event_registrations.id', '=', 'attendances.event_registration_id')
-            ->joinSub((clone $includedDays)->select(['id', 'event_id']), 'included_days',
-                fn (JoinClause $join): JoinClause => $join->on('included_days.id', '=', 'attendances.event_day_id')
-                    ->on('included_days.event_id', '=', 'event_registrations.event_id'))
-            ->where('event_registrations.status', EventRegistration::STATUS_REGISTERED)
+        $invitations = $this->attendance->invitations()->whereIn('event_days.id', (clone $includedDays)->select('id'));
+        $expectedByDay = (clone $invitations)->select('event_days.id')->selectRaw('count(*) as invited')
+            ->groupBy('event_days.id')->pluck('invited', 'id');
+        $slots = $invitations
+            ->join('attendances', fn (JoinClause $join): JoinClause => $join
+                ->on('attendances.event_registration_id', '=', 'event_registrations.id')
+                ->on('attendances.event_day_id', '=', 'event_days.id'))
             ->select([
                 'attendances.event_registration_id', 'attendances.event_day_id',
                 'event_registrations.registration_type', 'event_registrations.employee_id', 'event_registrations.external_participant_id',
@@ -79,11 +81,11 @@ class AnalyticService
             }
         }
 
-        $dayStats = $days->map(function (EventDay $day) use ($events, $attendanceByDay): array {
+        $dayStats = $days->map(function (EventDay $day) use ($events, $attendanceByDay, $expectedByDay): array {
             $event = $events[$day->event_id];
             $attendance = $attendanceByDay->get($day->id);
             $checkedIn = (int) ($attendance?->checked_in ?? 0);
-            $expected = (int) $event->active_registrations;
+            $expected = (int) $expectedByDay->get($day->id, 0);
 
             return [
                 'id' => $day->id, 'event_id' => $event->uuid,
@@ -97,7 +99,7 @@ class AnalyticService
         $daysByEvent = $dayStats->groupBy('event_id');
         $eventStats = $events->map(function (Event $event) use ($daysByEvent): array {
             $eventDays = $daysByEvent->get($event->uuid, collect());
-            $expected = (int) $event->active_registrations * $eventDays->count();
+            $expected = (int) $eventDays->sum('expected');
             $checkedIn = (int) $eventDays->sum('checked_in');
 
             return [

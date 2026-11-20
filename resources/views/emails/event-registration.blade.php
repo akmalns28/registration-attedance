@@ -184,7 +184,7 @@
                                                 color: #64748b;
                                                 vertical-align: top;
                                             ">
-                                                    Tanggal
+                                                    {{ $notification_type === 'cancellation' ? 'Tanggal' : 'Hari Undangan' }}
                                                 </td>
 
                                                 <td
@@ -194,7 +194,15 @@
                                                 font-weight: 600;
                                                 color: #182433;
                                             ">
-                                                    {{ $event_date }}
+                                                    @if ($notification_type === 'cancellation')
+                                                        {{ $event_date }}
+                                                    @else
+                                                        @forelse ($invited_days as $day)
+                                                            <div>Day {{ $day->day_number }} · {{ $day->date->format('d/m/Y') }}{{ $day->title ? ' · '.$day->title : '' }}</div>
+                                                        @empty
+                                                            Hari undangan belum ditetapkan.
+                                                        @endforelse
+                                                    @endif
                                                 </td>
                                             </tr>
 
@@ -300,7 +308,7 @@
 
                             {{-- QR Code Information --}}
 
-                            @if (in_array($notification_type, ['invitation', 'reactivation', 'reminder'], true))
+                            @if ($notification_type !== 'cancellation' && $invited_days->isNotEmpty())
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                                     style="
             background-color: #eff6ff;

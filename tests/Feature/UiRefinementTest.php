@@ -153,7 +153,7 @@ class UiRefinementTest extends TestCase
             $employee = Employee::factory()->for($department)->create(['name' => $name]);
             ExternalParticipant::factory()->create(['name' => $name]);
             Event::factory()->create(['title' => $name]);
-            EventRegistration::factory()->for($fixture['event'])->for($employee)->create();
+            EventRegistration::factory()->for($fixture['event'])->for($employee)->invitedTo($fixture['day'])->create();
             User::factory()->create(['name' => $name])->assignRole('panitia');
             Role::create(['name' => 'ui-role-'.$index, 'guard_name' => 'web']);
         }
@@ -209,8 +209,8 @@ class UiRefinementTest extends TestCase
         EventSchedule::factory()->create(['event_day_id' => $day->id]);
         $department = Department::factory()->create();
         $employee = Employee::factory()->for($department)->create();
-        $registration = EventRegistration::factory()->for($event)->for($employee)->create();
-        EventRegistration::factory()->external()->for($event)->create();
+        $registration = EventRegistration::factory()->for($event)->for($employee)->invitedTo($day)->create();
+        EventRegistration::factory()->external()->for($event)->invitedTo($day)->create();
         EventRegistration::factory()->cancelled()->for($event)->create();
         EventRegistrationNotification::factory()->sent()->create(['event_registration_id' => $registration->id]);
 

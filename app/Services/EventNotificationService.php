@@ -42,6 +42,7 @@ class EventNotificationService
             }
 
             $email = $this->eligibility->recipient($registration);
+            $reason = $email === null ? 'Recipient email is missing or invalid.' : $this->eligibility->dayReason($registration, $type);
             $notification = EventRegistrationNotification::query()->firstOrCreate(
                 ['dedupe_key' => $dedupeKey],
                 [
@@ -49,10 +50,10 @@ class EventNotificationService
                     'event_registration_id' => $registration->id,
                     'notification_type' => $type,
                     'recipient_email' => $email,
-                    'status' => $email ? EventRegistrationNotification::STATUS_PENDING : EventRegistrationNotification::STATUS_SKIPPED,
+                    'status' => $reason === null ? EventRegistrationNotification::STATUS_PENDING : EventRegistrationNotification::STATUS_SKIPPED,
                     'attempts' => 0,
                     'scheduled_for' => now(),
-                    'last_error' => $email ? null : 'Recipient email is missing or invalid.',
+                    'last_error' => $reason,
                 ],
             );
 
@@ -62,7 +63,7 @@ class EventNotificationService
                 throw new InvalidArgumentException('Dedupe key sudah digunakan oleh notifikasi lain.');
             }
 
-            if ($notification->wasRecentlyCreated && $email !== null) {
+            if ($notification->wasRecentlyCreated && $reason === null) {
                 $this->queue->enqueue($notification);
             }
 

@@ -32,7 +32,7 @@ class EventNotificationServiceTest extends TestCase
             'status' => $status,
         ]);
 
-        return EventRegistration::factory()->create([
+        return EventRegistration::factory()->invitedTo()->create([
             'event_id' => $event->id,
         ]);
     }

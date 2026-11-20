@@ -6,7 +6,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class EventRegistration extends Model
@@ -106,6 +108,22 @@ class EventRegistration extends Model
         return $this->hasMany(Attendance::class);
     }
 
+    public function invitedDays(): BelongsToMany
+    {
+        return $this->belongsToMany(EventDay::class, 'event_day_invitations')
+            ->wherePivotNull('revoked_at')->orderBy('event_days.day_number');
+    }
+
+    public function activeInvitedDays(): BelongsToMany
+    {
+        return $this->invitedDays()->where('event_days.is_active', true);
+    }
+
+    public function scopeInvitedOn(Builder $query, EventDay $day): Builder
+    {
+        return $query->whereHas('invitedDays', fn (Builder $days): Builder => $days->whereKey($day->id));
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Scopes
@@ -180,5 +198,13 @@ class EventRegistration extends Model
     public function notifications(): HasMany
     {
         return $this->hasMany(EventRegistrationNotification::class, 'event_registration_id');
+    }
+
+    public function latestInvitation(): HasOne
+    {
+        return $this->hasOne(EventRegistrationNotification::class)->ofMany(
+            ['id' => 'max'],
+            fn (Builder $query): Builder => $query->where('notification_type', EventRegistrationNotification::TYPE_INVITATION),
+        );
     }
 }

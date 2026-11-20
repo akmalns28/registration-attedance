@@ -20,7 +20,7 @@ class EventRegistrationMailTest extends TestCase
 
     private function notification(string $type = EventRegistrationNotification::TYPE_INVITATION, array $attributes = []): EventRegistrationNotification
     {
-        $registration = EventRegistration::factory()->create();
+        $registration = EventRegistration::factory()->invitedTo()->create();
 
         return EventRegistrationNotification::factory()->create(
             array_merge(

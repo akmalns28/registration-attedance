@@ -27,7 +27,7 @@ class EventInvitationExportService
             throw ValidationException::withMessages(['export' => 'Undangan hanya tersedia untuk registrasi yang masih aktif.']);
         }
 
-        $registration->loadMissing(['employee', 'externalParticipant']);
+        $registration->loadMissing(['employee', 'externalParticipant', 'activeInvitedDays']);
         $registrationNumber = Str::slug($registration->registration_number) ?: $registration->uuid;
         $filename = 'undangan-'.$this->eventSlug($event).'-'.$registrationNumber.'.pdf';
 
@@ -40,7 +40,7 @@ class EventInvitationExportService
 
     public function bulk(Event $event, string $participantType): StreamedResponse
     {
-        $registrations = $event->registrations()->registered()->with(['employee', 'externalParticipant']);
+        $registrations = $event->registrations()->registered()->with(['employee', 'externalParticipant', 'activeInvitedDays']);
         if ($participantType !== 'all') {
             $registrations->where('registration_type', $participantType);
         }

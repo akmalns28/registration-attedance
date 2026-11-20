@@ -271,8 +271,8 @@ class AnalyticTest extends TestCase
     {
         $this->fixture();
         $event = Event::factory()->create(['title' => 'Zero attendance']);
-        EventDay::factory()->for($event)->create();
-        EventRegistration::factory()->for($event)->count(2)->create();
+        $day = EventDay::factory()->for($event)->create();
+        EventRegistration::factory()->for($event)->invitedTo($day)->count(2)->create();
 
         $this->actingAs($this->user())->getJson(route('analytic.data'))->assertOk()
             ->assertJsonPath('data.kpis.total_events', 3)->assertJsonPath('data.kpis.expected_attendance', 12)
@@ -377,10 +377,10 @@ class AnalyticTest extends TestCase
             EventDay::factory()->for($first)->create(['date' => '2027-01-16', 'day_number' => 2]),
         ];
         $secondDay = EventDay::factory()->for($second)->create(['date' => '2027-01-17']);
-        $firstEmployee = EventRegistration::factory()->for($first)->for($employee)->create();
-        $secondEmployee = EventRegistration::factory()->for($second)->for($employee)->create();
-        $externalRegistration = EventRegistration::factory()->external()->for($first)->for($external, 'externalParticipant')->create();
-        EventRegistration::factory()->for($second)->count(5)->create();
+        $firstEmployee = EventRegistration::factory()->for($first)->invitedTo(...$firstDays)->for($employee)->create();
+        $secondEmployee = EventRegistration::factory()->for($second)->invitedTo($secondDay)->for($employee)->create();
+        $externalRegistration = EventRegistration::factory()->external()->for($first)->invitedTo(...$firstDays)->for($external, 'externalParticipant')->create();
+        EventRegistration::factory()->for($second)->invitedTo($secondDay)->count(5)->create();
         $operator = User::factory()->create();
         foreach ([$firstDays[0], $firstDays[1]] as $day) {
             Attendance::factory()->for($operator, 'operator')->create(['event_day_id' => $day->id, 'event_registration_id' => $firstEmployee->id]);

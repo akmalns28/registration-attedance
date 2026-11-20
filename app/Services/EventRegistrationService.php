@@ -13,22 +13,29 @@ use InvalidArgumentException;
 
 class EventRegistrationService
 {
-    public function __construct(private readonly EventPublicationNotificationService $notifications) {}
+    public function __construct(
+        private readonly EventPublicationNotificationService $notifications,
+        private readonly EventDayInvitationService $invitations,
+    ) {}
 
     /**
      * Bulk register employees.
+     *
+     * @param  list<int|string>|null  $dayIds  Null selects all current active days. An empty list grants none.
      */
-    public function registerEmployees(Event $event, array $employeeIds): array
+    public function registerEmployees(Event $event, array $employeeIds, ?array $dayIds = []): array
     {
-        return $this->register($event, EventRegistration::TYPE_EMPLOYEE, $employeeIds);
+        return $this->register($event, EventRegistration::TYPE_EMPLOYEE, $employeeIds, $dayIds);
     }
 
     /**
      * Bulk register external participants.
+     *
+     * @param  list<int|string>|null  $dayIds  Null selects all current active days. An empty list grants none.
      */
-    public function registerExternals(Event $event, array $externalParticipantIds): array
+    public function registerExternals(Event $event, array $externalParticipantIds, ?array $dayIds = []): array
     {
-        return $this->register($event, EventRegistration::TYPE_EXTERNAL, $externalParticipantIds);
+        return $this->register($event, EventRegistration::TYPE_EXTERNAL, $externalParticipantIds, $dayIds);
     }
 
     /**
@@ -41,7 +48,7 @@ class EventRegistrationService
      *     total: int
      * }
      */
-    private function register(Event $event, string $type, array $participantIds, bool $withinTransaction = false): array
+    private function register(Event $event, string $type, array $participantIds, ?array $requestedDayIds = [], bool $withinTransaction = false): array
     {
         /*
     |--------------------------------------------------------------------------
@@ -105,7 +112,7 @@ class EventRegistrationService
     |--------------------------------------------------------------------------
     */
 
-        $register = function () use ($event, $type, $ids): array {
+        $register = function () use ($event, $type, $ids, $requestedDayIds): array {
             /*
         |--------------------------------------------------------------------------
         | Lock Event
@@ -125,6 +132,7 @@ class EventRegistrationService
                     'event' => 'Event tidak menerima registrasi peserta.',
                 ]);
             }
+            $dayIds = $this->invitations->resolveDays($lockedEvent, $requestedDayIds);
 
             /*
         |--------------------------------------------------------------------------
@@ -210,8 +218,9 @@ class EventRegistrationService
         |--------------------------------------------------------------------------
         */
 
+            $createdRegistrations = [];
             foreach ($toCreate as $id) {
-                $registration = $lockedEvent->registrations()->create([
+                $createdRegistrations[] = $lockedEvent->registrations()->create([
                     $participantColumn => $id,
                     'registration_type' => $type,
                     'registration_source' => EventRegistration::SOURCE_ADMIN,
@@ -219,20 +228,6 @@ class EventRegistrationService
                     'registered_at' => now(),
                     'cancelled_at' => null,
                 ]);
-
-                /*
-    |--------------------------------------------------------------------------
-    | Schedule Invitation
-    |--------------------------------------------------------------------------
-    |
-    | Only newly created registrations receive invitations here.
-    |
-    | Draft events will be ignored.
-    | Published event invitations are persisted in this transaction.
-    |
-    */
-
-                $this->scheduleInvitation($registration, $lockedEvent);
             }
 
             /*
@@ -247,14 +242,20 @@ class EventRegistrationService
                     'registered_at' => now(),
                     'cancelled_at' => null,
                 ]);
+            }
 
-                /*
-    |--------------------------------------------------------------------------
-    | Schedule Reactivation Notification
-    |--------------------------------------------------------------------------
-    */
+            $reactivatedIds = array_map(fn (EventRegistration $registration): int => $registration->id, $toReactivate);
+            if ($requestedDayIds !== []) {
+                $this->invitations->revokeExcept($reactivatedIds, $dayIds);
+            }
+            $newIds = array_map(fn (EventRegistration $registration): int => $registration->id, $createdRegistrations);
+            $this->invitations->grant([...$newIds, ...$reactivatedIds], $dayIds);
 
-                if ($lockedEvent->status === Event::STATUS_PUBLISHED) {
+            if ($lockedEvent->isPublished()) {
+                foreach ($createdRegistrations as $registration) {
+                    $this->notifications->scheduleForRegistration($registration);
+                }
+                foreach ($toReactivate as $registration) {
                     $this->notifications->scheduleStatusChange($registration, EventRegistrationNotification::TYPE_REACTIVATION, true);
                 }
             }
@@ -366,15 +367,5 @@ class EventRegistrationService
 
             return $registration->refresh();
         }, attempts: 3);
-    }
-
-    /**
-     * Persist the invitation in the registration transaction.
-     */
-    private function scheduleInvitation(EventRegistration $registration, Event $event): void
-    {
-        if ($event->status === Event::STATUS_PUBLISHED) {
-            $this->notifications->scheduleForRegistration($registration);
-        }
     }
 }

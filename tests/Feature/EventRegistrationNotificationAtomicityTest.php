@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\SendEventRegistrationNotificationJob;
 use App\Models\Employee;
 use App\Models\Event;
+use App\Models\EventDay;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationNotification;
 use App\Models\ExternalParticipant;
@@ -25,7 +26,7 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
     #[TestWith(['external'])]
     public function test_registration_and_invitation_exist_before_commit_but_job_waits(string $type): void
     {
-        $event = Event::factory()->published()->create();
+        $event = $this->publishedEvent();
         $participant = match ($type) {
             'employee' => Employee::factory()->create(['email' => 'employee@example.test']),
             'external' => ExternalParticipant::factory()->create(['email' => 'external@example.test']),
@@ -35,8 +36,8 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
         DB::transaction(function () use ($event, $participant, $type): void {
             $service = app(EventRegistrationService::class);
             $result = match ($type) {
-                'employee' => $service->registerEmployees($event, [$participant->id]),
-                'external' => $service->registerExternals($event, [$participant->id]),
+                'employee' => $service->registerEmployees($event, [$participant->id], null),
+                'external' => $service->registerExternals($event, [$participant->id], null),
             };
 
             $this->assertSame(['created' => 1, 'reactivated' => 0, 'skipped' => 0, 'total' => 1], $result);
@@ -52,13 +53,13 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
 
     public function test_registration_and_notification_roll_back_with_no_dispatch(): void
     {
-        $event = Event::factory()->published()->create();
+        $event = $this->publishedEvent();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
         Queue::fake([SendEventRegistrationNotificationJob::class]);
 
         try {
             DB::transaction(function () use ($event, $employee): void {
-                app(EventRegistrationService::class)->registerEmployees($event, [$employee->id]);
+                app(EventRegistrationService::class)->registerEmployees($event, [$employee->id], null);
                 $this->assertDatabaseCount('event_registration_notifications', 1);
 
                 throw new RuntimeException('Rollback registration.');
@@ -75,7 +76,7 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
 
     public function test_notification_persistence_failure_rolls_back_registration(): void
     {
-        $event = Event::factory()->published()->create();
+        $event = $this->publishedEvent();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
         Queue::fake([SendEventRegistrationNotificationJob::class]);
         EventRegistrationNotification::creating(function (): void {
@@ -83,7 +84,7 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
         });
 
         try {
-            app(EventRegistrationService::class)->registerEmployees($event, [$employee->id]);
+            app(EventRegistrationService::class)->registerEmployees($event, [$employee->id], null);
             $this->fail('Notification persistence must fail.');
         } catch (RuntimeException $exception) {
             $this->assertSame('Notification persistence failed.', $exception->getMessage());
@@ -99,12 +100,12 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
     public function test_real_database_queue_is_populated_only_after_outermost_commit(): void
     {
         config(['queue.default' => 'database']);
-        $event = Event::factory()->published()->create();
+        $event = $this->publishedEvent();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
 
         DB::transaction(function () use ($event, $employee): void {
             DB::transaction(function () use ($event, $employee): void {
-                app(EventRegistrationService::class)->registerEmployees($event, [$employee->id]);
+                app(EventRegistrationService::class)->registerEmployees($event, [$employee->id], null);
                 $this->assertDatabaseCount('event_registration_notifications', 1);
                 $this->assertDatabaseCount('jobs', 0);
             });
@@ -120,11 +121,11 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
     public function test_database_queue_and_notification_are_empty_after_rollback(): void
     {
         config(['queue.default' => 'database']);
-        $event = Event::factory()->published()->create();
+        $event = $this->publishedEvent();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
 
         DB::beginTransaction();
-        app(EventRegistrationService::class)->registerEmployees($event, [$employee->id]);
+        app(EventRegistrationService::class)->registerEmployees($event, [$employee->id], null);
         DB::rollBack();
 
         $this->assertDatabaseCount('event_registrations', 0);
@@ -134,13 +135,13 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
 
     public function test_queue_outage_preserves_committed_notification_for_recovery(): void
     {
-        $event = Event::factory()->published()->create();
+        $event = $this->publishedEvent();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
         Queue::fake([SendEventRegistrationNotificationJob::class])->beforePushing(function (): void {
             throw new RuntimeException('Queue unavailable.');
         });
 
-        app(EventRegistrationService::class)->registerEmployees($event, [$employee->id]);
+        app(EventRegistrationService::class)->registerEmployees($event, [$employee->id], null);
 
         $this->assertDatabaseCount('event_registrations', 1);
         $this->assertDatabaseHas('event_registration_notifications', ['status' => EventRegistrationNotification::STATUS_PENDING, 'attempts' => 0]);
@@ -162,11 +163,11 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
 
     public function test_duplicate_published_registration_does_not_repeat_invitation(): void
     {
-        $event = Event::factory()->published()->create();
+        $event = $this->publishedEvent();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
         Queue::fake([SendEventRegistrationNotificationJob::class]);
         $service = app(EventRegistrationService::class);
-        $service->registerEmployees($event, [$employee->id, '000'.$employee->id]);
+        $service->registerEmployees($event, [$employee->id, '000'.$employee->id], null);
 
         $result = $service->registerEmployees($event, [$employee->id]);
 
@@ -178,7 +179,7 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
 
     public function test_published_capacity_failure_creates_no_registration_or_notification(): void
     {
-        $event = Event::factory()->published()->create(['capacity' => 1]);
+        $event = $this->publishedEvent(['capacity' => 1]);
         EventRegistration::factory()->for($event)->create();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
         Queue::fake([SendEventRegistrationNotificationJob::class]);
@@ -193,5 +194,14 @@ class EventRegistrationNotificationAtomicityTest extends TestCase
         $this->assertDatabaseCount('event_registrations', 1);
         $this->assertDatabaseCount('event_registration_notifications', 0);
         Queue::assertNotPushed(SendEventRegistrationNotificationJob::class);
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function publishedEvent(array $attributes = []): Event
+    {
+        $event = Event::factory()->published()->create($attributes);
+        EventDay::factory()->for($event)->create(['date' => $event->start_date->toDateString()]);
+
+        return $event;
     }
 }

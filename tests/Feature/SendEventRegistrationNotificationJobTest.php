@@ -35,7 +35,7 @@ class SendEventRegistrationNotificationJobTest extends TestCase
             'status' => Event::STATUS_PUBLISHED,
         ]);
 
-        $registration = EventRegistration::factory()->create([
+        $registration = EventRegistration::factory()->invitedTo()->create([
             'event_id' => $event->id,
         ]);
 

@@ -20,12 +20,17 @@ class EventParticipantController extends Controller
     public function store(StoreEventParticipantRequest $request, Event $event): RedirectResponse
     {
         $data = $request->validated();
+        $dayIds = match ($data['day_selection'] ?? null) {
+            'all' => null,
+            'selected' => $data['day_ids'],
+            default => [],
+        };
 
         try {
             $result = match ($data['participant_type']) {
-                EventRegistration::TYPE_EMPLOYEE => $this->registrationService->registerEmployees($event, $data['participant_ids']),
+                EventRegistration::TYPE_EMPLOYEE => $this->registrationService->registerEmployees($event, $data['participant_ids'], $dayIds),
 
-                EventRegistration::TYPE_EXTERNAL => $this->registrationService->registerExternals($event, $data['participant_ids']),
+                EventRegistration::TYPE_EXTERNAL => $this->registrationService->registerExternals($event, $data['participant_ids'], $dayIds),
             };
         } catch (ValidationException $exception) {
             throw $exception->redirectTo(route('events.show', $event).'#event-participants');

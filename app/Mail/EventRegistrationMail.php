@@ -51,7 +51,7 @@ class EventRegistrationMail extends Mailable
 
         $registration = $this->notification->registration;
 
-        if (! $registration) {
+        if (! $registration || $registration->loadMissing('activeInvitedDays')->activeInvitedDays->isEmpty()) {
             return [];
         }
 
@@ -65,7 +65,7 @@ class EventRegistrationMail extends Mailable
      */
     private function emailData(): array
     {
-        $this->notification->loadMissing(['registration.employee', 'registration.externalParticipant', 'registration.event']);
+        $this->notification->loadMissing(['registration.employee', 'registration.externalParticipant', 'registration.event', 'registration.activeInvitedDays']);
 
         $registration = $this->notification->registration;
 
@@ -147,6 +147,7 @@ class EventRegistrationMail extends Mailable
             'event_description' => $event->description,
             'event_location' => $event->location ?: '-',
             'event_date' => $eventDate,
+            'invited_days' => $registration->activeInvitedDays,
 
             'notification_type' => $type,
         ]);

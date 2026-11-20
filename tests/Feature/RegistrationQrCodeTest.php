@@ -173,7 +173,7 @@ class RegistrationQrCodeTest extends TestCase
 
     public function test_invitation_email_has_qr_attachment(): void
     {
-        $registration = $this->registration();
+        $registration = EventRegistration::factory()->invitedTo()->create();
 
         $notification = $this->notification($registration, EventRegistrationNotification::TYPE_INVITATION);
 
@@ -201,7 +201,7 @@ class RegistrationQrCodeTest extends TestCase
 
     public function test_reactivation_email_has_qr_attachment(): void
     {
-        $registration = $this->registration();
+        $registration = EventRegistration::factory()->invitedTo()->create();
 
         $notification = $this->notification($registration, EventRegistrationNotification::TYPE_REACTIVATION);
 
@@ -212,7 +212,7 @@ class RegistrationQrCodeTest extends TestCase
 
     public function test_reminder_email_has_qr_attachment(): void
     {
-        $registration = $this->registration();
+        $registration = EventRegistration::factory()->invitedTo()->create();
 
         $notification = $this->notification($registration, EventRegistrationNotification::TYPE_REMINDER);
 

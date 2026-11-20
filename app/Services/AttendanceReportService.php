@@ -14,8 +14,10 @@ use stdClass;
 
 class AttendanceReportService
 {
+    public function __construct(private readonly EventDayAttendanceService $attendance) {}
+
     /**
-     * Every row represents an active registration and one of its Event's days.
+     * Every row represents a current day invitation for an active registration.
      * The first attendance ID is canonical if historical duplicate rows exist.
      * Summary counts include every filtered row, including the text search and attendance status.
      *
@@ -24,10 +26,7 @@ class AttendanceReportService
      */
     public function data(Event $event, array $filters): array
     {
-        $recordsTotal = DB::table('event_registrations')
-            ->join('event_days', 'event_days.event_id', '=', 'event_registrations.event_id')
-            ->where('event_registrations.event_id', $event->id)
-            ->where('event_registrations.status', EventRegistration::STATUS_REGISTERED)->count();
+        $recordsTotal = $this->attendance->invitations()->where('event_registrations.event_id', $event->id)->count();
         $query = $this->query($event, $filters);
         $summary = $this->summarize($query);
         $start = (int) ($filters['start'] ?? 0);
@@ -139,8 +138,7 @@ class AttendanceReportService
             ->whereIn('event_day_id', $event->days()->select('id')->reorder())
             ->groupBy('event_registration_id', 'event_day_id');
 
-        return DB::table('event_registrations')
-            ->join('event_days', 'event_days.event_id', '=', 'event_registrations.event_id')
+        return $this->attendance->invitations()
             ->leftJoin('employees', fn (JoinClause $join): JoinClause => $join->on('employees.id', '=', 'event_registrations.employee_id')
                 ->where('event_registrations.registration_type', EventRegistration::TYPE_EMPLOYEE))
             ->leftJoin('external_participants', fn (JoinClause $join): JoinClause => $join->on('external_participants.id', '=', 'event_registrations.external_participant_id')
@@ -151,7 +149,6 @@ class AttendanceReportService
                 ->on('attendance_ids.event_day_id', '=', 'event_days.id'))
             ->leftJoin('attendances as report_attendance', 'report_attendance.id', '=', 'attendance_ids.attendance_id')
             ->leftJoin('users as operators', 'operators.id', '=', 'report_attendance.checked_in_by')
-            ->where('event_registrations.event_id', $event->id)
-            ->where('event_registrations.status', EventRegistration::STATUS_REGISTERED);
+            ->where('event_registrations.event_id', $event->id);
     }
 }
