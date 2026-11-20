@@ -44,7 +44,7 @@ class AttendanceConcurrencyTest extends TestCase
             $today = now(config('app.timezone'))->toDateString();
             $event = Event::factory()->published()->create(['start_date' => $today, 'end_date' => $today]);
             $day = EventDay::factory()->for($event)->create(['date' => $today]);
-            $registration = EventRegistration::factory()->for($event)->create();
+            $registration = EventRegistration::factory()->for($event)->invitedTo($day)->create();
             $worker = <<<'PHP'
                 require $argv[1].'/vendor/autoload.php';
                 $app = require $argv[1].'/bootstrap/app.php';

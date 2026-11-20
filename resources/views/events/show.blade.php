@@ -18,7 +18,8 @@
         $totalSchedules = $event->days->sum('schedules_count');
 
         $participantErrors = collect($errors->getMessages())
-            ->filter(fn (array $messages, string $key): bool => in_array($key, ['participants', 'participant_ids', 'participant_type', 'event', 'registration'], true) || str_starts_with($key, 'participant_ids.'))
+            ->filter(fn (array $messages, string $key): bool => in_array($key, ['participants', 'participant_ids', 'participant_type', 'event', 'registration', 'day_selection', 'day_ids'], true)
+                || str_starts_with($key, 'participant_ids.') || str_starts_with($key, 'day_ids.'))
             ->flatten();
     @endphp
 
@@ -382,7 +383,7 @@
                                         <x-ui.icon name="clock" class="me-1" />
                                         {{ $day->schedules_min_start_time ? substr($day->schedules_min_start_time, 0, 5).' - '.substr($day->schedules_max_end_time, 0, 5) : 'Belum ada rundown' }}
                                     </span>
-                                    <span><x-ui.icon name="users" class="me-1" />{{ $day->checked_in_count }} / {{ $event->registered_participants_count }} peserta hadir</span>
+                                    <span><x-ui.icon name="users" class="me-1" />{{ $day->checked_in_count }} / {{ $day->invited_count }} peserta hadir</span>
                                 </div>
 
                             </div>
@@ -497,4 +498,9 @@
     @include('events.partials.add-external-modal')
     @include('events.partials.cancel-registration-modal')
     @include('events.partials.reactivate-registration-modal')
+    @can('events.update')
+        @if ($event->status !== 'cancelled')
+            @include('events.days.invitations')
+        @endif
+    @endcan
 @endsection

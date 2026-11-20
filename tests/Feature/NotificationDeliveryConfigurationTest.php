@@ -23,7 +23,7 @@ class NotificationDeliveryConfigurationTest extends TestCase
     {
         config(['mail.default' => $mailer]);
         Mail::fake();
-        $registration = EventRegistration::factory()->for(Event::factory()->state(['status' => Event::STATUS_PUBLISHED]))->create();
+        $registration = EventRegistration::factory()->for(Event::factory()->state(['status' => Event::STATUS_PUBLISHED]))->invitedTo()->create();
         $notification = EventRegistrationNotification::factory()->queued()->create([
             'event_id' => $registration->event_id,
             'event_registration_id' => $registration->id,

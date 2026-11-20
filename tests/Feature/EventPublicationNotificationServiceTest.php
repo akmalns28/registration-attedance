@@ -46,9 +46,9 @@ class EventPublicationNotificationServiceTest extends TestCase
     {
         $event = Event::factory()->create();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
-        $active = EventRegistration::factory()->for($event)->create(['employee_id' => $employee->id]);
+        $active = EventRegistration::factory()->for($event)->invitedTo()->create(['employee_id' => $employee->id]);
         $missingEmail = Employee::factory()->create(['email' => null]);
-        $skipped = EventRegistration::factory()->for($event)->create(['employee_id' => $missingEmail->id]);
+        $skipped = EventRegistration::factory()->for($event)->invitedTo()->create(['employee_id' => $missingEmail->id]);
         $cancelled = EventRegistration::factory()->for($event)->cancelled()->create();
         Queue::fake([SendEventRegistrationNotificationJob::class]);
 
@@ -66,7 +66,7 @@ class EventPublicationNotificationServiceTest extends TestCase
         $event = Event::factory()->create();
         $staleEvent = $event->fresh();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
-        EventRegistration::factory()->for($event)->create(['employee_id' => $employee->id]);
+        EventRegistration::factory()->for($event)->invitedTo()->create(['employee_id' => $employee->id]);
         Queue::fake([SendEventRegistrationNotificationJob::class]);
 
         $this->updateEvent($event)->assertRedirect();
@@ -80,7 +80,7 @@ class EventPublicationNotificationServiceTest extends TestCase
     {
         $event = Event::factory()->published()->create();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
-        EventRegistration::factory()->for($event)->create(['employee_id' => $employee->id]);
+        EventRegistration::factory()->for($event)->invitedTo()->create(['employee_id' => $employee->id]);
         Queue::fake([SendEventRegistrationNotificationJob::class]);
         $service = app(EventPublicationNotificationService::class);
 
@@ -137,7 +137,7 @@ class EventPublicationNotificationServiceTest extends TestCase
     {
         $event = Event::factory()->create();
         $employee = Employee::factory()->create(['email' => 'employee@example.test']);
-        EventRegistration::factory()->for($event)->create(['employee_id' => $employee->id]);
+        EventRegistration::factory()->for($event)->invitedTo()->create(['employee_id' => $employee->id]);
         Queue::fake([SendEventRegistrationNotificationJob::class]);
         Exceptions::fake();
         EventRegistrationNotification::creating(function (): void {

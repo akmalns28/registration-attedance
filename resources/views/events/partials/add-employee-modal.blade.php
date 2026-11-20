@@ -75,6 +75,8 @@
 
                             </div>
 
+                            @include('events.partials.invitation-day-picker', ['pickerId' => 'employee-invitation'])
+
                             <div class="row g-3">
 
                                 <div class="col-md-6">

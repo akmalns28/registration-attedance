@@ -83,6 +83,7 @@ class AttendanceCheckinTest extends TestCase
     {
         [$event, $day, $registration] = $this->registration();
         $secondDay = EventDay::factory()->for($event)->create(['date' => '2027-01-17', 'day_number' => 2]);
+        $registration->invitedDays()->attach($secondDay);
         $this->actingAs($this->staff())->postJson(route('attendance.check-in'), $this->payload($event, $day, $registration))->assertCreated();
         $this->travelTo(Carbon::parse('2027-01-17 09:30:00', 'Asia/Jakarta'));
 
@@ -228,7 +229,7 @@ class AttendanceCheckinTest extends TestCase
     {
         [$event, $day, $registration] = $this->registration();
         $otherDay = EventDay::factory()->for($event)->create(['date' => '2027-01-17', 'day_number' => 2]);
-        $otherRegistration = EventRegistration::factory()->for($event)->create();
+        $otherRegistration = EventRegistration::factory()->for($event)->invitedTo($day, $otherDay)->create();
         Attendance::factory()->create(['event_registration_id' => $otherRegistration->id, 'event_day_id' => $otherDay->id]);
         $this->actingAs($this->staff())->postJson(route('attendance.check-in'), $this->payload($event, $day, $registration))->assertCreated();
 
@@ -379,7 +380,7 @@ class AttendanceCheckinTest extends TestCase
     {
         $event = Event::factory()->published()->create(['start_date' => '2027-01-15', 'end_date' => '2027-01-17']);
         $day = EventDay::factory()->for($event)->create(['date' => '2027-01-16']);
-        $registration = EventRegistration::factory()->for($event)->when($type === 'external', fn ($factory) => $factory->external())->create();
+        $registration = EventRegistration::factory()->for($event)->invitedTo($day)->when($type === 'external', fn ($factory) => $factory->external())->create();
 
         return [$event, $day, $registration];
     }

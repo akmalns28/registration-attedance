@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Attendance;
 use App\Models\Event;
 use App\Models\EventRegistration;
 use App\Services\AnalyticService;
@@ -28,9 +27,6 @@ class DashboardController extends Controller
             ->groupBy('registration_type')->get()->keyBy('registration_type');
         $employees = $registrations->get(EventRegistration::TYPE_EMPLOYEE);
         $externals = $registrations->get(EventRegistration::TYPE_EXTERNAL);
-        $totalAttendance = Attendance::query()->when($selectedEvent, fn (Builder $query, Event $event): Builder => $query
-            ->whereHas('registration', fn (Builder $registration): Builder => $registration->whereBelongsTo($event)))->count();
-
         $attendance = $analytics->data(['event' => $selectedEvent?->uuid]);
         $byEvent = collect($attendance['charts']['by_event'])->keyBy('event_id');
         $employeeRegistrations = (int) ($employees?->total ?? 0);
@@ -45,7 +41,8 @@ class DashboardController extends Controller
                 'active_events' => (clone $eventQuery)->published()->count(),
                 'total_participants' => (int) ($employees?->employees ?? 0) + (int) ($externals?->externals ?? 0),
                 'total_registered' => $attendance['kpis']['total_registrations'],
-                'total_attendance' => $totalAttendance,
+                'day_invitations' => $attendance['kpis']['expected_attendance'],
+                'total_attendance' => $attendance['kpis']['total_checkins'],
                 'attendance_percentage' => $attendance['kpis']['attendance_rate'],
                 'employee_registrations' => $employeeRegistrations,
                 'external_registrations' => $externalRegistrations,

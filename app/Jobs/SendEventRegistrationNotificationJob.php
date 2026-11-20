@@ -100,7 +100,7 @@ class SendEventRegistrationNotificationJob implements ShouldQueueAfterCommit
             Event::query()->whereKey($snapshot->event_id)->lockForUpdate()->first();
             EventRegistration::query()->whereKey($snapshot->event_registration_id)->lockForUpdate()->first();
             $notification = EventRegistrationNotification::query()
-                ->with(['registration.event', 'registration.employee', 'registration.externalParticipant'])
+                ->with(['registration.event', 'registration.employee', 'registration.externalParticipant', 'registration.activeInvitedDays'])
                 ->whereKey($this->notificationId)->lockForUpdate()->first();
 
             if ($notification === null || ! $this->matchesGeneration($notification)

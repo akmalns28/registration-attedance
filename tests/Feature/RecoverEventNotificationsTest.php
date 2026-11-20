@@ -34,7 +34,7 @@ class RecoverEventNotificationsTest extends TestCase
     {
         $event = Event::factory()->published()->create();
         $employee = Employee::factory()->create(['email' => 'participant@example.test']);
-        $registration = EventRegistration::factory()->for($event)->create(['employee_id' => $employee->id]);
+        $registration = EventRegistration::factory()->for($event)->invitedTo()->create(['employee_id' => $employee->id]);
 
         return EventRegistrationNotification::factory()->create(array_replace([
             'event_id' => $event->id,

@@ -65,6 +65,18 @@ class EventNotificationEligibility
             return $reason;
         }
 
-        return $this->email($notification->recipient_email) === null ? 'Recipient email is missing or invalid.' : null;
+        return $this->dayReason($registration, $notification->notification_type)
+            ?? ($this->email($notification->recipient_email) === null ? 'Recipient email is missing or invalid.' : null);
+    }
+
+    public function dayReason(EventRegistration $registration, string $type): ?string
+    {
+        if (! in_array($type, [EventRegistrationNotification::TYPE_INVITATION, EventRegistrationNotification::TYPE_REMINDER], true)) {
+            return null;
+        }
+
+        return $registration->loadMissing('activeInvitedDays')->activeInvitedDays->isEmpty()
+            ? 'Peserta belum memiliki hari undangan aktif.'
+            : null;
     }
 }

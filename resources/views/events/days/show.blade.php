@@ -28,13 +28,13 @@
         @endif
 
         <div class="row g-3 mb-3" aria-label="Ringkasan hari pelaksanaan">
-            <div class="col-6 col-lg-3"><x-ui.stat-card data-attendance-summary="active_registrations" title="Registrasi Aktif" :value="$attendanceSummary['active_registrations']" /></div>
+            <div class="col-6 col-lg-3"><x-ui.stat-card data-attendance-summary="invited" title="Peserta Diundang" :value="$attendanceSummary['invited']" /></div>
             <div class="col-6 col-lg-3"><x-ui.stat-card data-attendance-summary="checked_in" title="Sudah Check-in" :value="$attendanceSummary['checked_in']" /></div>
             <div class="col-6 col-lg-3"><x-ui.stat-card data-attendance-summary="not_checked_in" title="Belum Check-in" :value="$attendanceSummary['not_checked_in']" /></div>
             <div class="col-6 col-lg-3"><x-ui.stat-card data-attendance-summary="percentage" title="Persentase Kehadiran" :value="$attendanceSummary['percentage'].'%'" /></div>
         </div>
 
-        <p class="text-secondary small">Ringkasan dihitung dari registrasi aktif. Riwayat kehadiran tetap tersimpan jika registrasi dibatalkan. Waktu check-in menggunakan {{ config('app.timezone') }}.</p>
+        <p class="text-secondary small">Ringkasan menghitung undangan aktif untuk hari ini. Riwayat check-in tersimpan setelah undangan dicabut atau registrasi dibatalkan. Waktu check-in menggunakan {{ config('app.timezone') }}.</p>
 
         <div class="card">
             <div class="card-header">
@@ -43,6 +43,12 @@
                         <a href="#day-rundown" id="day-rundown-tab" class="nav-link active" data-bs-toggle="tab" role="tab"
                             aria-controls="day-rundown" aria-selected="true">Rundown</a>
                     </li>
+                    @if ($canViewInvitations)
+                        <li class="nav-item" role="presentation">
+                            <a href="#day-invitations" id="day-invitations-tab" class="nav-link" data-bs-toggle="tab" role="tab"
+                                aria-controls="day-invitations" aria-selected="false">Peserta Diundang</a>
+                        </li>
+                    @endif
                     @can('attendance.scan')
                         <li class="nav-item" role="presentation">
                             <a href="#day-scanner" id="day-scanner-tab" class="nav-link" data-bs-toggle="tab" role="tab"
@@ -65,6 +71,11 @@
                 <section id="day-rundown" class="tab-pane fade show active" role="tabpanel" aria-labelledby="day-rundown-tab">
                     @include('events.partials.schedules', ['enableScheduleDataTable' => $day->schedules->isNotEmpty()])
                 </section>
+                @if ($canViewInvitations)
+                    <section id="day-invitations" class="tab-pane fade" role="tabpanel" aria-labelledby="day-invitations-tab">
+                        @include('events.days.invitees')
+                    </section>
+                @endif
                 @can('attendance.scan')
                     <section id="day-scanner" class="tab-pane fade" role="tabpanel" aria-labelledby="day-scanner-tab">
                         @if ($scannerData)
@@ -109,6 +120,9 @@
     </div>
 
     @can('events.update')
+        @if ($event->status !== 'cancelled')
+            @include('events.days.invitations')
+        @endif
         <x-ui.modal id="deleteScheduleModal" title="Hapus Rundown?" size="sm">
             <p>Yakin ingin menghapus <strong id="deleteScheduleName"></strong>?</p>
             <p class="text-secondary small">Rundown yang dihapus tidak dapat dipulihkan.</p>

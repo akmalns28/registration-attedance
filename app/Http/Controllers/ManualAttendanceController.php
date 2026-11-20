@@ -27,6 +27,7 @@ class ManualAttendanceController extends Controller
         $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $data['search']).'%';
 
         $registrations = $event->registrations()->registered()
+            ->invitedOn($day)
             ->where('registration_type', $data['participant_type'])
             ->whereNull($isEmployee ? 'external_participant_id' : 'employee_id')
             ->whereHas($relation, fn (Builder $query): Builder => $query->active()

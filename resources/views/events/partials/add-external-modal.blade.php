@@ -77,6 +77,8 @@
 
                             </div>
 
+                            @include('events.partials.invitation-day-picker', ['pickerId' => 'external-invitation'])
+
                             <div class="d-flex justify-content-between align-items-center">
 
                                 <div class="text-secondary small">

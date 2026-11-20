@@ -70,8 +70,8 @@ class EventDayDetailTest extends TestCase
         $emptyDay = EventDay::factory()->for($event)->create(['date' => '2027-01-17', 'day_number' => 2]);
         EventSchedule::factory()->for($day, 'eventDay')->create(['start_time' => '08:00:00', 'end_time' => '09:00:00']);
         EventSchedule::factory()->for($day, 'eventDay')->create(['start_time' => '13:00:00', 'end_time' => '17:00:00']);
-        $registrations = EventRegistration::factory()->for($event)->count(2)->create();
-        $cancelled = EventRegistration::factory()->for($event)->cancelled()->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo($day, $emptyDay)->count(2)->create();
+        $cancelled = EventRegistration::factory()->for($event)->invitedTo($day)->cancelled()->create();
         Attendance::factory()->create(['event_day_id' => $day->id, 'event_registration_id' => $registrations[0]->id]);
         Attendance::factory()->create(['event_day_id' => $day->id, 'event_registration_id' => $cancelled->id]);
 
@@ -115,7 +115,7 @@ class EventDayDetailTest extends TestCase
     {
         [$event, $day] = $this->eventDay();
         $this->travelTo($day->date->copy()->setTime(9, 30));
-        $registration = EventRegistration::factory()->for($event)->create();
+        $registration = EventRegistration::factory()->for($event)->invitedTo($day)->create();
         $otherDay = EventDay::factory()->for($event)->create(['date' => '2027-01-17', 'day_number' => 2]);
         $otherEvent = Event::factory()->published()->create();
         $this->actingAs($this->viewer(['attendance.scan']));
@@ -215,8 +215,8 @@ class EventDayDetailTest extends TestCase
     public function test_summary_counts_active_registrations_and_starts_with_zero_persisted_attendance(int $activeCount): void
     {
         [$event, $day] = $this->eventDay();
-        EventRegistration::factory()->for($event)->count($activeCount)->create();
-        EventRegistration::factory()->for($event)->cancelled()->count(2)->create();
+        EventRegistration::factory()->for($event)->invitedTo($day)->count($activeCount)->create();
+        EventRegistration::factory()->for($event)->invitedTo($day)->cancelled()->count(2)->create();
         EventRegistration::factory()->count(2)->create();
 
         $response = $this->actingAs($this->viewer(['attendance.view']))->get(route('events.days.show', [$event, $day]))
@@ -225,6 +225,7 @@ class EventDayDetailTest extends TestCase
             ->assertDontSee('Konfirmasi Check-in');
 
         $this->assertSame([
+            'invited' => $activeCount,
             'active_registrations' => $activeCount,
             'checked_in' => 0, 'not_checked_in' => $activeCount, 'percentage' => 0.0,
         ], $response->viewData('attendanceSummary'));
@@ -270,7 +271,7 @@ class EventDayDetailTest extends TestCase
     {
         [$event, $day] = $this->eventDay();
         $employee = Employee::factory()->create(['nip' => '1234567890123456']);
-        $registration = EventRegistration::factory()->for($event)->for($employee)->create();
+        $registration = EventRegistration::factory()->for($event)->invitedTo($day)->for($employee)->create();
         $registrationAttributes = $registration->fresh()->getAttributes();
         $employeeAttributes = $employee->fresh()->getAttributes();
         $this->actingAs($this->viewer(['attendance.scan']));

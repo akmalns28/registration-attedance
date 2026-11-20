@@ -45,7 +45,8 @@ class EventNotificationActionService
                 throw ValidationException::withMessages(['notification' => 'Gunakan Coba lagi untuk notifikasi yang belum selesai.']);
             }
 
-            if ($reason = $this->eligibility->registrationReason($source->registration, $source->notification_type)) {
+            if ($reason = $this->eligibility->registrationReason($source->registration, $source->notification_type)
+                ?? $this->eligibility->dayReason($source->registration, $source->notification_type)) {
                 throw ValidationException::withMessages(['notification' => $reason]);
             }
 
@@ -66,6 +67,26 @@ class EventNotificationActionService
             }
 
             return $resent;
+        }, attempts: 3);
+    }
+
+    public function sendInvitation(Event $event, EventRegistration $registration): EventRegistrationNotification
+    {
+        $this->ensureTransport();
+
+        return DB::transaction(function () use ($event, $registration): EventRegistrationNotification {
+            $event = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $registration = $event->registrations()->whereKey($registration->id)->lockForUpdate()->firstOrFail();
+            $type = EventRegistrationNotification::TYPE_INVITATION;
+
+            if ($reason = $this->eligibility->registrationReason($registration, $type) ?? $this->eligibility->dayReason($registration, $type)) {
+                throw ValidationException::withMessages(['notification' => $reason]);
+            }
+            if ($this->eligibility->recipient($registration) === null) {
+                throw ValidationException::withMessages(['notification' => 'Peserta belum memiliki alamat email yang valid.']);
+            }
+
+            return $registration->latestInvitation()->first() ?? $this->publication->scheduleForRegistration($registration);
         }, attempts: 3);
     }
 

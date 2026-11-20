@@ -68,6 +68,8 @@
                             Status
                         </th>
 
+                        <th>Hari Undangan</th>
+
                         <th>
                             Registered At
                         </th>
@@ -191,6 +193,10 @@
 
                             </td>
 
+                            <td data-invitation-summary>
+                                {{ $registration->invitedDays->map(fn ($day) => 'Day '.$day->day_number)->implode(', ') ?: 'Belum ditetapkan' }}
+                            </td>
+
                             {{-- Registered At --}}
                             <td data-order="{{ $registration->registered_at?->timestamp ?? 0 }}">
 
@@ -208,6 +214,12 @@
 
                                 @can('events.update')
                                     @if ($isRegistered)
+                                        @if ($event->status !== 'cancelled')
+                                            <x-ui.action icon="calendar" label="Kelola Hari Undangan" data-bs-toggle="modal"
+                                                data-bs-target="#eventDayInvitationModal" aria-haspopup="dialog" aria-controls="eventDayInvitationModal"
+                                                :data-invitation-url="route('events.participants.invitations.edit', [$event, $registration], absolute: false)"
+                                                :data-invitation-update-url="route('events.participants.invitations.update', [$event, $registration], absolute: false)" />
+                                        @endif
                                         {{-- Cancel Registration --}}
                                         <x-ui.action icon="x" label="Batalkan Registrasi" variant="danger" data-bs-toggle="modal"
                                             data-bs-target="#cancelRegistrationModal"

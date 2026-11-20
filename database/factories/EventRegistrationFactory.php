@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Employee;
 use App\Models\Event;
+use App\Models\EventDay;
 use App\Models\EventRegistration;
 use App\Models\ExternalParticipant;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -78,5 +79,20 @@ class EventRegistrationFactory extends Factory
                 'registration_source' => EventRegistration::SOURCE_SELF,
             ],
         );
+    }
+
+    public function invitedTo(EventDay ...$days): static
+    {
+        return $this->afterCreating(function (EventRegistration $registration) use ($days): void {
+            if ($days === []) {
+                $event = $registration->event;
+                $days = [$event->days()->firstOrCreate(
+                    ['date' => $event->start_date->toDateString()],
+                    ['day_number' => 1, 'is_active' => true],
+                )];
+            }
+
+            $registration->invitedDays()->attach(array_map(fn (EventDay $day): int => $day->id, $days));
+        });
     }
 }

@@ -36,8 +36,8 @@ class ManualAttendanceTest extends TestCase
     {
         [$event, $day] = $this->eventDay();
         $employee = Employee::factory()->for(Department::factory()->create(['name' => 'Operations']))->create(['name' => 'Ayu Employee', 'nip' => '0012345']);
-        $internal = EventRegistration::factory()->for($event)->for($employee)->create();
-        $external = EventRegistration::factory()->external()->for($event)->create();
+        $internal = EventRegistration::factory()->for($event)->invitedTo($day)->for($employee)->create();
+        $external = EventRegistration::factory()->external()->for($event)->invitedTo($day)->create();
         $external->externalParticipant->update(['name' => 'Budi Guest', 'phone' => '0812799999']);
         Attendance::factory()->create(['event_registration_id' => $external->id, 'event_day_id' => $day->id]);
 
@@ -59,16 +59,16 @@ class ManualAttendanceTest extends TestCase
     public function test_search_excludes_unregistered_cancelled_inactive_and_other_event_participants(): void
     {
         [$event, $day] = $this->eventDay();
-        $matching = EventRegistration::factory()->external()->for($event)->create();
-        $cancelled = EventRegistration::factory()->external()->cancelled()->for($event)->create();
-        $inactive = EventRegistration::factory()->external()->for($event)->create();
+        $matching = EventRegistration::factory()->external()->for($event)->invitedTo($day)->create();
+        $cancelled = EventRegistration::factory()->external()->cancelled()->for($event)->invitedTo($day)->create();
+        $inactive = EventRegistration::factory()->external()->for($event)->invitedTo($day)->create();
         $other = EventRegistration::factory()->external()->create();
         foreach ([$matching, $cancelled, $inactive, $other] as $registration) {
             $registration->externalParticipant->update(['name' => 'Common Guest', 'phone' => null]);
         }
         $inactive->externalParticipant->update(['is_active' => false]);
         ExternalParticipant::factory()->create(['name' => 'Common Guest']);
-        EventRegistration::factory()->for($event)->for(Employee::factory()->create(['nip' => 'EmployeeOnly007']))->create();
+        EventRegistration::factory()->for($event)->invitedTo($day)->for(Employee::factory()->create(['nip' => 'EmployeeOnly007']))->create();
         $this->actingAs($this->operator());
 
         $this->getJson($this->searchUrl($event, $day, 'external', 'Common Guest'))->assertOk()
@@ -97,8 +97,8 @@ class ManualAttendanceTest extends TestCase
     {
         [$event, $firstDay] = $this->eventDay();
         $secondDay = EventDay::factory()->for($event)->create(['day_number' => 2, 'date' => '2027-01-16']);
-        $internal = EventRegistration::factory()->for($event)->create();
-        $external = EventRegistration::factory()->external()->for($event)->create();
+        $internal = EventRegistration::factory()->for($event)->invitedTo($firstDay, $secondDay)->create();
+        $external = EventRegistration::factory()->external()->for($event)->invitedTo($firstDay, $secondDay)->create();
         $operator = $this->operator('event-admin');
         $this->actingAs($operator);
 

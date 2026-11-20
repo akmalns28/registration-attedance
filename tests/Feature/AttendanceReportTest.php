@@ -261,7 +261,7 @@ class AttendanceReportTest extends TestCase
     {
         $fixture = $this->fixture();
         $employee = Employee::factory()->create(['name' => '100%_! Person']);
-        EventRegistration::factory()->for($fixture['event'])->for($employee)->create();
+        EventRegistration::factory()->for($fixture['event'])->invitedTo(...$fixture['days'])->for($employee)->create();
         $this->actingAs($this->user());
 
         $this->getJson($this->url($fixture['event'], ['search' => ['value' => '%_!']]))->assertOk()->assertJsonCount(3, 'data')
@@ -322,7 +322,7 @@ class AttendanceReportTest extends TestCase
         try {
             $initial = $service->data($fixture['event'], ['length' => 2]);
             $queryCount = count(DB::getQueryLog());
-            EventRegistration::factory()->for($fixture['event'])->count(20)->create();
+            EventRegistration::factory()->for($fixture['event'])->invitedTo(...$fixture['days'])->count(20)->create();
             DB::flushQueryLog();
             $result = $service->data($fixture['event'], ['length' => 2]);
             $queries = DB::getQueryLog();
@@ -354,7 +354,7 @@ class AttendanceReportTest extends TestCase
     public function test_browser_fixtures_preserve_multi_day_scope_and_existing_scanner_entry(): void
     {
         $fixture = $this->fixture();
-        EventRegistration::factory()->for($fixture['event'])->count(5)
+        EventRegistration::factory()->for($fixture['event'])->invitedTo(...$fixture['days'])->count(5)
             ->state(['employee_id' => Employee::factory()->state(['name' => 'Additional Employee'])])->create();
         $this->actingAs($this->user());
         $response = $this->get(route('events.show', $fixture['event']))->assertOk()->assertSee('href="'.route('events.scanner', $fixture['event']).'"', false);
@@ -400,11 +400,11 @@ class AttendanceReportTest extends TestCase
         $secondDepartment = Department::factory()->create(['name' => 'Department Beta']);
         $firstEmployee = Employee::factory()->for($department)->create(['name' => 'Alice Employee']);
         $secondEmployee = Employee::factory()->for($secondDepartment)->create(['name' => 'Budi Employee']);
-        $firstRegistration = EventRegistration::factory()->for($event)->for($firstEmployee)->create();
-        $secondRegistration = EventRegistration::factory()->for($event)->for($secondEmployee)->create();
-        $external = EventRegistration::factory()->external()->for($event)->create();
+        $firstRegistration = EventRegistration::factory()->for($event)->invitedTo(...$days)->for($firstEmployee)->create();
+        $secondRegistration = EventRegistration::factory()->for($event)->invitedTo(...$days)->for($secondEmployee)->create();
+        $external = EventRegistration::factory()->external()->for($event)->invitedTo(...$days)->create();
         $external->externalParticipant->update(['name' => 'Carla External']);
-        $cancelled = EventRegistration::factory()->for($event)->cancelled()->create();
+        $cancelled = EventRegistration::factory()->for($event)->invitedTo(...$days)->cancelled()->create();
         $cancelled->employee->update(['name' => 'Cancelled Participant']);
         $operator = User::factory()->create(['name' => 'Check-in Operator']);
         foreach ([[$firstRegistration, $days[0]], [$firstRegistration, $days[1]], [$secondRegistration, $days[1]], [$external, $days[0]], [$cancelled, $days[0]]] as [$registration, $day]) {

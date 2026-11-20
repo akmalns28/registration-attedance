@@ -248,7 +248,7 @@ class EventAttendanceScannerTest extends TestCase
     {
         $event = Event::factory()->published()->create(['start_date' => '2027-01-15', 'end_date' => '2027-01-17']);
         $day = EventDay::factory()->for($event)->create(['date' => '2027-01-16']);
-        $registration = EventRegistration::factory()->for($event)->create();
+        $registration = EventRegistration::factory()->for($event)->invitedTo($day)->create();
 
         return [$event, $day, $registration];
     }

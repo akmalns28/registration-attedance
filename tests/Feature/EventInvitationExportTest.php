@@ -46,7 +46,7 @@ class EventInvitationExportTest extends TestCase
             'start_date' => '2026-11-16', 'end_date' => '2026-12-03',
         ]);
         $day = EventDay::factory()->for($event)->create(['date' => '2026-11-16']);
-        $registration = EventRegistration::factory()->for($event)
+        $registration = EventRegistration::factory()->for($event)->invitedTo($day)
             ->for(Employee::factory()->create(['name' => 'Akmal <Utama>']))
             ->create(['registration_number' => 'REG-ABC/012']);
         EventRegistration::factory()->for($event)->for(Employee::factory()->create(['name' => 'Nama Peserta Lain']))->create();
@@ -64,10 +64,11 @@ class EventInvitationExportTest extends TestCase
         $html = view('events.partials.invitation-document', $rendered)->render();
         $this->assertStringContainsString('<title>Undangan Forum &amp; Kolaborasi - '.e($applicationName).'</title>', $html);
         foreach (['PT ARI UTSAHA NUSANTARA', 'Forum &amp; Kolaborasi', 'Akmal &lt;Utama&gt;', 'Hotel &lt;Kota&gt;',
-            '16 November 2026', '3 Desember 2026', 'REG-ABC/012', 'Tunjukkan QR Code ini kepada panitia saat check-in.'] as $text) {
+            '16 November 2026', 'REG-ABC/012', 'Tunjukkan QR Code ini kepada panitia saat check-in.'] as $text) {
             $this->assertStringContainsString($text, $html);
         }
         $this->assertStringNotContainsString('Nama Peserta Lain', $html);
+        $this->assertStringNotContainsString('3 Desember 2026', $html);
         $this->assertStringNotContainsString('<Utama>', $html);
         $this->assertStringNotContainsString('<Kota>', $html);
         $payload = $this->invitationPayload($response->getContent());

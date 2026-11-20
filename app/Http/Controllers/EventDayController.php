@@ -9,11 +9,13 @@ use App\Models\EventDay;
 use App\Services\AttendanceScannerContext;
 use App\Services\EventDayAttendanceService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class EventDayController extends Controller
 {
@@ -21,16 +23,28 @@ class EventDayController extends Controller
     {
         $this->ensureBelongsToEvent($event, $day);
         $day->load('schedules');
-        $canScan = auth()->user()->can('attendance.scan') && $event->isPublished() && $day->is_active
+        $user = auth()->user();
+        $canScan = $user->can('attendance.scan') && $event->isPublished() && $day->is_active
             && $day->date->betweenIncluded($event->start_date, $event->end_date);
+        $canViewAttendance = $user->can('attendance.view');
+        $canViewInvitations = $canViewAttendance || $user->canAny(['registrations.view', 'events.update']);
+        $invitees = $canViewInvitations ? $day->invitations()->where('event_registrations.event_id', $event->id)
+            ->with(['employee', 'externalParticipant'])
+            ->when($user->canAny(['registrations.view', 'events.update']), fn ($query) => $query->with('latestInvitation'))
+            ->when($canViewAttendance, fn ($query) => $query->withExists([
+                'attendances as checked_in' => fn (Builder $query): Builder => $query->where('event_day_id', $day->id),
+            ]))
+            ->orderBy('event_registrations.id')->get() : collect();
 
         return view('events.days.show', [
             'event' => $event,
             'day' => $day,
             'attendanceSummary' => $attendance->summary($event, $day),
-            'attendees' => auth()->user()->can('attendance.view') ? $attendance->attendees($event, $day) : [],
-            'attendanceRefreshUrl' => auth()->user()->can('attendance.view') ? route('events.days.attendance', [$event, $day], absolute: false) : null,
+            'attendees' => $canViewAttendance ? $attendance->attendees($event, $day) : [],
+            'attendanceRefreshUrl' => $canViewAttendance ? route('events.days.attendance', [$event, $day], absolute: false) : null,
             'scannerData' => $canScan ? $scannerContext->viewData($event, $day) : null,
+            'canViewInvitations' => $canViewInvitations,
+            'invitees' => $invitees,
         ]);
     }
 
@@ -56,18 +70,13 @@ class EventDayController extends Controller
     {
         $data = $request->validated();
 
-        $date = Carbon::parse($data['date']);
-
-        $dayNumber = (int) $event->start_date->diffInDays($date) + 1;
-
-        EventDay::create([
-            'event_id' => $event->id,
-            'day_number' => $dayNumber,
-            'date' => $data['date'],
-            'title' => $data['title'] ?? null,
-            'description' => $data['description'] ?? null,
-            'is_active' => $data['is_active'],
-        ]);
+        DB::transaction(function () use ($event, $data): void {
+            $event = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $event->days()->create([
+                ...$data,
+                'day_number' => $this->dayNumber($event, $data['date']),
+            ]);
+        }, attempts: 3);
 
         return redirect()
             ->to(route('events.show', $event).'#event-days')
@@ -90,17 +99,16 @@ class EventDayController extends Controller
 
         $data = $request->validated();
 
-        $date = Carbon::parse($data['date']);
-
-        $dayNumber = (int) $event->start_date->diffInDays($date) + 1;
-
-        $day->update([
-            'day_number' => $dayNumber,
-            'date' => $data['date'],
-            'title' => $data['title'] ?? null,
-            'description' => $data['description'] ?? null,
-            'is_active' => $data['is_active'],
-        ]);
+        DB::transaction(function () use ($event, $day, $data): void {
+            $event = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $lockedDay = $event->days()->whereKey($day->id)->lockForUpdate()->firstOrFail();
+            $lockedDay->update([
+                ...$data,
+                'title' => $data['title'] ?? null,
+                'description' => $data['description'] ?? null,
+                'day_number' => $this->dayNumber($event, $data['date']),
+            ]);
+        }, attempts: 3);
 
         return redirect()
             ->to(route('events.show', $event).'#event-days')
@@ -122,6 +130,9 @@ class EventDayController extends Controller
             if ($lockedDay->attendances()->exists()) {
                 return 'Hari pelaksanaan tidak dapat dihapus karena memiliki riwayat kehadiran.';
             }
+            if ($lockedDay->invitations()->exists()) {
+                return 'Hari pelaksanaan tidak dapat dihapus karena memiliki riwayat undangan.';
+            }
             $lockedDay->delete();
 
             return null;
@@ -139,5 +150,15 @@ class EventDayController extends Controller
     private function ensureBelongsToEvent(Event $event, EventDay $day): void
     {
         abort_unless($day->event_id === $event->id, 404);
+    }
+
+    private function dayNumber(Event $event, string $value): int
+    {
+        $date = Carbon::parse($value);
+        if (! $date->betweenIncluded($event->start_date, $event->end_date)) {
+            throw ValidationException::withMessages(['date' => 'Tanggal pelaksanaan harus berada dalam rentang tanggal event.']);
+        }
+
+        return (int) $event->start_date->diffInDays($date) + 1;
     }
 }
