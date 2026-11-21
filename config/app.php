@@ -16,6 +16,8 @@ return [
 
     'version' => env('APP_VERSION', '1.0.0'),
 
+    'favicon_path' => env('APP_FAVICON_PATH') ?: 'favicon.ico',
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

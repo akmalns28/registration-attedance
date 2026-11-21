@@ -66,12 +66,8 @@ class EventParticipantManagementTest extends TestCase
             'nip' => '001234567890123',
         ]);
 
-        $this->actingAs($this->authorizedUser())
-            ->get(route('events.show', $event))
-            ->assertOk()
-            ->assertSee($employee->name)
-            ->assertSee('001234567890123')
-            ->assertSee('Cari nama atau NIP Employee...');
+        $this->actingAs($this->authorizedUser())->getJson(route('events.participants.candidates', [$event, 'type' => 'employee', 'search' => $employee->nip]))
+            ->assertOk()->assertJsonPath('data.0.name', $employee->name)->assertJsonPath('data.0.identifier', '001234567890123');
     }
 
     public function test_authorized_user_can_register_employees(): void

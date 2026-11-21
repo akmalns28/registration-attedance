@@ -8,6 +8,7 @@
         body { margin: 0; color: #182433; font: 10pt/1.4 'DejaVu Sans', sans-serif; }
         header { border-top: 4pt solid #206bc4; padding-top: 16pt; margin-bottom: 17pt; }
         .company { margin: 0 0 7pt; font-size: 9pt; font-weight: bold; letter-spacing: 0.7pt; color: #315782; }
+        .logo { float: right; max-width: 64pt; max-height: 48pt; margin-left: 10pt; }
         h1 { margin: 0; font-size: 23pt; line-height: 1.15; }
         .event-name { margin: 5pt 0 0; font-size: 15pt; line-height: 1.25; font-weight: bold; }
         .event-name, p, td { overflow-wrap: break-word; }
@@ -24,6 +25,9 @@
 </head>
 <body>
     <header>
+        @if ($logoImage)
+            <img class="logo" src="{{ $logoImage }}" alt="Logo {{ $event->title }}">
+        @endif
         <p class="company">PT ARI UTSAHA NUSANTARA</p>
         <h1>Undangan</h1>
         <p class="event-name">{{ $event->title }}</p>
@@ -35,17 +39,11 @@
     <table class="details">
         <tr>
             <th scope="row">Tanggal</th>
-            <td>
-                @forelse ($registration->activeInvitedDays as $day)
-                    <div>Day {{ $day->day_number }} · {{ $day->date->locale('id')->translatedFormat('j F Y') }}{{ $day->title ? ' · '.$day->title : '' }}</div>
-                @empty
-                    Hari undangan belum ditetapkan.
-                @endforelse
-            </td>
+            <td>{{ $invitedDates }}</td>
         </tr>
         <tr>
             <th scope="row">Lokasi</th>
-            <td>{{ $event->location }}</td>
+            <td>@include('events.partials.location-link', ['location' => $event->location, 'mapsUrl' => $event->google_maps_url, 'showMapsHint' => true])</td>
         </tr>
     </table>
 

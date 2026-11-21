@@ -46,6 +46,11 @@
                         text-align: center;
                     ">
 
+                            @isset($event_logo['contents'], $event_logo['mime'], $message)
+                                <img src="{{ $message->embedData($event_logo['contents'], $event_logo['mime'] === 'image/png' ? 'event-logo.png' : 'event-logo.jpg', $event_logo['mime']) }}"
+                                    alt="Logo {{ $event_title }}" width="72" height="72"
+                                    style="display: inline-block; object-fit: contain; background-color: #ffffff; border-radius: 6px; margin-bottom: 12px;">
+                            @endisset
                             <div
                                 style="
                             color: #ffffff;
@@ -184,7 +189,7 @@
                                                 color: #64748b;
                                                 vertical-align: top;
                                             ">
-                                                    {{ $notification_type === 'cancellation' ? 'Tanggal' : 'Hari Undangan' }}
+                                                    Tanggal
                                                 </td>
 
                                                 <td
@@ -194,15 +199,7 @@
                                                 font-weight: 600;
                                                 color: #182433;
                                             ">
-                                                    @if ($notification_type === 'cancellation')
-                                                        {{ $event_date }}
-                                                    @else
-                                                        @forelse ($invited_days as $day)
-                                                            <div>Day {{ $day->day_number }} · {{ $day->date->format('d/m/Y') }}{{ $day->title ? ' · '.$day->title : '' }}</div>
-                                                        @empty
-                                                            Hari undangan belum ditetapkan.
-                                                        @endforelse
-                                                    @endif
+                                                    {{ $event_date ?? 'Belum ada tanggal undangan aktif.' }}
                                                 </td>
                                             </tr>
 
@@ -224,7 +221,7 @@
                                                 font-weight: 600;
                                                 color: #182433;
                                             ">
-                                                    {{ $event_location }}
+                                                    @include('events.partials.location-link', ['location' => $event_location, 'mapsUrl' => $event_maps_url, 'showMapsHint' => true])
                                                 </td>
                                             </tr>
 
@@ -308,7 +305,7 @@
 
                             {{-- QR Code Information --}}
 
-                            @if ($notification_type !== 'cancellation' && $invited_days->isNotEmpty())
+                            @if ($has_qr_code)
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                                     style="
             background-color: #eff6ff;

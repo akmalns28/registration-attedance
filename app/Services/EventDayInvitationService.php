@@ -6,11 +6,32 @@ use App\Models\Event;
 use App\Models\EventRegistration;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class EventDayInvitationService
 {
+    public function dateSummary(EventRegistration $registration): ?string
+    {
+        $dates = $registration->loadMissing('activeInvitedDays')->activeInvitedDays
+            ->sortBy('date')->pluck('date')->values();
+
+        if ($dates->isEmpty()) {
+            return null;
+        }
+
+        $format = fn (Carbon $date): string => $date->copy()->locale('id')->translatedFormat('j F Y');
+        $first = $dates->first();
+        $last = $dates->last();
+
+        if ($dates->count() > 1 && $first->copy()->addDays($dates->count() - 1)->isSameDay($last)) {
+            return $format($first).' – '.$format($last);
+        }
+
+        return $dates->map($format)->implode(', ');
+    }
+
     /**
      * @param  list<int|string>|null  $requestedIds
      * @param  list<int>  $retainedIds

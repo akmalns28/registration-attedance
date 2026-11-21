@@ -100,14 +100,30 @@ class EventNotificationPageTest extends TestCase
         $this->getJson(route('notifications.index', ['status' => 'unknown']))->assertUnprocessable()->assertJsonValidationErrors('status');
     }
 
-    public function test_notification_errors_and_participant_names_are_escaped(): void
+    public function test_history_displays_only_safe_diagnostics_and_escapes_participant_names(): void
     {
         $notification = $this->notification(['last_error' => '<script>privateDiagnostic()</script>']);
         $notification->registration->employee->update(['name' => '<script>participantName()</script>']);
 
         $this->actingAs($this->user())->get(route('notifications.index'))
-            ->assertOk()->assertSee('<script>privateDiagnostic()</script>')->assertSee('<script>participantName()</script>')
-            ->assertDontSee('<script>privateDiagnostic()</script>', false)->assertDontSee('<script>participantName()</script>', false);
+            ->assertOk()->assertSee('Email could not be prepared or sent.')->assertSee('<script>participantName()</script>')
+            ->assertDontSee('privateDiagnostic()')->assertDontSee('<script>participantName()</script>', false);
+    }
+
+    public function test_history_keeps_sent_failed_pending_and_skipped_visible_with_safe_failure_details(): void
+    {
+        $sent = $this->notification(['status' => EventRegistrationNotification::STATUS_SENT, 'sent_at' => now()]);
+        $failed = $this->notification(['status' => EventRegistrationNotification::STATUS_FAILED, 'failed_at' => now(),
+            'last_error' => 'Expected response code "250" but got code "550", with message "550-5.7.1 sender smtp://operator:legacy-secret@private-relay.test rejected".'], $sent->event);
+        $pending = $this->notification(['status' => EventRegistrationNotification::STATUS_PENDING], $sent->event);
+        $skipped = $this->notification(['status' => EventRegistrationNotification::STATUS_SKIPPED,
+            'recipient_email' => null, 'last_error' => 'Recipient email is missing or invalid.'], $sent->event);
+
+        $this->actingAs($this->user())->get(route('notifications.index', ['event' => $sent->event->uuid]))->assertOk()
+            ->assertSeeInOrder([$skipped->registration->registration_number, 'Dilewati', 'Recipient email is missing or invalid.',
+                $pending->registration->registration_number, 'Menunggu', $failed->registration->registration_number,
+                'Gagal', 'SMTP reply 550 5.7.1', $sent->registration->registration_number, 'Terkirim'])
+            ->assertDontSee('legacy-secret')->assertDontSee('private-relay.test');
     }
 
     public function test_repeated_retry_submissions_queue_only_once_without_resetting_attempts(): void

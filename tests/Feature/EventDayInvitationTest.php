@@ -44,7 +44,7 @@ class EventDayInvitationTest extends TestCase
         $url = route('events.participants.store', $event);
         $this->actingAs($this->staff());
 
-        $this->get(route('events.show', $event))->assertOk()->assertSee('All Days')->assertSee('Select Days');
+        $this->get(route('events.show', $event))->assertOk()->assertSee('All Days')->assertSee('Selected Days');
         $employeeSelection = ['participant_type' => 'employee', 'participant_ids' => $employees->modelKeys(), 'day_selection' => 'selected', 'day_ids' => [$second->id]];
         $this->post($url, $employeeSelection)->assertSessionHasNoErrors();
         $this->post($url, $employeeSelection)->assertSessionHasNoErrors();
@@ -223,7 +223,7 @@ class EventDayInvitationTest extends TestCase
         $this->assertSame([0.0, 50.0], array_column($analytics['charts']['by_day'], 'percentage'));
     }
 
-    public function test_preview_and_queued_mail_use_approved_days_and_send_and_resend_requests_are_idempotent(): void
+    public function test_preview_and_queued_mail_show_current_assigned_dates_and_send_and_resend_requests_are_idempotent(): void
     {
         [$event, $first, $second] = $this->event();
         $registration = EventRegistration::factory()->for($event)->for(Employee::factory()->state(['email' => 'participant@example.test']))->create();
@@ -231,20 +231,26 @@ class EventDayInvitationTest extends TestCase
         $this->actingAs($this->staff());
         $send = route('events.participants.invitations.send', [$event, $registration]);
         $preview = route('events.participants.invitations.preview', [$event, $registration]);
-
-        $this->get($preview)->assertOk()->assertSee('First Day')->assertDontSee('Second Day');
+        $this->get($preview)->assertOk()->assertSee('15 Januari 2027')->assertDontSee('16 Januari 2027')
+            ->assertDontSee('First Day')->assertDontSee('Second Day');
         $this->post($send)->assertRedirect();
         $this->post($send)->assertRedirect();
         $notification = $registration->notifications()->sole();
         $this->put(route('events.participants.invitations.update', [$event, $registration]), ['day_ids' => [$second->id]])->assertSessionHasNoErrors();
-        $this->get($preview)->assertOk()->assertSee('Second Day')->assertDontSee('First Day');
+        $this->assertSame([$second->id], $registration->invitedDays()->pluck('event_days.id')->all());
+        $this->get($preview)->assertOk()->assertSee('16 Januari 2027')->assertDontSee('15 Januari 2027')
+            ->assertDontSee('First Day')->assertDontSee('Second Day');
         $job = new SendEventRegistrationNotificationJob($notification->id, $notification->metadata['dispatch_generation']);
         $job->handle();
         $job->handle();
 
         Mail::assertSent(EventRegistrationMail::class, 1);
-        Mail::assertSent(EventRegistrationMail::class, fn (EventRegistrationMail $mail): bool => str_contains($mail->render(), 'Second Day')
-            && ! str_contains($mail->render(), 'First Day') && count($mail->attachments()) === 1);
+        Mail::assertSent(EventRegistrationMail::class, function (EventRegistrationMail $mail): bool {
+            $html = $mail->render();
+
+            return str_contains($html, '16 Januari 2027') && ! str_contains($html, '15 Januari 2027') && ! str_contains($html, 'First Day')
+                && ! str_contains($html, 'Second Day') && count($mail->attachments()) === 1;
+        });
         $resend = route('notifications.resend', $notification);
         $this->post($resend)->assertRedirect();
         $this->post($resend)->assertRedirect();

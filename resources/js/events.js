@@ -2,6 +2,7 @@ import { Modal, Tab } from "@tabler/core";
 import { adjustDataTables } from "./plugins/datatables";
 import DataTable from "datatables.net-bs5";
 import { initializeEventDayInvitations } from "./event-day-invitations";
+import { initializeEventParticipantPicker } from "./event-participant-picker";
 
 export function initializeEventPage(root = document) {
     const page = root.querySelector("[data-event-details]");
@@ -12,6 +13,10 @@ export function initializeEventPage(root = document) {
 
     page.dataset.initialized = "true";
     initializeEventDayInvitations(page, root);
+    const participantModal = root.querySelector("[data-participant-picker]");
+    if (participantModal) {
+        initializeEventParticipantPicker(participantModal);
+    }
     const refreshButton = page.querySelector("[data-attendance-refresh]");
     let refreshingAttendance = false;
     let attendanceRefreshPending = false;
@@ -123,8 +128,7 @@ export function initializeEventPage(root = document) {
             "#deleteScheduleModal",
             { form: "deleteScheduleForm", name: "deleteScheduleName", urlKey: "deleteUrl", nameKey: "deleteName" },
         ],
-        ["#addEmployeeModal", null],
-        ["#addExternalModal", null],
+        ["#addParticipantsModal", null],
     ]);
 
     root.addEventListener("click", (event) => {
@@ -193,18 +197,7 @@ export function initializeEventPage(root = document) {
         Tab.getOrCreateInstance(tab).show();
     }
 
-    const participantType = page.dataset.participantType;
-    const participantModal = participantType === "employee"
-        ? "#addEmployeeModal"
-        : participantType === "external"
-          ? "#addExternalModal"
-          : null;
-
-    if (page.dataset.participantErrors === "true" && participantModal) {
-        const modal = root.querySelector(participantModal);
-
-        if (modal) {
-            Modal.getOrCreateInstance(modal).show();
-        }
+    if (participantModal?.hasAttribute("data-reopen")) {
+        Modal.getOrCreateInstance(participantModal).show();
     }
 }

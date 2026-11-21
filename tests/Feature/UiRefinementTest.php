@@ -157,9 +157,7 @@ class UiRefinementTest extends TestCase
             User::factory()->create(['name' => $name])->assignRole('panitia');
             Role::create(['name' => 'ui-role-'.$index, 'guard_name' => 'web']);
         }
-        Employee::factory()->create(['name' => 'Kandidat Alfa Picker', 'nip' => '0001234501']);
-        Employee::factory()->create(['name' => 'Kandidat Beta Picker', 'nip' => '0001234502']);
-        Employee::factory()->count(10)->create();
+        $fixture['day']->update(['date' => $fixture['event']->start_date->toDateString()]);
         $pages = $this->pages($fixture);
         $pages['dashboard'] = route('dashboard');
         $pages['employeeForm'] = route('employees.create');

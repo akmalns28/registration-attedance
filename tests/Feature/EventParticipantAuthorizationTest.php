@@ -65,7 +65,7 @@ class EventParticipantAuthorizationTest extends TestCase
 
         $this->registration($event);
 
-        $this->actingAs($this->userWithPermissions(['events.view']))->get(route('events.show', $event))->assertOk()->assertDontSee('data-cancel-url')->assertDontSee('data-reactivate-url')->assertDontSee('id="addEmployeeModal"', false)->assertDontSee('id="addExternalModal"', false);
+        $this->actingAs($this->userWithPermissions(['events.view']))->get(route('events.show', $event))->assertOk()->assertDontSee('data-cancel-url')->assertDontSee('data-reactivate-url')->assertDontSee('id="addParticipantsModal"', false);
     }
 
     public function test_update_permission_can_see_registration_actions(): void
@@ -74,7 +74,7 @@ class EventParticipantAuthorizationTest extends TestCase
 
         $this->registration($event);
 
-        $this->actingAs($this->userWithPermissions(['events.view', 'events.update']))->get(route('events.show', $event))->assertOk()->assertSee('data-cancel-url')->assertSee('id="addEmployeeModal"', false)->assertSee('id="addExternalModal"', false);
+        $this->actingAs($this->userWithPermissions(['events.view', 'events.update']))->get(route('events.show', $event))->assertOk()->assertSee('data-cancel-url')->assertSee('id="addParticipantsModal"', false);
     }
 
     public function test_user_without_view_permission_cannot_access_event(): void

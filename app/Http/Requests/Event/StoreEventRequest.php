@@ -21,10 +21,14 @@ class StoreEventRequest extends FormRequest
             'description' => ['nullable', 'string'],
 
             'location' => ['nullable', 'string', 'max:255'],
+            'google_maps_url' => ['nullable', 'string', 'max:2048', 'url:http,https'],
+            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg', 'max:2048', 'dimensions:max_width=3000,max_height=3000'],
 
             'start_date' => ['required', 'date_format:Y-m-d'],
 
             'end_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+
+            'auto_create_event_days' => ['sometimes', 'boolean'],
 
             'registration_start_at' => ['nullable', 'date_format:Y-m-d H:i', 'required_with:registration_end_at'],
 
@@ -79,6 +83,11 @@ class StoreEventRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'google_maps_url.url' => 'URL Google Maps harus menggunakan HTTP atau HTTPS.',
+            'logo.image' => 'Logo event harus berupa gambar.',
+            'logo.mimes' => 'Logo event harus berformat PNG atau JPEG.',
+            'logo.max' => 'Ukuran logo event maksimal 2 MB.',
+            'logo.dimensions' => 'Dimensi logo event maksimal 3000 × 3000 piksel.',
             'title.required' => 'Nama event wajib diisi.',
             'title.max' => 'Nama event maksimal 200 karakter.',
 
@@ -87,6 +96,8 @@ class StoreEventRequest extends FormRequest
 
             'end_date.required' => 'Tanggal selesai wajib diisi.',
             'end_date.after_or_equal' => 'Tanggal selesai tidak boleh sebelum tanggal mulai.',
+
+            'auto_create_event_days.boolean' => 'Pilihan pembuatan Event Day otomatis tidak valid.',
 
             'registration_start_at.required_with' => 'Tanggal mulai registrasi wajib diisi jika tanggal selesai registrasi ditentukan.',
 

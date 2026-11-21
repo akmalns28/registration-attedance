@@ -2,16 +2,20 @@
 
 namespace Tests\Feature;
 
+use App\Mail\EventRegistrationMail;
 use App\Models\Employee;
 use App\Models\Event;
 use App\Models\EventDay;
 use App\Models\EventRegistration;
+use App\Models\EventRegistrationNotification;
 use App\Models\ExternalParticipant;
 use App\Models\User;
 use App\Services\RegistrationQrCodeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
 use Illuminate\Testing\TestResponse;
 use Illuminate\View\View as BladeView;
@@ -45,7 +49,7 @@ class EventInvitationExportTest extends TestCase
             'title' => 'Forum & Kolaborasi', 'location' => 'Hotel <Kota>',
             'start_date' => '2026-11-16', 'end_date' => '2026-12-03',
         ]);
-        $day = EventDay::factory()->for($event)->create(['date' => '2026-11-16']);
+        $day = EventDay::factory()->for($event)->create(['date' => '2026-11-16', 'title' => 'Hidden Day Title']);
         $registration = EventRegistration::factory()->for($event)->invitedTo($day)
             ->for(Employee::factory()->create(['name' => 'Akmal <Utama>']))
             ->create(['registration_number' => 'REG-ABC/012']);
@@ -68,7 +72,10 @@ class EventInvitationExportTest extends TestCase
             $this->assertStringContainsString($text, $html);
         }
         $this->assertStringNotContainsString('Nama Peserta Lain', $html);
+        $this->assertStringNotContainsString('Hidden Day Title', $html);
         $this->assertStringNotContainsString('3 Desember 2026', $html);
+        $this->assertStringNotContainsString('href=', $html);
+        $this->assertStringNotContainsString('Klik lokasi untuk membuka Google Maps', $html);
         $this->assertStringNotContainsString('<Utama>', $html);
         $this->assertStringNotContainsString('<Kota>', $html);
         $payload = $this->invitationPayload($response->getContent());
@@ -79,6 +86,72 @@ class EventInvitationExportTest extends TestCase
         $this->assertDatabaseCount('event_registrations', 2);
         $this->assertSame(EventRegistration::STATUS_REGISTERED, $registration->fresh()->status);
         $this->assertDatabaseCount('event_registration_notifications', 0);
+    }
+
+    public function test_pdf_embeds_the_event_logo_and_maps_link(): void
+    {
+        Storage::fake('local');
+        $logoPath = UploadedFile::fake()->image('logo.jpg', 70, 40)->store('event-logos', 'local');
+        $url = 'https://maps.google.com/?q=Kota';
+        $event = Event::factory()->create(['logo_path' => $logoPath, 'google_maps_url' => $url, 'location' => 'Hotel Kota']);
+        $registration = EventRegistration::factory()->for($event)->invitedTo()->create();
+        $rendered = [];
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
+            $rendered = $view->getData();
+        });
+
+        $response = $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk();
+        $this->assertStringStartsWith('data:image/jpeg;base64,', $rendered['logoImage']);
+        $this->assertStringContainsString('Klik lokasi untuk membuka Google Maps', view('events.partials.invitation-document', $rendered)->render());
+        $this->assertStringContainsString('/URI ('.$url.')', $response->getContent());
+        $this->assertStringContainsString('/DCTDecode', $response->getContent());
+        $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($response->getContent()));
+    }
+
+    #[TestWith([[4], '4 Februari 2027'])]
+    #[TestWith([[4, 3, 5], '3 Februari 2027 – 5 Februari 2027'])]
+    #[TestWith([[8, 4, 3], '3 Februari 2027, 4 Februari 2027, 8 Februari 2027'])]
+    public function test_email_and_pdf_show_only_the_assigned_dates_in_chronological_order(array $assignedDates, string $expected): void
+    {
+        $event = Event::factory()->create(['start_date' => '2027-02-01', 'end_date' => '2027-02-10']);
+        $days = [];
+        foreach ($assignedDates as $index => $date) {
+            $days[] = EventDay::factory()->for($event)->create([
+                'date' => sprintf('2027-02-%02d', $date), 'day_number' => $index + 1, 'title' => 'Hidden Day Title',
+            ]);
+        }
+
+        $registration = EventRegistration::factory()->for($event)->invitedTo(...$days)->create();
+        $notification = EventRegistrationNotification::factory()->for($registration, 'registration')->create([
+            'event_id' => $event->id, 'notification_type' => EventRegistrationNotification::TYPE_INVITATION,
+        ]);
+        $rendered = [];
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
+            $rendered = $view->getData();
+        });
+        $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk();
+
+        foreach ([view('events.partials.invitation-document', $rendered)->render(), (new EventRegistrationMail($notification))->render()] as $html) {
+            $this->assertStringContainsString($expected, $html);
+            $this->assertStringNotContainsString('Hidden Day Title', $html);
+            $this->assertStringNotContainsString('1 Februari 2027', $html);
+            $this->assertStringNotContainsString('10 Februari 2027', $html);
+        }
+    }
+
+    public function test_download_and_bulk_export_reject_registrations_without_any_active_assignments(): void
+    {
+        $event = Event::factory()->create();
+        $inactiveDay = EventDay::factory()->for($event)->inactive()->create();
+        $revokedDay = EventDay::factory()->for($event)->create(['day_number' => 2, 'date' => '2027-01-16']);
+        $registration = EventRegistration::factory()->for($event)->invitedTo($inactiveDay, $revokedDay)->create();
+        $registration->invitedDays()->updateExistingPivot($revokedDay->id, ['revoked_at' => now()]);
+        $this->actingAs($this->staff('registrations.view', 'registrations.manage'));
+
+        $this->getJson($this->invitationUrl($event, $registration))->assertUnprocessable()
+            ->assertJsonValidationErrors(['export' => 'Peserta belum memiliki hari undangan aktif.']);
+        $this->getJson(route('events.participants.invitations.export', $event))->assertUnprocessable()
+            ->assertJsonValidationErrors(['export' => 'Tidak ada peserta dengan hari undangan aktif untuk filter ini.']);
     }
 
     public function test_invitation_routes_require_authentication_and_their_respective_permissions(): void
@@ -123,15 +196,23 @@ class EventInvitationExportTest extends TestCase
     #[TestWith(['external', ['external']])]
     public function test_bulk_filters_export_only_the_expected_active_pdfs_with_unique_qr_codes(string $filter, array $expectedTypes): void
     {
-        $event = Event::factory()->create(['title' => '../Forum Operasional']);
-        $employee = EventRegistration::factory()->for($event)
+        $event = Event::factory()->create(['title' => '../Forum Operasional', 'start_date' => '2027-02-01', 'end_date' => '2027-02-03']);
+        $firstDay = EventDay::factory()->for($event)->create(['date' => '2027-02-01']);
+        $lastDay = EventDay::factory()->for($event)->create(['day_number' => 3, 'date' => '2027-02-03']);
+        $employee = EventRegistration::factory()->for($event)->invitedTo($firstDay)
             ->for(Employee::factory()->create(['name' => '../Putri Andini']))->create();
         $guest = ExternalParticipant::factory()->create(['name' => 'Putri Andini']);
-        $external = EventRegistration::factory()->external()->for($event)
+        $external = EventRegistration::factory()->external()->for($event)->invitedTo($firstDay, $lastDay)
             ->create(['external_participant_id' => $guest->id]);
-        EventRegistration::factory()->cancelled()->for($event)->create();
+        EventRegistration::factory()->cancelled()->for($event)->invitedTo($firstDay)->create();
+        EventRegistration::factory()->for($event)->create();
         EventRegistration::factory()->create();
         $registrations = ['employee' => $employee, 'external' => $external];
+        $renderedDates = [];
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$renderedDates): void {
+            $data = $view->getData();
+            $renderedDates[$data['registration']->id] = $data['invitedDates'];
+        });
 
         $response = $this->actingAs($this->staff('registrations.manage'))->get(route('events.participants.invitations.export', [
             'event' => $event, 'participant_type' => $filter,
@@ -142,8 +223,9 @@ class EventInvitationExportTest extends TestCase
         foreach ($expectedTypes as $type) {
             $registration = $registrations[$type];
             $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($entries["undangan-forum-operasional-putri-andini-{$registration->id}.pdf"]));
+            $this->assertSame($type === 'employee' ? '1 Februari 2027' : '1 Februari 2027, 3 Februari 2027', $renderedDates[$registration->id]);
         }
-        $this->assertDatabaseCount('event_registrations', 4);
+        $this->assertDatabaseCount('event_registrations', 5);
         $this->assertDatabaseCount('event_registration_notifications', 0);
     }
 
@@ -158,13 +240,13 @@ class EventInvitationExportTest extends TestCase
         $this->getJson($url.'?participant_type=bad')->assertUnprocessable()
             ->assertJsonValidationErrors(['participant_type' => 'Pilih semua peserta, Employee, atau External.']);
         $this->getJson($url.'?participant_type=external')->assertUnprocessable()
-            ->assertJsonValidationErrors(['export' => 'Tidak ada peserta aktif untuk filter undangan ini.']);
+            ->assertJsonValidationErrors(['export' => 'Tidak ada peserta dengan hari undangan aktif untuk filter ini.']);
     }
 
     public function test_bulk_export_spans_batches_and_loads_employee_details_once_per_batch(): void
     {
         $event = Event::factory()->create();
-        EventRegistration::factory()->for($event)->count(51)->create();
+        EventRegistration::factory()->for($event)->invitedTo()->count(51)->create();
         $this->actingAs($this->staff('registrations.manage'));
         DB::enableQueryLog();
 
@@ -182,7 +264,7 @@ class EventInvitationExportTest extends TestCase
     public function test_bulk_export_reports_a_failed_pdf_without_returning_a_partial_zip(): void
     {
         $event = Event::factory()->create();
-        [$first, $second] = EventRegistration::factory()->for($event)->count(2)->create();
+        [$first, $second] = EventRegistration::factory()->for($event)->invitedTo()->count(2)->create();
         $qrCode = app(RegistrationQrCodeService::class);
         $failure = new RuntimeException('QR generator unavailable');
         Exceptions::fake();
@@ -198,12 +280,13 @@ class EventInvitationExportTest extends TestCase
         Exceptions::assertReported(fn (RuntimeException $reported): bool => $reported === $failure);
     }
 
-    public function test_participants_tab_shows_invitation_actions_counts_and_employee_picker_for_the_right_users(): void
+    public function test_participants_tab_shows_invitation_actions_counts_and_participant_picker_for_the_right_users(): void
     {
         $this->withoutVite();
         $event = Event::factory()->create(['status' => Event::STATUS_DRAFT]);
-        $registration = EventRegistration::factory()->for($event)->create();
-        EventRegistration::factory()->external()->for($event)->create();
+        $registration = EventRegistration::factory()->for($event)->invitedTo()->create();
+        EventRegistration::factory()->external()->for($event)->invitedTo()->create();
+        EventRegistration::factory()->for($event)->create();
         $cancelled = EventRegistration::factory()->for($event)->cancelled()->create();
         $page = route('events.show', $event);
 
@@ -215,7 +298,7 @@ class EventInvitationExportTest extends TestCase
             ->assertDontSee('Export Invitations');
         $this->actingAs($this->staff('registrations.manage', 'events.update'))->get($page)->assertOk()
             ->assertSee('Export Invitations')->assertSee('Semua peserta (2)')->assertSee('Employee (1)')->assertSee('External (1)')
-            ->assertSee('data-tom-select-dropdown-parent', false)->assertSee('name="participant_ids[]"', false)
+            ->assertSee('id="addParticipantsModal"', false)->assertSee('Register Participants')
             ->assertSee('aria-label="Batalkan Registrasi"', false)->assertSee('aria-label="Aktifkan Kembali Registrasi"', false);
     }
 

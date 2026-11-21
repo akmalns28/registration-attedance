@@ -5,16 +5,27 @@ namespace Tests\Feature;
 use App\Jobs\SendEventRegistrationNotificationJob;
 use App\Mail\EventRegistrationMail;
 use App\Models\Event;
+use App\Models\EventDay;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Mail\MailManager;
 use Illuminate\Mail\PendingMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Mockery;
 use PHPUnit\Framework\Attributes\TestWith;
 use RuntimeException;
+use Symfony\Component\Mailer\Envelope;
+use Symfony\Component\Mailer\Exception\TransportException;
+use Symfony\Component\Mailer\Exception\UnexpectedResponseException;
+use Symfony\Component\Mailer\SentMessage;
+use Symfony\Component\Mailer\Transport\TransportInterface;
+use Symfony\Component\Mime\Email;
 use Tests\TestCase;
 
 class SendEventRegistrationNotificationJobTest extends TestCase
@@ -192,7 +203,7 @@ class SendEventRegistrationNotificationJobTest extends TestCase
         $this->freezeTime();
         $notification = $this->notification();
         $mailFake = Mail::getFacadeRoot();
-        Mail::shouldReceive('to')->once()->andThrow(new RuntimeException('SMTP unavailable.'));
+        Mail::shouldReceive('to')->once()->andThrow(new TransportException('Connection could not be established with the SMTP host.'));
 
         try {
             (new SendEventRegistrationNotificationJob($notification->id))->handle();
@@ -204,7 +215,7 @@ class SendEventRegistrationNotificationJobTest extends TestCase
         $failed = $notification->fresh();
         $this->assertSame(EventRegistrationNotification::STATUS_FAILED, $failed->status);
         $this->assertSame(1, $failed->attempts);
-        $this->assertSame('SMTP unavailable.', $failed->last_error);
+        $this->assertSame('SMTP connection failed. Check relay reachability.', $failed->last_error);
         $this->assertNotNull($failed->failed_at);
         $this->assertNotNull($failed->last_attempt_at);
         $this->assertNull($failed->sent_at);
@@ -225,12 +236,13 @@ class SendEventRegistrationNotificationJobTest extends TestCase
     public function test_notification_retry_limit_prevents_further_smtp_attempts(): void
     {
         $notification = $this->notification();
-        $notification->update(['attempts' => 3]);
+        $notification->update(['attempts' => 3, 'last_error' => 'SMTP server rejected the message. SMTP reply 550 5.7.1.']);
 
         (new SendEventRegistrationNotificationJob($notification->id))->handle();
 
         $this->assertSame(EventRegistrationNotification::STATUS_FAILED, $notification->fresh()->status);
         $this->assertSame(3, $notification->fresh()->attempts);
+        $this->assertSame('SMTP server rejected the message. SMTP reply 550 5.7.1.', $notification->fresh()->last_error);
         Mail::assertNothingSent();
     }
 
@@ -303,7 +315,8 @@ class SendEventRegistrationNotificationJobTest extends TestCase
     {
         $notification = $this->notification();
         Log::spy();
-        Mail::shouldReceive('to')->once()->andThrow(new RuntimeException('SMTP rejected participant@example.com'));
+        $smtpError = new UnexpectedResponseException('Expected response code "250" but got code "535", with message "535 5.7.8 smtp://operator:relay-secret@private-relay.test participant@example.com".', 535);
+        Mail::shouldReceive('to')->once()->andThrow($smtpError);
         $job = new SendEventRegistrationNotificationJob($notification->id);
 
         try {
@@ -315,11 +328,74 @@ class SendEventRegistrationNotificationJobTest extends TestCase
             $job->failed($exception);
         }
 
-        $this->assertSame('SMTP rejected participant@example.com', $notification->fresh()->last_error);
+        $diagnostic = 'SMTP authentication failed. SMTP reply 535 5.7.8.';
+        $this->assertSame($diagnostic, $notification->fresh()->last_error);
         Log::shouldHaveReceived('warning')->once()->with('Event registration email delivery failed.', [
             'notification_id' => $notification->id,
             'attempts' => 1,
-            'exception_type' => RuntimeException::class,
+            'exception_type' => UnexpectedResponseException::class,
+            'failure' => $diagnostic,
         ]);
+    }
+
+    public function test_database_worker_retry_uses_the_current_logo_and_invitation_dates(): void
+    {
+        $this->freezeTime();
+        config(['mail.mailers.smtp.host' => 'smtp.example.test', 'mail.mailers.smtp.port' => 587,
+            'mail.from.address' => 'admin@example.test', 'event_notifications.backoff' => [60]]);
+        Storage::fake('local');
+        $firstLogo = UploadedFile::fake()->image('first.png', 40, 20)->store('event-logos', 'local');
+        $newLogo = UploadedFile::fake()->image('replacement.jpg', 50, 30)->store('event-logos', 'local');
+        $notification = $this->notification();
+        $event = $notification->registration->event;
+        $event->update(['start_date' => '2027-01-15', 'end_date' => '2027-01-17',
+            'logo_path' => $firstLogo, 'location' => 'Hotel Kota', 'google_maps_url' => 'https://maps.google.com/?q=Kota']);
+        $originalDay = $notification->registration->invitedDays()->firstOrFail();
+        $originalDay->update(['date' => '2027-01-15']);
+        $replacementDay = EventDay::factory()->for($event)->create(['date' => '2027-01-17', 'day_number' => 3, 'title' => 'Hidden Day Title']);
+        $transport = Mockery::mock(TransportInterface::class);
+        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message): never {
+            $this->assertStringContainsString('15 Januari 2027', $message->getHtmlBody());
+            $this->assertStringNotContainsString('17 Januari 2027', $message->getHtmlBody());
+
+            throw new UnexpectedResponseException('Expected response code "250" but got code "451", with message "451 4.7.1 retry later".', 451);
+        });
+        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message, Envelope $envelope) use ($newLogo): SentMessage {
+            $html = $message->getHtmlBody();
+            $this->assertStringContainsString('17 Januari 2027', $html);
+            $this->assertStringNotContainsString('15 Januari 2027', $html);
+            $this->assertStringContainsString('src="cid:', $html);
+            $this->assertStringContainsString('href="https://maps.google.com/?q=Kota"', $html);
+            $this->assertStringNotContainsString('Hidden Day Title', $html);
+            $this->assertCount(2, $message->getAttachments());
+            $this->assertSame(Storage::disk('local')->get($newLogo), $message->getAttachments()[0]->getBody());
+            $this->assertStringStartsWith('registration-', $message->getAttachments()[1]->getFilename());
+
+            return new SentMessage($message, $envelope);
+        });
+        $mailManager = new MailManager($this->app);
+        $mailManager->mailer('smtp')->setSymfonyTransport($transport);
+        Mail::swap($mailManager);
+
+        $job = (new SendEventRegistrationNotificationJob($notification->id))->beforeCommit();
+        Queue::connection('database')->push($job, '', 'emails');
+        $workerOptions = ['connection' => 'database', '--queue' => 'emails', '--once' => true, '--sleep' => 0];
+        $this->artisan('queue:work', $workerOptions)->assertSuccessful();
+        $notification->refresh();
+        $this->assertTrue($notification->isFailed());
+        $this->assertSame('SMTP server reported a temporary failure. SMTP reply 451 4.7.1.', $notification->last_error);
+        $this->assertSame(1, $notification->attempts);
+
+        $event->update(['logo_path' => $newLogo]);
+        $notification->registration->invitedDays()->updateExistingPivot($originalDay->id, ['revoked_at' => now()]);
+        $notification->registration->invitedDays()->attach($replacementDay);
+        $this->travel(61)->seconds();
+        $this->artisan('queue:work', $workerOptions)->assertSuccessful();
+        $job->handle();
+        $notification->refresh();
+        $this->assertTrue($notification->isSent());
+        $this->assertSame(2, $notification->attempts);
+        $this->assertNull($notification->last_error);
+        $this->assertDatabaseCount('jobs', 0);
     }
 }

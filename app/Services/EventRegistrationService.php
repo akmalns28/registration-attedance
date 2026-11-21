@@ -13,6 +13,8 @@ use InvalidArgumentException;
 
 class EventRegistrationService
 {
+    public const MAX_BULK_PARTICIPANTS = 500;
+
     public function __construct(
         private readonly EventPublicationNotificationService $notifications,
         private readonly EventDayInvitationService $invitations,
@@ -36,6 +38,29 @@ class EventRegistrationService
     public function registerExternals(Event $event, array $externalParticipantIds, ?array $dayIds = []): array
     {
         return $this->register($event, EventRegistration::TYPE_EXTERNAL, $externalParticipantIds, $dayIds);
+    }
+
+    /**
+     * @param  array{employee?: list<int|string>, external?: list<int|string>}  $groups
+     * @param  list<int|string>|null  $dayIds
+     * @return array{created: int, reactivated: int, skipped: int}
+     */
+    public function registerGroups(Event $event, array $groups, ?array $dayIds): array
+    {
+        return DB::transaction(function () use ($event, $groups, $dayIds): array {
+            $totals = ['created' => 0, 'reactivated' => 0, 'skipped' => 0];
+
+            foreach (EventRegistration::types() as $type) {
+                if (! empty($groups[$type])) {
+                    $result = $this->register($event, $type, $groups[$type], $dayIds, withinTransaction: true);
+                    foreach ($totals as $key => $total) {
+                        $totals[$key] = $total + $result[$key];
+                    }
+                }
+            }
+
+            return $totals;
+        }, attempts: 3);
     }
 
     /**
@@ -66,7 +91,7 @@ class EventRegistrationService
     |--------------------------------------------------------------------------
     */
 
-        if (count($participantIds) === 0 || count($participantIds) > 500) {
+        if (count($participantIds) === 0 || count($participantIds) > self::MAX_BULK_PARTICIPANTS) {
             throw ValidationException::withMessages([
                 'participants' => 'Jumlah peserta harus antara 1 sampai 500.',
             ]);

@@ -3,8 +3,11 @@
 namespace App\Http\Requests\EventParticipant;
 
 use App\Models\EventRegistration;
+use App\Services\EventRegistrationService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreEventParticipantRequest extends FormRequest
 {
@@ -15,7 +18,25 @@ class StoreEventParticipantRequest extends FormRequest
 
     public function rules(): array
     {
+        $limit = EventRegistrationService::MAX_BULK_PARTICIPANTS;
+        $dayRules = [
+            'day_selection' => ['sometimes', 'required', Rule::in(['all', 'selected'])],
+            'day_ids' => ['required_if:day_selection,selected', 'array', 'max:366'],
+            'day_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+        ];
+
+        if ($this->has('participant_groups')) {
+            return [
+                ...$dayRules,
+                'participant_groups' => ['required', 'array:employee,external'],
+                'participant_groups.*' => ['required', 'array', 'list', "max:{$limit}"],
+                'participant_groups.employee.*' => ['required', 'integer', 'min:1', 'distinct'],
+                'participant_groups.external.*' => ['required', 'integer', 'min:1', 'distinct'],
+            ];
+        }
+
         return [
+            ...$dayRules,
             'participant_type' => [
                 'required',
                 'string',
@@ -26,7 +47,7 @@ class StoreEventParticipantRequest extends FormRequest
                 'required',
                 'array',
                 'min:1',
-                'max:500',
+                "max:{$limit}",
             ],
 
             'participant_ids.*' => [
@@ -35,10 +56,17 @@ class StoreEventParticipantRequest extends FormRequest
                 'min:1',
                 'distinct',
             ],
-            'day_selection' => ['sometimes', 'required', Rule::in(['all', 'selected'])],
-            'day_ids' => ['required_if:day_selection,selected', 'array', 'max:366'],
-            'day_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
         ];
+    }
+
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            $groups = $this->input('participant_groups');
+            if (is_array($groups) && count(Arr::collapse($groups)) > EventRegistrationService::MAX_BULK_PARTICIPANTS) {
+                $validator->errors()->add('participant_groups', $this->messages()['participant_ids.max']);
+            }
+        }];
     }
 
     protected function prepareForValidation(): void
