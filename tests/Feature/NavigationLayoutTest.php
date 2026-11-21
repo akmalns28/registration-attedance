@@ -59,6 +59,17 @@ class NavigationLayoutTest extends TestCase
         $this->get('/route-yang-tidak-tersedia')->assertNotFound()->assertSeeInOrder($branding, false);
     }
 
+    public function test_favicon_defaults_to_the_existing_icon_and_accepts_a_public_path(): void
+    {
+        $this->get(route('login'))->assertOk()->assertSee('<link rel="icon" href="'.asset('favicon.ico').'">', false);
+        config(['app.favicon_path' => '/branding/event-icon.png']);
+
+        $favicon = '<link rel="icon" href="'.asset('branding/event-icon.png').'">';
+        $this->get(route('login'))->assertOk()->assertSee($favicon, false);
+        $this->get('/route-yang-tidak-tersedia')->assertNotFound()->assertSee($favicon, false);
+        $this->actingAs($this->userWithRole('super-admin'))->get(route('dashboard'))->assertOk()->assertSee($favicon, false);
+    }
+
     public function test_staff_navigation_hides_role_management_and_the_route_still_denies_access(): void
     {
         $this->actingAs($this->userWithRole('panitia'))

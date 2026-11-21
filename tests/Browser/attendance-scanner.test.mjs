@@ -138,7 +138,7 @@ test("attendance scanner in a real browser with a virtual webcam", { skip: !brow
             try {
                 const url = new URL(request.url, "http://localhost");
                 const path = url.pathname;
-                if (path === "/attendance/manual/participants") {
+                if (path.endsWith("/attendance/manual/participants")) {
                     const parameters = Object.fromEntries(url.searchParams);
                     manualRequests.push(parameters);
                     response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ data: [{
@@ -147,7 +147,7 @@ test("attendance scanner in a real browser with a virtual webcam", { skip: !brow
                     }] }));
                     return;
                 }
-                if (path === "/attendance/manual/check-in") {
+                if (path.endsWith("/attendance/manual/check-in")) {
                     let body = "";
                     for await (const chunk of request) { body += chunk; }
                     manualRequests.push({ checkIn: JSON.parse(body), hasCsrfToken: Boolean(request.headers["x-csrf-token"]) });
@@ -347,15 +347,14 @@ test("attendance scanner in a real browser with a virtual webcam", { skip: !brow
             ]);
         });
 
-        await suite.test("Event Day manual check-in uses locked selections and refreshes the attendance list", async () => {
+        await suite.test("Event Day manual check-in uses route context and refreshes the attendance list", async () => {
             await fresh(true, false, true);
             const result = await tools.evaluate(`
                 const { initializeManualAttendance } = await import(${JSON.stringify(manualModule)});
                 initializeManualAttendance();
                 await showDayTab("#day-scanner-tab"); await scanner.start();
                 await showDayTab("#day-manual-tab"); await scanner.stopTask;
-                const event = document.getElementById("manual-event");
-                const day = document.getElementById("manual-day");
+                const manual = document.querySelector("[data-manual-attendance]");
                 const search = document.getElementById("manual-search");
                 const results = document.getElementById("manual-results");
                 const waitUntil = async (check) => {
@@ -374,11 +373,16 @@ test("attendance scanner in a real browser with a virtual webcam", { skip: !brow
                 document.activeElement.click();
                 document.querySelector("[data-manual-confirm]").click();
                 await waitUntil(() => document.querySelector("[data-attendance-table] tbody").textContent.includes(fixture.response.data.registration_number));
-                return { event: event.value, day: day.value, locked: event.disabled && day.disabled, optionFocused,
+                return { event: manual.dataset.eventId, day: manual.dataset.dayId,
+                    hasSelectors: Boolean(manual.querySelector("#manual-event, #manual-day")), optionFocused,
                     activeCameras: FakeScanner.active, checkedIn: document.querySelector('[data-attendance-summary="checked_in"] .h1').textContent.trim() };
             `);
             assert.deepEqual(result, { event: String(fixture.payload.event_id), day: String(fixture.payload.event_day_id),
-                locked: true, optionFocused: true, activeCameras: 0, checkedIn: "1" });
+                hasSelectors: false, optionFocused: true, activeCameras: 0, checkedIn: "1" });
+            assert.deepEqual(manualRequests.slice(-2), [
+                { search: "Budi", participant_type: "external" },
+                { checkIn: { registration_id: 73 }, hasCsrfToken: true },
+            ]);
         });
 
         await suite.test("Event Day derives fixed context without selectors and tab changes release the virtual webcam", async () => {

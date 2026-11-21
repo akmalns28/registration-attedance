@@ -11,6 +11,7 @@
         - {{ config('app.name') }}
     </title>
 
+    @include('partials.favicon')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
 </head>

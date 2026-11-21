@@ -36,7 +36,7 @@
 
         </div>
 
-        <form method="POST" action="{{ route('events.store') }}" class="mt-3" data-form
+        <form method="POST" action="{{ route('events.store') }}" enctype="multipart/form-data" class="mt-3" data-form
             data-loading-text="Menyimpan event...">
             @csrf
 

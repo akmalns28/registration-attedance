@@ -2,7 +2,9 @@
 
 namespace App\Mail;
 
+use App\Models\Event;
 use App\Models\EventRegistrationNotification;
+use App\Services\EventDayInvitationService;
 use App\Services\RegistrationQrCodeService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -10,9 +12,10 @@ use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use LogicException;
+use Throwable;
 
 class EventRegistrationMail extends Mailable
 {
@@ -35,7 +38,7 @@ class EventRegistrationMail extends Mailable
      */
     public function content(): Content
     {
-        return new Content(view: 'emails.event-registration', with: $this->emailData());
+        return new Content(view: 'emails.event-registration', with: $this->emailData(includeInvitationDetails: true));
     }
 
     /**
@@ -63,9 +66,9 @@ class EventRegistrationMail extends Mailable
     /**
      * Prepare email data from existing registration.
      */
-    private function emailData(): array
+    private function emailData(bool $includeInvitationDetails = false): array
     {
-        $this->notification->loadMissing(['registration.employee', 'registration.externalParticipant', 'registration.event', 'registration.activeInvitedDays']);
+        $this->notification->loadMissing(['registration.employee', 'registration.externalParticipant', 'registration.event']);
 
         $registration = $this->notification->registration;
 
@@ -131,11 +134,9 @@ class EventRegistrationMail extends Mailable
             default => throw new InvalidArgumentException('Jenis notifikasi email tidak valid.'),
         };
 
-        $startDate = $event->start_date ? Carbon::parse($event->start_date)->format('d/m/Y') : '-';
-
-        $endDate = $event->end_date ? Carbon::parse($event->end_date)->format('d/m/Y') : '-';
-
-        $eventDate = $startDate === $endDate ? $startDate : "{$startDate} - {$endDate}";
+        $invitedDates = $includeInvitationDetails
+            ? app(EventDayInvitationService::class)->dateSummary($registration->load('activeInvitedDays'))
+            : null;
 
         return array_merge($content, [
             'participant_name' => $participant->name,
@@ -145,11 +146,28 @@ class EventRegistrationMail extends Mailable
 
             'event_title' => $event->title,
             'event_description' => $event->description,
-            'event_location' => $event->location ?: '-',
-            'event_date' => $eventDate,
-            'invited_days' => $registration->activeInvitedDays,
-
-            'notification_type' => $type,
+            'event_location' => $event->location,
+            'event_maps_url' => $event->google_maps_url,
+            'event_date' => $invitedDates,
+            'event_logo' => $includeInvitationDetails ? $this->eventLogo($event) : null,
+            'has_qr_code' => $type !== EventRegistrationNotification::TYPE_CANCELLATION && $invitedDates !== null,
         ]);
+    }
+
+    /** @return array{contents: string, mime: string}|null */
+    private function eventLogo(Event $event): ?array
+    {
+        try {
+            $logo = $event->logoImage();
+
+            return empty($logo['contents']) ? null : $logo;
+        } catch (Throwable $exception) {
+            Log::warning('Event invitation logo could not be read.', [
+                'event_id' => $event->id,
+                'exception_type' => $exception::class,
+            ]);
+
+            return null;
+        }
     }
 }

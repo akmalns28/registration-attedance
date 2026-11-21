@@ -1,7 +1,15 @@
-<section class="card" data-manual-attendance data-search-url="{{ route('attendance.manual.search', absolute: false) }}"
-    data-checkin-url="{{ route('attendance.manual.check-in', absolute: false) }}">
+<section class="card" data-manual-attendance
+    @if ($fixedDay)
+        data-search-url="{{ route('events.days.manual.search', [$fixedEvent, $fixedDay], absolute: false) }}"
+        data-checkin-url="{{ route('events.days.manual.check-in', [$fixedEvent, $fixedDay], absolute: false) }}"
+        data-event-id="{{ $fixedEvent->id }}" data-day-id="{{ $fixedDay->id }}"
+    @else
+        data-search-url="{{ route('attendance.manual.search', absolute: false) }}"
+        data-checkin-url="{{ route('attendance.manual.check-in', absolute: false) }}"
+    @endif>
     <div class="card-body">
         <fieldset data-manual-controls class="mb-3">
+            @unless ($fixedDay)
             <div class="row g-3 mb-3">
                 <div class="col-12 col-sm-6">
                     <label for="manual-event" class="form-label">Event</label>
@@ -14,15 +22,12 @@
                 </div>
                 <div class="col-12 col-sm-6">
                     <label for="manual-day" class="form-label">Hari Pelaksanaan</label>
-                    <select id="manual-day" class="form-select" @if ($fixedDay) data-fixed-day @endif disabled>
-                        @if ($fixedDay)
-                            <option value="{{ $fixedDay->id }}">{{ $events[0]['days'][0]['label'] }}</option>
-                        @else
-                            <option value="">Pilih hari pelaksanaan</option>
-                        @endif
+                    <select id="manual-day" class="form-select" disabled>
+                        <option value="">Pilih hari pelaksanaan</option>
                     </select>
                 </div>
             </div>
+            @endunless
             <fieldset class="mb-3">
                 <legend class="form-label">Jenis Peserta</legend>
                 <div class="btn-group" role="group" aria-label="Jenis Peserta">

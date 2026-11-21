@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class Event extends Model
@@ -20,7 +21,20 @@ class Event extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
-    protected $fillable = ['title', 'description', 'location', 'start_date', 'end_date', 'registration_start_at', 'registration_end_at', 'capacity', 'status'];
+    protected $fillable = ['title', 'description', 'location', 'google_maps_url', 'logo_path', 'start_date', 'end_date', 'registration_start_at', 'registration_end_at', 'capacity', 'status'];
+
+    /** @return array{contents: string, mime: string}|null */
+    public function logoImage(): ?array
+    {
+        if ($this->logo_path === null || ($contents = Storage::disk('local')->get($this->logo_path)) === null) {
+            return null;
+        }
+
+        return [
+            'contents' => $contents,
+            'mime' => str_ends_with($this->logo_path, '.png') ? 'image/png' : 'image/jpeg',
+        ];
+    }
 
     protected static function booted(): void
     {

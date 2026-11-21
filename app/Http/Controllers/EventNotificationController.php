@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Event;
 use App\Models\EventRegistrationNotification;
 use App\Services\EventNotificationActionService;
+use App\Services\EventNotificationFailure;
 use App\Services\EventNotificationTransport;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -15,7 +16,7 @@ use Throwable;
 
 class EventNotificationController extends Controller
 {
-    public function index(Request $request, EventNotificationTransport $transport): View
+    public function index(Request $request, EventNotificationTransport $transport, EventNotificationFailure $diagnostics): View
     {
         $filters = $request->validate([
             'event' => ['nullable', 'uuid', Rule::exists('events', 'uuid')],
@@ -44,6 +45,10 @@ class EventNotificationController extends Controller
 
         return view('notifications.index', [
             'notifications' => $notifications,
+            'deliveryErrors' => $request->user()->can('events.update')
+                ? $notifications->getCollection()->mapWithKeys(fn (EventRegistrationNotification $notification): array => [
+                    $notification->id => $diagnostics->forHistory($notification->last_error),
+                ]) : collect(),
             'events' => Event::query()->orderByDesc('start_date')->get(['id', 'uuid', 'title', 'status']),
             'selectedEvent' => $selectedEvent,
             'filters' => $filters,

@@ -6,9 +6,13 @@ use App\Mail\EventRegistrationMail;
 use App\Models\Event;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationNotification;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
+use League\Flysystem\UnableToReadFile;
 use LogicException;
 use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
@@ -63,6 +67,38 @@ class EventRegistrationMailTest extends TestCase
         $this->assertStringContainsString('Cancelled', $html);
     }
 
+    public function test_invitation_view_renders_with_legacy_data_that_omits_the_logo(): void
+    {
+        $mail = new EventRegistrationMail($this->notification());
+        $content = $mail->content();
+        $this->assertArrayHasKey('event_logo', $content->with);
+        $this->assertNull($content->with['event_logo']);
+
+        $html = view($content->view, array_diff_key($content->with, ['event_logo' => true]))->render();
+
+        $this->assertStringContainsString(e(config('app.name')), $html);
+        $this->assertStringContainsString('QR Code registrasi Anda telah dilampirkan', $html);
+        $this->assertStringNotContainsString('src="cid:', $html);
+    }
+
+    public function test_an_unreadable_event_logo_does_not_prevent_rendering_or_the_qr_attachment(): void
+    {
+        $notification = $this->notification();
+        $notification->registration->event->update(['logo_path' => 'event-logos/unreadable.png']);
+        $disk = $this->mock(FilesystemAdapter::class);
+        $disk->shouldReceive('get')->once()->with('event-logos/unreadable.png')
+            ->andThrow(UnableToReadFile::fromLocation('event-logos/unreadable.png'));
+        Storage::shouldReceive('disk')->once()->with('local')->andReturn($disk);
+
+        $message = Mail::mailer('array')->to('recipient@example.test')->send(new EventRegistrationMail($notification))
+            ->getSymfonySentMessage()->getOriginalMessage();
+
+        $this->assertStringContainsString(e(config('app.name')), $message->getHtmlBody());
+        $this->assertStringNotContainsString('src="cid:', $message->getHtmlBody());
+        $this->assertCount(1, $message->getAttachments());
+        $this->assertSame('RA1:'.$notification->registration->uuid, new QrReader($message->getAttachments()[0]->getBody(), QrReader::SOURCE_TYPE_BLOB)->text());
+    }
+
     public function test_reactivation_email_can_be_rendered(): void
     {
         $notification = $this->notification(EventRegistrationNotification::TYPE_REACTIVATION);
@@ -100,8 +136,56 @@ class EventRegistrationMailTest extends TestCase
         $this->assertStringContainsString(e($registration->event->title), $html);
 
         $this->assertStringContainsString(e($registration->event->location), $html);
+        $this->assertStringNotContainsString('>'.e($registration->event->location).'</a>', $html);
 
         $this->assertStringContainsString($registration->registration_number, $html);
+    }
+
+    public function test_invitation_email_embeds_its_logo_and_uses_the_assigned_date_and_linked_location(): void
+    {
+        Storage::fake('local');
+        $logoPath = UploadedFile::fake()->image('logo.png', 64, 42)->store('event-logos', 'local');
+        $notification = $this->notification();
+        $registration = $notification->registration;
+        $registration->event->update(['start_date' => '2027-01-15', 'end_date' => '2027-01-17',
+            'location' => 'Hotel <Kota>', 'google_maps_url' => 'https://maps.google.com/?q=Kota', 'logo_path' => $logoPath]);
+        $registration->invitedDays()->firstOrFail()->update(['date' => '2027-01-16', 'title' => 'Hidden Day Title']);
+
+        $message = Mail::mailer('array')->to('recipient@example.test')->send(new EventRegistrationMail($notification))
+            ->getSymfonySentMessage()->getOriginalMessage();
+        $html = $message->getHtmlBody();
+        $this->assertStringContainsString('16 Januari 2027', $html);
+        $this->assertStringNotContainsString('15 Januari 2027', $html);
+        $this->assertStringNotContainsString('17 Januari 2027', $html);
+        $this->assertStringContainsString('href="https://maps.google.com/?q=Kota"', $html);
+        $this->assertStringContainsString('>Hotel &lt;Kota&gt;</a>', $html);
+        $this->assertStringContainsString('Klik lokasi untuk membuka Google Maps', $html);
+        $this->assertStringNotContainsString('Hidden Day Title', $html);
+        $this->assertStringContainsString('src="cid:', $html);
+        $this->assertCount(2, $message->getAttachments());
+        $inline = collect($message->getAttachments())->first(fn ($attachment): bool => $attachment->getPreparedHeaders()->getHeaderBody('Content-Disposition') === 'inline');
+        $this->assertNotNull($inline);
+        $this->assertSame(Storage::disk('local')->get($logoPath), $inline->getBody());
+    }
+
+    public function test_rendering_refreshes_revoked_assignments_and_omits_the_hint_for_invalid_maps_links(): void
+    {
+        $notification = $this->notification();
+        $registration = $notification->registration->load('activeInvitedDays');
+        $day = $registration->activeInvitedDays->sole();
+        $registration->invitedDays()->updateExistingPivot($day->id, ['revoked_at' => now()]);
+        $registration->event->update(['location' => 'Hotel Kota', 'google_maps_url' => 'ftp://maps.google.com/']);
+
+        $mail = new EventRegistrationMail($notification);
+        $html = $mail->render();
+
+        $this->assertStringContainsString('Belum ada tanggal undangan aktif.', $html);
+        $this->assertStringNotContainsString($day->date->locale('id')->translatedFormat('j F Y'), $html);
+        $this->assertStringNotContainsString('QR Code registrasi Anda telah dilampirkan', $html);
+        $this->assertSame([], $mail->attachments());
+        $this->assertStringContainsString('Hotel Kota', $html);
+        $this->assertStringNotContainsString('ftp://maps.google.com/', $html);
+        $this->assertStringNotContainsString('Klik lokasi untuk membuka Google Maps', $html);
     }
 
     public function test_email_contains_employee_name(): void

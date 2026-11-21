@@ -14,11 +14,11 @@ use Illuminate\Http\JsonResponse;
 
 class ManualAttendanceController extends Controller
 {
-    public function search(ManualAttendanceRequest $request, AttendanceQrValidationService $validator): JsonResponse
+    public function search(ManualAttendanceRequest $request, AttendanceQrValidationService $validator, ?Event $event = null, ?EventDay $day = null): JsonResponse
     {
         $data = $request->validated();
-        $event = Event::query()->findOrFail($data['event_id']);
-        $day = EventDay::query()->findOrFail($data['event_day_id']);
+        $event ??= Event::query()->findOrFail($data['event_id']);
+        $day ??= EventDay::query()->findOrFail($data['event_day_id']);
         $validator->validateContext($event, $day);
 
         $isEmployee = $data['participant_type'] === EventRegistration::TYPE_EMPLOYEE;
@@ -47,11 +47,11 @@ class ManualAttendanceController extends Controller
         ])])->header('Cache-Control', 'no-store, private');
     }
 
-    public function checkIn(ManualAttendanceRequest $request, AttendanceCheckinService $checkins, EventDayAttendanceService $monitoring): JsonResponse
+    public function checkIn(ManualAttendanceRequest $request, AttendanceCheckinService $checkins, EventDayAttendanceService $monitoring, ?Event $event = null, ?EventDay $day = null): JsonResponse
     {
         $data = $request->validated();
-        $event = Event::query()->findOrFail($data['event_id']);
-        $day = EventDay::query()->findOrFail($data['event_day_id']);
+        $event ??= Event::query()->findOrFail($data['event_id']);
+        $day ??= EventDay::query()->findOrFail($data['event_day_id']);
         $result = $checkins->checkInRegistration((int) $data['registration_id'], $event, $day, $request->user());
 
         return response()->json([

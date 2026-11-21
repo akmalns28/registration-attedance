@@ -23,17 +23,18 @@ class ManualAttendanceRequest extends FormRequest
      */
     public function rules(): array
     {
-        $context = [
+        $event = $this->route('event');
+        $context = $event ? [] : [
             'event_id' => ['required', 'integer', 'min:1', 'exists:events,id'],
             'event_day_id' => ['required', 'integer', 'min:1', 'exists:event_days,id'],
         ];
 
-        if ($this->routeIs('attendance.manual.search')) {
+        if ($this->routeIs('attendance.manual.search', 'events.days.manual.search')) {
             return [...$context, 'participant_type' => ['required', Rule::in(EventRegistration::types())],
                 'search' => ['required', 'string', 'min:2', 'max:100']];
         }
 
         return [...$context, 'registration_id' => ['required', 'integer', 'min:1',
-            Rule::exists('event_registrations', 'id')->where('event_id', $this->integer('event_id'))]];
+            Rule::exists('event_registrations', 'id')->where('event_id', $event?->id ?? $this->integer('event_id'))]];
     }
 }

@@ -18,18 +18,25 @@
         $totalSchedules = $event->days->sum('schedules_count');
 
         $participantErrors = collect($errors->getMessages())
-            ->filter(fn (array $messages, string $key): bool => in_array($key, ['participants', 'participant_ids', 'participant_type', 'event', 'registration', 'day_selection', 'day_ids'], true)
-                || str_starts_with($key, 'participant_ids.') || str_starts_with($key, 'day_ids.'))
+            ->filter(fn (array $messages, string $key): bool => in_array($key, ['participants', 'participant_groups', 'participant_ids', 'participant_type', 'event', 'registration', 'day_selection', 'day_ids'], true)
+                || str_starts_with($key, 'participant_groups.') || str_starts_with($key, 'participant_ids.') || str_starts_with($key, 'day_ids.'))
             ->flatten();
     @endphp
 
     <div class="container-xl" data-event-details
-        data-participant-errors="{{ $participantErrors->isNotEmpty() ? 'true' : 'false' }}"
-        data-participant-type="{{ $participantErrors->isNotEmpty() ? old('participant_type', '') : '' }}">
+        data-participant-errors="{{ $participantErrors->isNotEmpty() ? 'true' : 'false' }}">
 
         {{-- Header --}}
         <div class="page-header d-print-none">
             <div class="row align-items-center g-3">
+                <div class="col-auto">
+                    @if ($event->logo_path)
+                        <img src="{{ route('events.logo', $event) }}" alt="Logo {{ $event->title }}" width="64" height="64"
+                            class="object-fit-contain rounded border bg-white">
+                    @else
+                        <span class="avatar avatar-lg bg-primary-lt" aria-hidden="true"><x-ui.icon name="calendar" /></span>
+                    @endif
+                </div>
                 <div class="col">
 
                     <div class="page-pretitle">
@@ -50,11 +57,11 @@
                             @endif
                         </span>
 
-                        @if ($event->location)
+                        @if ($event->location || $event->google_maps_url)
                             <span class="mx-1" aria-hidden="true">•</span>
                             <span class="text-break">
                                 <x-ui.icon name="map-pin" class="me-1" />
-                                {{ $event->location }}
+                                @include('events.partials.location-link', ['location' => $event->location, 'mapsUrl' => $event->google_maps_url])
                             </span>
                         @endif
                         <span class="mx-1" aria-hidden="true">•</span>
@@ -493,9 +500,9 @@
     @endcan
 
 
-    @include('events.partials.add-employee-modal')
-
-    @include('events.partials.add-external-modal')
+    @if ($canAddParticipants)
+        @include('events.partials.add-participants-modal')
+    @endif
     @include('events.partials.cancel-registration-modal')
     @include('events.partials.reactivate-registration-modal')
     @can('events.update')

@@ -39,7 +39,7 @@
 
         </div>
 
-        <form method="POST" action="{{ route('events.update', $event) }}" class="mt-3" data-form
+        <form method="POST" action="{{ route('events.update', $event) }}" enctype="multipart/form-data" class="mt-3" data-form
             data-loading-text="Memperbarui event...">
             @csrf
             @method('PUT')

@@ -182,6 +182,8 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     Route::resource('events', EventController::class)->middlewareFor('index', 'can:events.view')->middlewareFor('show', 'can:events.view')->middlewareFor('create', 'can:events.create')->middlewareFor('store', 'can:events.create')->middlewareFor('edit', 'can:events.update')->middlewareFor('update', 'can:events.update')->middlewareFor('destroy', 'can:events.delete');
 
+    Route::get('events/{event}/logo', [EventController::class, 'logo'])->whereUuid('event')->name('events.logo');
+
     /*
     |--------------------------------------------------------------------------
     | Event Day & Rundown Management
@@ -243,6 +245,13 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('events/{event}/days/{day}/attendance', [EventDayController::class, 'attendance'])
             ->whereNumber('day')->middleware(['can:events.view', 'can:attendance.view'])->name('events.days.attendance');
 
+        Route::prefix('events/{event}/days/{day}/attendance/manual')->name('events.days.manual.')
+            ->where(['event' => '[0-9a-fA-F-]{36}', 'day' => '[0-9]+'])
+            ->middleware(['can:events.view', 'can:attendance.scan', 'throttle:60,1'])->group(function () {
+                Route::get('participants', [ManualAttendanceController::class, 'search'])->name('search');
+                Route::post('check-in', [ManualAttendanceController::class, 'checkIn'])->name('check-in');
+            });
+
         Route::resource('events.days', EventDayController::class)
             ->parameters([
                 'days' => 'day',
@@ -274,6 +283,9 @@ Route::middleware(['auth', 'active'])->group(function () {
             ])
             ->only(['store', 'destroy'])
             ->middleware('can:events.update');
+
+        Route::get('events/{event}/participants/candidates', [EventParticipantController::class, 'candidates'])
+            ->whereUuid('event')->middleware(['can:events.view', 'can:events.update'])->name('events.participants.candidates');
 
         /*
     | Reactivate Registration

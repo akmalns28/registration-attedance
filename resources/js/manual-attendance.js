@@ -32,9 +32,10 @@ export function initializeManualAttendance(root = document) {
     }
     page.dataset.initialized = "true";
 
-    const events = JSON.parse(root.querySelector("[data-scanner-events]").textContent);
     const event = page.querySelector("#manual-event");
     const day = page.querySelector("#manual-day");
+    const events = event ? JSON.parse(root.querySelector("[data-scanner-events]").textContent) : [];
+    const context = () => event ? { event_id: event.value, event_day_id: day.value } : {};
     const search = page.querySelector("#manual-search");
     const status = page.querySelector("#manual-status");
     const loading = page.querySelector("[data-manual-loading]");
@@ -57,16 +58,14 @@ export function initializeManualAttendance(root = document) {
         confirmation.hidden = true;
         results.hidden = false;
         results.replaceChildren();
-        search.disabled = !event.value || !day.value;
+        search.disabled = Boolean(event && (!event.value || !day.value));
         status.textContent = search.disabled ? "Pilih event dan hari pelaksanaan." : "Ketik minimal 2 karakter.";
     }
 
     function fillDays() {
-        if (!day.hasAttribute("data-fixed-day")) {
-            const days = events.find((item) => String(item.id) === event.value)?.days ?? [];
-            day.replaceChildren(new Option("Pilih hari pelaksanaan", ""), ...days.map((item) => new Option(item.label, item.id)));
-            day.disabled = days.length === 0;
-        }
+        const days = events.find((item) => String(item.id) === event.value)?.days ?? [];
+        day.replaceChildren(new Option("Pilih hari pelaksanaan", ""), ...days.map((item) => new Option(item.label, item.id)));
+        day.disabled = days.length === 0;
         search.value = "";
         resetResults();
     }
@@ -95,7 +94,7 @@ export function initializeManualAttendance(root = document) {
             loading.classList.remove("d-none");
             status.textContent = "Mencari peserta…";
             const parameters = new URLSearchParams({
-                event_id: event.value, event_day_id: day.value, search: term,
+                ...context(), search: term,
                 participant_type: page.querySelector('[name="manual_type"]:checked').value,
             });
             try {
@@ -154,8 +153,8 @@ export function initializeManualAttendance(root = document) {
         keyboardEvent.preventDefault();
     });
 
-    event.addEventListener("change", fillDays);
-    day.addEventListener("change", () => {
+    event?.addEventListener("change", fillDays);
+    day?.addEventListener("change", () => {
         search.value = "";
         resetResults();
     });
@@ -188,7 +187,7 @@ export function initializeManualAttendance(root = document) {
             const response = await requestJson(page.dataset.checkinUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content },
-                body: JSON.stringify({ event_id: event.value, event_day_id: day.value, registration_id: selected.registration_id }),
+                body: JSON.stringify({ ...context(), registration_id: selected.registration_id }),
             });
             completed = true;
             search.value = "";
@@ -196,7 +195,7 @@ export function initializeManualAttendance(root = document) {
             status.textContent = response.message;
             window.notify?.[response.created ? "success" : "info"](response.message);
             page.dispatchEvent(new CustomEvent("attendance:updated", { bubbles: true, detail: {
-                eventId: event.value, dayId: day.value, summary: response.summary,
+                eventId: event?.value ?? page.dataset.eventId, dayId: day?.value ?? page.dataset.dayId, summary: response.summary,
             } }));
         } catch (error) {
             status.textContent = error instanceof TypeError ? "Koneksi gagal. Silakan coba kembali." : error.message;
@@ -210,5 +209,9 @@ export function initializeManualAttendance(root = document) {
         }
     });
 
-    fillDays();
+    if (event) {
+        fillDays();
+    } else {
+        resetResults();
+    }
 }

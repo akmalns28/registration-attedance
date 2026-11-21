@@ -93,7 +93,7 @@ class EventNotificationRecoveryService
                     $notification->update([
                         'status' => EventRegistrationNotification::STATUS_FAILED,
                         'failed_at' => $notification->failed_at ?? now(),
-                        'last_error' => 'Notification retry limit exhausted.',
+                        'last_error' => $notification->last_error ?? EventNotificationFailure::RETRY_LIMIT,
                     ]);
                 }
 

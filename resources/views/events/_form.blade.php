@@ -81,6 +81,30 @@
                     @enderror
                 </div>
 
+                <div class="mb-3">
+                    <label for="google_maps_url" class="form-label">URL Google Maps</label>
+                    <input type="url" id="google_maps_url" name="google_maps_url" maxlength="2048"
+                        class="form-control @error('google_maps_url') is-invalid @enderror"
+                        value="{{ old('google_maps_url', $event->google_maps_url ?? '') }}" placeholder="https://maps.google.com/…">
+                    @error('google_maps_url')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <div>
+                    <label for="logo" class="form-label">Logo Event</label>
+                    @if ($isEdit && $event->logo_path)
+                        <img src="{{ route('events.logo', $event) }}" alt="Logo saat ini" width="64" height="64"
+                            class="object-fit-contain rounded border bg-white mb-2">
+                    @endif
+                    <input type="file" id="logo" name="logo" accept="image/png,image/jpeg" aria-describedby="event-logo-help"
+                        class="form-control @error('logo') is-invalid @enderror">
+                    @error('logo')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    <div id="event-logo-help" class="form-hint">PNG atau JPEG, maksimal 2 MB dan 3000 × 3000 piksel.</div>
+                </div>
+
             </div>
         </div>
 
@@ -132,6 +156,21 @@
                     </div>
 
                 </div>
+
+                @unless ($isEdit)
+                    <div class="mt-3">
+                        <input type="hidden" name="auto_create_event_days" value="0">
+                        <label class="form-check mb-0">
+                            <input type="checkbox" name="auto_create_event_days" value="1"
+                                class="form-check-input @error('auto_create_event_days') is-invalid @enderror"
+                                @checked(old('auto_create_event_days', true))>
+                            <span class="form-check-label">Buat Event Day otomatis</span>
+                        </label>
+                        @error('auto_create_event_days')
+                            <div class="invalid-feedback d-block">{{ $message }}</div>
+                        @enderror
+                    </div>
+                @endunless
 
                 <div class="form-hint mt-3">
                     Event dapat berlangsung satu hari atau beberapa hari.

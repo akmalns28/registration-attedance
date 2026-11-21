@@ -5,21 +5,27 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Event\StoreEventRequest;
 use App\Http\Requests\Event\UpdateEventRequest;
 use App\Models\Department;
-use App\Models\Employee;
 use App\Models\Event;
-use App\Models\ExternalParticipant;
+use App\Models\EventDay;
+use App\Models\User;
 use App\Services\EventDayAttendanceService;
 use App\Services\EventPublicationNotificationService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class EventController extends Controller
 {
+    private const MAX_EVENT_DAY_NUMBER = 65_535;
+
     public function __construct(private readonly EventPublicationNotificationService $notifications) {}
 
     /**
@@ -49,9 +55,53 @@ class EventController extends Controller
      */
     public function store(StoreEventRequest $request): RedirectResponse
     {
-        $event = Event::create($request->validated());
+        $data = $request->safe()->except(['logo', 'auto_create_event_days']);
+        $createEventDays = $request->boolean('auto_create_event_days');
+        $logoPath = $this->storeLogo($request->file('logo'));
+
+        try {
+            $event = DB::transaction(function () use ($data, $logoPath, $createEventDays): Event {
+                $event = Event::create([...$data, 'logo_path' => $logoPath]);
+
+                if ($createEventDays) {
+                    $this->createEventDays($event);
+                }
+
+                return $event;
+            }, attempts: 3);
+        } catch (Throwable $exception) {
+            $this->deleteLogo($logoPath);
+
+            throw $exception;
+        }
 
         return redirect()->route('events.show', $event)->with('success', 'Event berhasil dibuat.');
+    }
+
+    private function createEventDays(Event $event): void
+    {
+        $startDate = $event->start_date;
+        $dayCount = (int) $startDate->diffInDays($event->end_date) + 1;
+        if ($dayCount > self::MAX_EVENT_DAY_NUMBER) {
+            throw ValidationException::withMessages(['end_date' => 'Rentang tanggal melebihi jumlah Event Day yang dapat disimpan.']);
+        }
+
+        $timestamp = now();
+        $days = [];
+        for ($dayNumber = 1, $date = $startDate->copy(); $dayNumber <= $dayCount; $dayNumber++, $date->addDay()) {
+            $days[] = [
+                'event_id' => $event->id,
+                'day_number' => $dayNumber,
+                'date' => $date->toDateString(),
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+            ];
+
+            if (count($days) === 200 || $dayNumber === $dayCount) {
+                EventDay::query()->insert($days);
+                $days = [];
+            }
+        }
     }
 
     /**
@@ -105,45 +155,38 @@ class EventController extends Controller
 
         /*
     |--------------------------------------------------------------------------
-    | Participant Master Data
-    |--------------------------------------------------------------------------
-    |
-    | Only users with events.update can access participant
-    | selection lists.
-    |
-    */
-
-        $employees = collect();
-        $externalParticipants = collect();
-
-        if (auth()->user()->can('events.update')) {
-            $employees = Employee::query()
-                ->active()
-                ->orderBy('name')
-                ->get(['id', 'nip', 'name']);
-
-            $externalParticipants = ExternalParticipant::query()
-                ->active()
-                ->orderBy('name')
-                ->get(['id', 'name', 'organization']);
-        }
-
-        /*
-    |--------------------------------------------------------------------------
     | Remaining Capacity
     |--------------------------------------------------------------------------
     */
 
         $remainingCapacity = $event->capacity === null ? null : max(0, $event->capacity - $event->registered_participants_count);
 
+        $user = auth()->user();
+        $canAddParticipants = $user->can('events.update') && in_array($event->status, [Event::STATUS_DRAFT, Event::STATUS_PUBLISHED], true);
+        $canViewReports = $user->can('reports.view');
+        $departments = $canAddParticipants || $canViewReports ? Department::query()->orderBy('name')->get(['id', 'name']) : collect();
+
         return view('events.show', [
             'event' => $event,
             'registrations' => $registrations,
-            'employees' => $employees,
-            'externalParticipants' => $externalParticipants,
+            'canAddParticipants' => $canAddParticipants,
+            'participantDepartments' => $canAddParticipants ? $departments : collect(),
             'remainingCapacity' => $remainingCapacity,
             'eventAttendanceSummary' => $eventAttendanceSummary,
-            'reportDepartments' => auth()->user()->can('reports.view') ? Department::query()->orderBy('name')->get(['id', 'name']) : collect(),
+            'reportDepartments' => $canViewReports ? $departments : collect(),
+        ]);
+    }
+
+    public function logo(Event $event): Response
+    {
+        Gate::allowIf(fn (User $user): bool => $user->canAny(['events.view', 'events.update']));
+        $logo = $event->logoImage();
+        abort_if($logo === null, 404);
+
+        return response($logo['contents'], 200, [
+            'Content-Type' => $logo['mime'],
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
@@ -166,7 +209,11 @@ class EventController extends Controller
      */
     public function update(UpdateEventRequest $request, Event $event): RedirectResponse
     {
-        $data = $request->validated();
+        $data = $request->safe()->except('logo');
+        $logoPath = $this->storeLogo($request->file('logo'));
+        if ($logoPath !== null) {
+            $data['logo_path'] = $logoPath;
+        }
 
         /*
     |--------------------------------------------------------------------------
@@ -178,7 +225,22 @@ class EventController extends Controller
     |
     */
 
-        DB::transaction(function () use ($event, $data): void {
+        try {
+            $previousLogo = $this->updateEvent($event, $data);
+        } catch (Throwable $exception) {
+            $this->deleteLogo($logoPath);
+
+            throw $exception;
+        }
+
+        $this->deleteLogo($previousLogo);
+
+        return redirect()->route('events.show', $event)->with('success', 'Event berhasil diperbarui.');
+    }
+
+    private function updateEvent(Event $event, array $data): ?string
+    {
+        return DB::transaction(function () use ($event, $data): ?string {
             /*
         |--------------------------------------------------------------------------
         | Lock Event
@@ -194,6 +256,7 @@ class EventController extends Controller
         */
 
             $previousStatus = $lockedEvent->status;
+            $previousLogo = $lockedEvent->logo_path;
 
             if ($data['status'] === Event::STATUS_PUBLISHED && ! in_array($previousStatus, [Event::STATUS_DRAFT, Event::STATUS_PUBLISHED], true)) {
                 throw ValidationException::withMessages(['status' => 'Event Closed atau Cancelled tidak dapat dipublikasikan kembali.']);
@@ -251,9 +314,30 @@ class EventController extends Controller
             if ($previousStatus === Event::STATUS_DRAFT && $lockedEvent->status === Event::STATUS_PUBLISHED) {
                 $this->notifications->scheduleForPublishedEvent($lockedEvent);
             }
-        }, attempts: 3);
 
-        return redirect()->route('events.show', $event)->with('success', 'Event berhasil diperbarui.');
+            return $lockedEvent->wasChanged('logo_path') ? $previousLogo : null;
+        }, attempts: 3);
+    }
+
+    private function storeLogo(?UploadedFile $logo): ?string
+    {
+        if ($logo === null) {
+            return null;
+        }
+
+        $path = $logo->store('event-logos', ['disk' => 'local', 'visibility' => 'private']);
+        if ($path === false) {
+            throw ValidationException::withMessages(['logo' => 'Logo event gagal disimpan. Silakan coba kembali.']);
+        }
+
+        return $path;
+    }
+
+    private function deleteLogo(?string $path): void
+    {
+        if ($path !== null) {
+            Storage::disk('local')->delete($path);
+        }
     }
 
     /**
@@ -264,7 +348,7 @@ class EventController extends Controller
         Gate::authorize('events.delete');
 
         try {
-            DB::transaction(function () use ($event): void {
+            $logoPath = DB::transaction(function () use ($event): ?string {
                 $lockedEvent = Event::query()->whereKey($event->getKey())->lockForUpdate()->firstOrFail();
                 $lockedEvent->loadExists(['registrationNotifications', 'registrations', 'days']);
 
@@ -276,6 +360,8 @@ class EventController extends Controller
                 }
 
                 $lockedEvent->delete();
+
+                return $lockedEvent->logo_path;
             }, attempts: 3);
         } catch (QueryException $exception) {
             if ((int) ($exception->errorInfo[1] ?? 0) !== 1451
@@ -287,6 +373,8 @@ class EventController extends Controller
                 'event' => 'Event tidak dapat dihapus karena masih memiliki data operasional terkait. Gunakan status Cancelled untuk membatalkan event dan menjaga riwayat operasional.',
             ])->redirectTo(route('events.index'));
         }
+
+        $this->deleteLogo($logoPath);
 
         return redirect()->route('events.index')->with('success', 'Event berhasil dihapus.');
     }

@@ -53,6 +53,23 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(pages.get(url.pathname).replaceAll(fixture.origin, origin));
                     return;
                 }
+                if (url.pathname.endsWith("/participants/candidates")) {
+                    const type = url.searchParams.get("type");
+                    const page = Number(url.searchParams.get("page"));
+                    const search = url.searchParams.get("search").toLowerCase();
+                    const candidates = type === "external"
+                        ? [{ id: 1, name: "External Guest", identifier: "0812345", affiliation: "Partner", status: null }]
+                        : Array.from({ length: url.searchParams.has("department_id") ? 2 : 17 }, (_, index) => ({
+                            id: index + 1, name: `Employee ${String(index + 1).padStart(2, "0")}`, identifier: `NIP-${index + 1}`,
+                            affiliation: "Operations", status: index === 16 ? "registered" : null,
+                        }));
+                    const filtered = candidates.filter(({ name, identifier }) => name.toLowerCase().includes(search) || identifier.toLowerCase().includes(search));
+                    response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
+                        data: filtered.slice((page - 1) * 15, page * 15), page, last_page: Math.max(1, Math.ceil(filtered.length / 15)),
+                        total: filtered.length, selectable_ids: filtered.filter(({ status }) => status !== "registered").map(({ id }) => id),
+                    }));
+                    return;
+                }
                 if (url.pathname.endsWith("/qr")) { response.writeHead(204).end(); return; }
                 const publicRoot = resolve("public");
                 const file = resolve(publicRoot, `.${url.pathname}`);
@@ -244,19 +261,12 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
         });
 
         for (const [width, height] of [[1440, 900], [375, 620]]) {
-            await suite.test(`Department and external participant selects share readable dropdowns at ${width}px`, async () => {
+            await suite.test(`The employee form Department selector has a readable dropdown at ${width}px`, async () => {
                 await client.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 800 });
-                for (const [page, selector] of [["employeeForm", "#department_id"], ["event", "#external_ids"]]) {
-                    await fresh(page, page === "event" ? "#event-participants" : "");
-                    const errorCount = client.errors.length;
-                    const style = await client.evaluate(`
-                        const select = document.querySelector(${JSON.stringify(selector)});
-                        const modal = select.closest(".modal");
-                        if (modal) {
-                            document.querySelector('[data-bs-target="#' + modal.id + '"]').click();
-                            await until(() => modal.getAttribute("aria-modal") === "true" && !modal.querySelector(".modal-dialog").getAnimations().length);
-                        }
-                        window.picker = select.tomselect;
+                await fresh("employeeForm");
+                const errorCount = client.errors.length;
+                const style = await client.evaluate(`
+                        window.picker = document.querySelector("#department_id").tomselect;
                         picker.control.scrollIntoView({ block: "center" });
                         picker.control.click(); await until(() => picker.isOpen);
                         const option = picker.dropdown.querySelector(".option.active");
@@ -264,21 +274,20 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                         return { background: getComputedStyle(picker.dropdown).backgroundColor, color: getComputedStyle(option).color,
                             active: getComputedStyle(option).backgroundColor !== "rgba(0, 0, 0, 0)",
                             hit: option.contains(document.elementFromPoint(box.left + 5, box.top + box.height / 2)),
-                            inside: picker.dropdown.parentElement === picker.wrapper && (!modal || modal.contains(picker.dropdown)),
+                            inside: picker.dropdown.parentElement === picker.wrapper,
                             controlClass: picker.dropdown.classList.contains("form-select") };
                     `);
-                    assert.deepEqual(style, { background: "rgb(255, 255, 255)", color: "rgb(24, 36, 51)", active: true, hit: true,
-                        inside: true, controlClass: false });
-                    await client.send("Input.insertText", { text: "Participant Nine" });
-                    const id = await client.evaluate(`
+                assert.deepEqual(style, { background: "rgb(255, 255, 255)", color: "rgb(24, 36, 51)", active: true, hit: true,
+                    inside: true, controlClass: false });
+                await client.send("Input.insertText", { text: "Participant Nine" });
+                const id = await client.evaluate(`
                         await until(() => picker.dropdown.querySelectorAll(".option").length === 1
                             && picker.dropdown.querySelector(".option").textContent.includes("Participant Nine"));
                         return picker.dropdown.querySelector(".option").dataset.value;
                     `);
-                    await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
-                    assert.equal(await client.evaluate("return picker.input.value;"), id);
-                    assert.deepEqual(client.errors.slice(errorCount), []);
-                }
+                await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+                assert.equal(await client.evaluate("return picker.input.value;"), id);
+                assert.deepEqual(client.errors.slice(errorCount), []);
             });
 
             await suite.test(`footer and Contact Us support keyboard and fit at ${width}px`, async () => {
@@ -313,77 +322,59 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 await client.evaluate("await until(() => !contactModal.classList.contains('show') && document.activeElement === contactLink);");
             });
 
-            await suite.test(`employee picker layers, searches and submits multiple employees at ${width}px`, async () => {
+            await suite.test(`participant picker preserves selections across pages, filters and types at ${width}px`, async () => {
                 await client.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 800 });
                 await fresh("event", "#event-participants");
-                const dropdown = await client.evaluate(`
-                    const modal = document.querySelector("#addEmployeeModal");
-                    const shown = new Promise((resolve) => modal.addEventListener("shown.bs.modal", resolve, { once: true }));
-                    document.querySelector('[data-bs-target="#addEmployeeModal"]').click(); await shown;
-                    const select = document.querySelector("#employee_ids");
-                    window.employeePicker = select.tomselect;
-                    const picker = employeePicker;
-                    picker.control.click();
-                    await until(() => picker.isOpen).catch(() => {
-                        throw new Error(JSON.stringify({
-                            focus: document.activeElement?.outerHTML.slice(0, 160), focused: picker.isFocused,
-                            options: Object.keys(picker.options).length, locked: picker.isLocked, openOnFocus: picker.settings.openOnFocus,
-                            input: picker.control_input.outerHTML, display: getComputedStyle(picker.control_input).display,
-                        }));
-                    });
-                    const anchor = select.closest("[data-tom-select-dropdown-parent]");
-                    const bounds = picker.dropdown.getBoundingClientRect();
-                    const control = picker.wrapper.getBoundingClientRect();
-                    const capacity = modal.querySelector(".row.g-3").getBoundingClientRect();
-                    const overlapY = Math.max(bounds.top, capacity.top) + 8;
-                    const first = picker.dropdown.querySelector(".option");
-                    const activeBackground = getComputedStyle(picker.dropdown.querySelector(".option.active")).backgroundColor;
-                    return {
-                        isMulti: select.multiple && picker.settings.maxItems === null,
-                        anchored: picker.settings.dropdownParent === anchor && picker.dropdown.parentElement === anchor,
-                        externalDefault: document.querySelector("#addExternalModal select").tomselect.settings.dropdownParent === null,
-                        white: getComputedStyle(picker.dropdown).backgroundColor === "rgb(255, 255, 255)",
-                        activeVisible: activeBackground !== "rgba(0, 0, 0, 0)",
-                        aligned: bounds.top >= control.bottom && bounds.top - control.bottom < 8
-                            && Math.abs(bounds.left - control.left) < 1 && Math.abs(bounds.width - control.width) < 1,
-                        inViewport: bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight,
-                        overlaysCards: overlapY < bounds.bottom && overlapY < capacity.bottom && picker.dropdown.contains(document.elementFromPoint(bounds.left + 25, overlapY)),
-                        scrollable: picker.dropdown_content.scrollHeight > picker.dropdown_content.clientHeight,
-                        readable: getComputedStyle(first).color === "rgb(24, 36, 51)",
-                    };
-                `);
-                assert.deepEqual(dropdown, { isMulti: true, anchored: true, externalDefault: true, white: true, activeVisible: true,
-                    aligned: true, inViewport: true, overlaysCards: true, scrollable: true, readable: true });
-                const screenshot = await client.send("Page.captureScreenshot", { format: "png" });
-                await writeFile(join(artifacts, `employee-picker-${width}.png`), Buffer.from(screenshot.data, "base64"));
-
-                await client.send("Input.insertText", { text: "Kandidat Alfa Picker" });
-                const alpha = await client.evaluate(`
-                    await until(() => employeePicker.dropdown.querySelectorAll(".option").length === 1
-                        && employeePicker.dropdown.querySelector(".option").textContent.includes("0001234501"));
-                    return employeePicker.dropdown.querySelector(".option").dataset.value;
-                `);
-                for (const [key, code] of [["ArrowDown", 40], ["Enter", 13]]) {
-                    await client.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: code });
-                    await client.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: code });
-                }
-                await client.evaluate(`await until(() => employeePicker.items.length === 1);
-                    await until(() => employeePicker.dropdown.querySelector(".option.selected"));
-                    if (getComputedStyle(employeePicker.dropdown.querySelector(".option.selected")).backgroundColor === "rgba(0, 0, 0, 0)") {
-                        throw new Error("Selected employee has no visible state");
-                    }`);
-                await client.send("Input.insertText", { text: "0001234502" });
                 const result = await client.evaluate(`
-                    await until(() => employeePicker.dropdown.querySelectorAll(".option").length === 1
-                        && employeePicker.dropdown.querySelector(".option").textContent.includes("Kandidat Beta Picker"));
-                    const option = employeePicker.dropdown.querySelector(".option");
-                    option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-                    const form = document.querySelector("#employee_ids").form;
-                    return { beta: option.dataset.value, submitted: new FormData(form).getAll("participant_ids[]"),
-                        chips: employeePicker.control.querySelectorAll(".item .remove").length };
+                    const modal = document.querySelector("#addParticipantsModal");
+                    const shown = new Promise((resolve) => modal.addEventListener("shown.bs.modal", resolve, { once: true }));
+                    document.querySelector('[data-bs-target="#addParticipantsModal"]').click(); await shown;
+                    const find = (selector) => modal.querySelector(selector);
+                    const form = find("form");
+                    let submitted;
+                    form.addEventListener("submit", (event) => {
+                        event.preventDefault();
+                        const data = new FormData(form);
+                        submitted = { employees: data.getAll("participant_groups[employee][]"),
+                            externals: data.getAll("participant_groups[external][]"), days: data.getAll("day_ids[]") };
+                    });
+                    const change = (element, value, type = "change") => {
+                        element.value = value;
+                        element.dispatchEvent(new Event(type, { bubbles: true }));
+                    };
+                    const bounds = find(".modal-dialog").getBoundingClientRect();
+                    const search = find("#candidate-search");
+                    const department = find("#candidate-department");
+                    const submit = find('button[type="submit"]');
+                    await until(() => find('[data-candidate-id="15"]'));
+                    find("#candidate-select-all").click();
+                    find("[data-candidate-next]").click();
+                    await until(() => find('[data-candidate-id="16"]:checked'));
+                    const alreadyRegisteredDisabled = find('[data-candidate-id="17"]').disabled;
+                    change(department, department.options[1].value);
+                    await until(() => find("[data-candidate-results]").textContent.includes("2 peserta"));
+                    change(search, "NIP-2", "input");
+                    await until(() => find('[data-candidate-id="2"]:checked') && !find('[data-candidate-id="1"]'));
+                    change(find("#candidate-type"), "external");
+                    change(search, "0812345", "input");
+                    await until(() => find('[data-candidate-id="1"]')?.closest("tr").textContent.includes("External Guest"));
+                    find('[data-candidate-id="1"]').click();
+                    const count = find("[data-selected-count]").textContent;
+                    change(find("[data-invitation-coverage]"), "selected");
+                    const checkedBeforeSubmit = Boolean(submitted);
+                    const requiresDay = submit.disabled;
+                    const day = find('input[name="day_ids[]"]');
+                    day.click();
+                    submit.click();
+                    return { submitted, day: day.value, count, alreadyRegisteredDisabled, checkedBeforeSubmit,
+                        requiresDay, departmentHidden: find("[data-candidate-department-filter]").hidden,
+                        fits: bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight };
                 `);
-                assert.deepEqual(result.submitted, [alpha, result.beta]);
-                assert.equal(result.chips, 2);
+                assert.deepEqual(result.submitted, { employees: Array.from({ length: 16 }, (_, index) => String(index + 1)),
+                    externals: ["1"], days: [result.day] });
+                assert.equal(result.count, "17 peserta dipilih");
+                assert.equal(result.checkedBeforeSubmit, false);
+                assert.ok(result.alreadyRegisteredDisabled && result.requiresDay && result.departmentHidden && result.fits);
             });
         }
 

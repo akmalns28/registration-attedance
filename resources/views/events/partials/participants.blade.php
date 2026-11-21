@@ -14,6 +14,11 @@
             <x-ui.icon name="mail" class="me-2" /> Email peserta
         </a>
         @can('registrations.manage')
+            @php
+                $exportableRegistrations = $registrations->filter(fn ($registration) => $registration->isRegistered()
+                    && $registration->invitedDays->contains('is_active', true));
+                $exportableCounts = $exportableRegistrations->countBy('registration_type');
+            @endphp
             <div class="dropdown">
                 <button type="button" class="btn btn-outline-primary dropdown-toggle" id="invitation-export-menu"
                     data-bs-toggle="dropdown" aria-expanded="false">
@@ -21,9 +26,9 @@
                 </button>
                 <div class="dropdown-menu dropdown-menu-end" aria-labelledby="invitation-export-menu">
                     @foreach ([
-                        'all' => ['Semua peserta', $event->registered_participants_count],
-                        'employee' => ['Employee', $event->registered_employees_count],
-                        'external' => ['External', $event->registered_externals_count],
+                        'all' => ['Semua peserta', $exportableRegistrations->count()],
+                        'employee' => ['Employee', $exportableCounts->get('employee', 0)],
+                        'external' => ['External', $exportableCounts->get('external', 0)],
                     ] as $type => [$label, $count])
                         <a class="dropdown-item" href="{{ route('events.participants.invitations.export', ['event' => $event, 'participant_type' => $type]) }}">
                             {{ $label }} ({{ number_format($count, 0, ',', '.') }})
@@ -32,20 +37,11 @@
                 </div>
             </div>
         @endcan
-        @can('events.update')
-            @if (in_array($event->status, ['draft', 'published'], true))
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addEmployeeModal">
-                    <x-ui.icon name="user-plus" class="me-2" />
-                    Add Employee
-                </button>
-
-                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal"
-                    data-bs-target="#addExternalModal">
-                    <x-ui.icon name="users-plus" class="me-2" />
-                    Add External
-                </button>
-            @endif
-        @endcan
+        @if ($canAddParticipants)
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addParticipantsModal">
+                <x-ui.icon name="users-plus" class="me-2" /> Add Participants
+            </button>
+        @endif
     </div>
 
 </div>

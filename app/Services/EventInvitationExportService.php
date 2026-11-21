@@ -17,7 +17,10 @@ class EventInvitationExportService
 {
     private const PRIVATE_HEADERS = ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'];
 
-    public function __construct(private readonly RegistrationQrCodeService $qrCode) {}
+    public function __construct(
+        private readonly RegistrationQrCodeService $qrCode,
+        private readonly EventDayInvitationService $invitations,
+    ) {}
 
     public function download(Event $event, EventRegistration $registration): Response
     {
@@ -27,11 +30,16 @@ class EventInvitationExportService
             throw ValidationException::withMessages(['export' => 'Undangan hanya tersedia untuk registrasi yang masih aktif.']);
         }
 
-        $registration->loadMissing(['employee', 'externalParticipant', 'activeInvitedDays']);
+        $registration->loadMissing(['employee', 'externalParticipant']);
+        $invitedDates = $this->invitations->dateSummary($registration->load('activeInvitedDays'));
+        if ($invitedDates === null) {
+            throw ValidationException::withMessages(['export' => 'Peserta belum memiliki hari undangan aktif.']);
+        }
+
         $registrationNumber = Str::slug($registration->registration_number) ?: $registration->uuid;
         $filename = 'undangan-'.$this->eventSlug($event).'-'.$registrationNumber.'.pdf';
 
-        return response($this->render($event, $registration), 200, [
+        return response($this->render($event, $registration, $invitedDates, $this->logoDataUri($event)), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             ...self::PRIVATE_HEADERS,
@@ -40,7 +48,8 @@ class EventInvitationExportService
 
     public function bulk(Event $event, string $participantType): StreamedResponse
     {
-        $registrations = $event->registrations()->registered()->with(['employee', 'externalParticipant', 'activeInvitedDays']);
+        $registrations = $event->registrations()->registered()->whereHas('activeInvitedDays')
+            ->with(['employee', 'externalParticipant', 'activeInvitedDays']);
         if ($participantType !== 'all') {
             $registrations->where('registration_type', $participantType);
         }
@@ -51,19 +60,25 @@ class EventInvitationExportService
         }
 
         $eventSlug = $this->eventSlug($event);
+        $logoImage = $this->logoDataUri($event);
         try {
             $zip = new ZipStream(outputStream: $archive, sendHttpHeaders: false);
             $count = 0;
 
             foreach ($registrations->lazyById(50) as $registration) {
+                $invitedDates = $this->invitations->dateSummary($registration);
+                if ($invitedDates === null) {
+                    continue;
+                }
+
                 $participantSlug = Str::substr(Str::slug($registration->participant_name ?? ''), 0, 80) ?: 'peserta';
                 $filename = "undangan-{$eventSlug}-{$participantSlug}-{$registration->id}.pdf";
-                $zip->addFile($filename, $this->render($event, $registration));
+                $zip->addFile($filename, $this->render($event, $registration, $invitedDates, $logoImage));
                 $count++;
             }
 
             if ($count === 0) {
-                throw ValidationException::withMessages(['export' => 'Tidak ada peserta aktif untuk filter undangan ini.']);
+                throw ValidationException::withMessages(['export' => 'Tidak ada peserta dengan hari undangan aktif untuk filter ini.']);
             }
 
             $size = $zip->finish();
@@ -89,13 +104,22 @@ class EventInvitationExportService
         }
     }
 
-    private function render(Event $event, EventRegistration $registration): string
+    private function logoDataUri(Event $event): ?string
+    {
+        $logo = $event->logoImage();
+
+        return $logo === null ? null : 'data:'.$logo['mime'].';base64,'.base64_encode($logo['contents']);
+    }
+
+    private function render(Event $event, EventRegistration $registration, string $invitedDates, ?string $logoImage): string
     {
         try {
             return Pdf::loadView('events.partials.invitation-document', [
                 'event' => $event,
                 'registration' => $registration,
                 'participantName' => $registration->participant_name,
+                'invitedDates' => $invitedDates,
+                'logoImage' => $logoImage,
                 'qrImage' => 'data:image/png;base64,'.base64_encode($this->qrCode->generatePng($registration)),
             ])->setPaper('a5', 'portrait')->setOptions([
                 'defaultFont' => 'DejaVu Sans',

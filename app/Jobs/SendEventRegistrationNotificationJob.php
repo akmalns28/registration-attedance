@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationNotification;
 use App\Services\EventNotificationEligibility;
+use App\Services\EventNotificationFailure;
 use App\Services\EventNotificationQueue;
 use App\Services\EventNotificationTransport;
 use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
@@ -64,28 +65,30 @@ class SendEventRegistrationNotificationJob implements ShouldQueueAfterCommit
          */
         try {
             Mail::to(trim($notification->recipient_email))->send(new EventRegistrationMail($notification));
-
-            $this->claimedQuery($token)->update([
-                'status' => EventRegistrationNotification::STATUS_SENT,
-                'sent_at' => now(),
-                'failed_at' => null,
-                'last_error' => null,
-            ]);
         } catch (Throwable $exception) {
+            $failure = app(EventNotificationFailure::class)->describe($exception);
             $this->claimedQuery($token)->update([
                 'status' => EventRegistrationNotification::STATUS_FAILED,
                 'failed_at' => now(),
-                'last_error' => mb_substr($exception->getMessage(), 0, 2000),
+                'last_error' => $failure,
             ]);
 
             Log::warning('Event registration email delivery failed.', [
                 'notification_id' => $notification->id,
                 'attempts' => $notification->attempts,
                 'exception_type' => $exception::class,
+                'failure' => $failure,
             ]);
 
             throw new RuntimeException('Event registration email delivery failed (notification '.$notification->id.').');
         }
+
+        $this->claimedQuery($token)->update([
+            'status' => EventRegistrationNotification::STATUS_SENT,
+            'sent_at' => now(),
+            'failed_at' => null,
+            'last_error' => null,
+        ]);
     }
 
     private function claim(): ?EventRegistrationNotification
@@ -120,7 +123,7 @@ class SendEventRegistrationNotificationJob implements ShouldQueueAfterCommit
                 $notification->update([
                     'status' => EventRegistrationNotification::STATUS_FAILED,
                     'failed_at' => $notification->failed_at ?? now(),
-                    'last_error' => 'Notification retry limit exhausted.',
+                    'last_error' => $notification->last_error ?? EventNotificationFailure::RETRY_LIMIT,
                 ]);
 
                 return null;
@@ -186,6 +189,7 @@ class SendEventRegistrationNotificationJob implements ShouldQueueAfterCommit
         }
 
         $lease = app(EventNotificationQueue::class)->leaseSeconds($this->connection);
+        $diagnostics = app(EventNotificationFailure::class);
 
         EventRegistrationNotification::query()->whereKey($notification->id)
             ->where(function ($query): void {
@@ -207,7 +211,8 @@ class SendEventRegistrationNotificationJob implements ShouldQueueAfterCommit
             })->update([
                 'status' => EventRegistrationNotification::STATUS_FAILED,
                 'failed_at' => now(),
-                'last_error' => $notification->last_error ?? ($exception ? mb_substr($exception->getMessage(), 0, 2000) : 'Queue job permanently failed.'),
+                'last_error' => $diagnostics->forHistory($notification->last_error)
+                    ?? ($exception ? $diagnostics->describe($exception) : 'Queue job permanently failed.'),
             ]);
     }
 }

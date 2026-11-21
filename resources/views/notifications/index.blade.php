@@ -39,10 +39,11 @@
     @endif
 
     <div class="row row-cards mb-4">
-        <div class="col-6 col-lg-3"><x-ui.stat-card title="Total notifikasi" :value="$counts->sum()" /></div>
-        <div class="col-6 col-lg-3"><x-ui.stat-card title="Terkirim" :value="$counts['sent'] ?? 0" color="success" /></div>
-        <div class="col-6 col-lg-3"><x-ui.stat-card title="Menunggu / diproses" :value="($counts['pending'] ?? 0) + ($counts['queued'] ?? 0) + ($counts['processing'] ?? 0)" /></div>
-        <div class="col-6 col-lg-3"><x-ui.stat-card title="Gagal / dilewati" :value="($counts['failed'] ?? 0) + ($counts['skipped'] ?? 0)" color="danger" /></div>
+        <div class="col-6 col-lg"><x-ui.stat-card title="Total notifikasi" :value="$counts->sum()" /></div>
+        <div class="col-6 col-lg"><x-ui.stat-card title="Terkirim" :value="$counts['sent'] ?? 0" color="success" /></div>
+        <div class="col-6 col-lg"><x-ui.stat-card title="Menunggu / diproses" :value="($counts['pending'] ?? 0) + ($counts['queued'] ?? 0) + ($counts['processing'] ?? 0)" /></div>
+        <div class="col-6 col-lg"><x-ui.stat-card title="Gagal" :value="$counts['failed'] ?? 0" color="danger" /></div>
+        <div class="col-6 col-lg"><x-ui.stat-card title="Dilewati" :value="$counts['skipped'] ?? 0" color="warning" /></div>
     </div>
 
     @can('events.update')
@@ -158,10 +159,10 @@
                             <td>
                                 <span class="badge bg-{{ $statusColors[$notification->status] ?? 'secondary' }}-lt">{{ $statusLabels[$notification->status] ?? $notification->status }}</span>
                                 @can('events.update')
-                                    @if ($notification->last_error)
+                                    @if ($deliveryErrors[$notification->id] ?? null)
                                         <details class="small mt-2">
                                             <summary class="text-danger">Detail pengiriman</summary>
-                                            <div class="text-break mt-1" style="max-width: 320px;">{{ $notification->last_error }}</div>
+                                            <div class="text-break mt-1" style="max-width: 320px;">{{ $deliveryErrors[$notification->id] }}</div>
                                         </details>
                                     @endif
                                     @if ($notification->metadata['delivery_transport'] ?? null)
@@ -173,6 +174,7 @@
                             <td class="small text-secondary">
                                 <div>Dibuat: {{ $notification->created_at->format('d/m/Y H:i') }}</div>
                                 @if ($notification->sent_at)<div>Terkirim: {{ $notification->sent_at->format('d/m/Y H:i') }}</div>@endif
+                                @if ($notification->failed_at)<div>Gagal: {{ $notification->failed_at->format('d/m/Y H:i') }}</div>@endif
                                 @if ($notification->last_attempt_at)<div>Dicoba: {{ $notification->last_attempt_at->format('d/m/Y H:i') }}</div>@endif
                             </td>
                             @can('events.update')
