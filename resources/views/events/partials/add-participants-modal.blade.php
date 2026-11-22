@@ -32,19 +32,11 @@
                             <option value="external" @selected($previousType === 'external')>External</option>
                         </select>
                     </div>
-                    <div class="col-sm-4" data-candidate-department-filter>
-                        <label for="candidate-department" class="form-label">Department</label>
-                        <select id="candidate-department" class="form-select">
-                            <option value="">All Departments</option>
-                            @foreach ($participantDepartments as $department)
-                                <option value="{{ $department->id }}">{{ $department->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
                     <div class="col-sm">
                         <label for="candidate-search" class="form-label">Cari peserta</label>
                         <input type="search" id="candidate-search" class="form-control" maxlength="100" placeholder="Nama atau NIP">
                     </div>
+                    @include('organizations._filters', ['filterPrefix' => 'candidate'])
                 </div>
 
                 <div class="border rounded overflow-hidden">

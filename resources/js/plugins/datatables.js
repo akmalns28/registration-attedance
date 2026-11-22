@@ -67,11 +67,14 @@ const language = {
 
 function exportOptions(format) {
     const text = (value, _row, _column, node) => {
-        const copy = node?.cloneNode(true);
-        copy?.querySelectorAll("svg, .avatar, .no-export-content").forEach((element) => element.remove());
-        const plain = DataTable.Buttons.stripData(copy?.innerHTML ?? String(value ?? ""), {
-            stripHtml: true, trim: false, stripNewlines: false, decodeEntities: true, escapeExcelFormula: false,
-        });
+        let plain = node?.dataset.exportValue;
+        if (plain === undefined) {
+            const copy = node?.cloneNode(true);
+            copy?.querySelectorAll("svg, .avatar, .no-export-content").forEach((element) => element.remove());
+            plain = DataTable.Buttons.stripData(copy?.innerHTML ?? String(value ?? ""), {
+                stripHtml: true, trim: false, stripNewlines: false, decodeEntities: true, escapeExcelFormula: false,
+            });
+        }
         const normalized = plain.replace(/\s+/g, " ").trim();
         if (format === "print") {
             const escaped = document.createElement("span");

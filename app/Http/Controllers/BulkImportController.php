@@ -22,7 +22,12 @@ class BulkImportController extends Controller
         $imports->authorize($request->user(), $module);
 
         return response()->view('imports.index', ['module' => $module, 'definition' => $imports::module($module),
-            'departments' => $module === 'employees' ? Department::query()->active()->orderBy('name')->get(['code', 'name']) : collect(),
+            'departments' => $module === 'employees'
+                ? Department::query()->active()
+                    ->where(fn ($query) => $query->whereNull('entity_id')->orWhereHas('entity', fn ($entity) => $entity->where('is_active', true)))
+                    ->with(['entity:id,code,name', 'divisions' => fn ($query) => $query->where('is_active', true)->orderBy('name')])
+                    ->orderBy('name')->get()
+                : collect(),
             'roles' => $module === 'users' ? Role::query()->where('guard_name', 'web')->whereRaw('lower(trim(name)) != ?', ['super-admin'])->orderBy('name')->pluck('name') : collect(),
         ])->withHeaders(['Cache-Control' => 'private, no-store']);
     }
@@ -66,9 +71,12 @@ class BulkImportController extends Controller
         $request->validate(['confirm' => ['required', 'accepted'], 'rows' => ['prohibited'], 'summary' => ['prohibited'], 'file' => ['prohibited'], 'module' => ['prohibited']]);
         $snapshot = $imports->confirm($import, $request->user(), $module);
         $summary = $snapshot['result_summary'];
+        $message = $module === 'organizations'
+            ? "Impor organisasi selesai. {$summary['created']} baris disimpan, {$summary['skipped']} tanpa perubahan, dan {$summary['failed']} gagal."
+            : "Impor selesai. Created: {$summary['created']}, Skipped: {$summary['skipped']}, Failed: {$summary['failed']}.";
 
         return redirect()->route($imports::module($module)['route'].'.import.result', ['import' => $import])
-            ->with($summary['failed'] ? 'warning' : 'success', "Impor selesai. Created: {$summary['created']}, Skipped: {$summary['skipped']}, Failed: {$summary['failed']}.");
+            ->with($summary['failed'] ? 'warning' : 'success', $message);
     }
 
     public function result(Request $request, BulkImportService $imports, string $import, string $module): Response

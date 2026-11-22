@@ -24,15 +24,10 @@
                 <option value="">Semua Status</option><option value="present">Hadir</option><option value="not_present">Belum Hadir</option>
             </select>
         </div>
-        <div class="col-12 col-md-4">
-            <label for="report-department" class="form-label">Departemen</label>
-            <select id="report-department" name="report_department" class="form-select" aria-describedby="report-department-help">
-                <option value="">Semua Departemen</option>
-                @foreach ($reportDepartments as $department)
-                    <option value="{{ $department->id }}">{{ $department->name }}</option>
-                @endforeach
-            </select>
-        </div>
+        @include('organizations._filters', ['filterPrefix' => 'report', 'organizationSelection' => [
+            'entity_id' => request()->query('report_entity'), 'department_id' => request()->query('report_department'),
+            'division_id' => request()->query('report_division'),
+        ]])
         <div class="col-12 col-md-4">
             <label for="report-search" class="form-label">Pencarian</label>
             <input id="report-search" name="report_search" type="search" maxlength="200" class="form-control" placeholder="Nama peserta atau nomor registrasi">
@@ -44,7 +39,7 @@
             </div>
         </div>
     </form>
-    <p id="report-department-help" class="text-secondary small">Departemen hanya untuk Employee. Ringkasan mengikuti seluruh hasil filter dan pencarian.</p>
+    <p class="text-secondary small">Filter organisasi berlaku untuk Employee. Ringkasan mengikuti seluruh hasil filter dan pencarian.</p>
 
     <div data-report-feedback class="d-none" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="row row-cards mb-3" role="group" aria-label="Ringkasan Reports">

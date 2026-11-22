@@ -1,6 +1,6 @@
 export function initializeEventParticipantPicker(modal) {
     const type = modal.querySelector("#candidate-type");
-    const department = modal.querySelector("#candidate-department");
+    const organization = modal.querySelector("[data-candidate-department-filter]");
     const search = modal.querySelector("#candidate-search");
     const selectAll = modal.querySelector("#candidate-select-all");
     const rows = modal.querySelector("[data-candidate-rows]");
@@ -106,7 +106,7 @@ export function initializeEventParticipantPicker(modal) {
         updateSelection();
 
         const isEmployee = type.value === "employee";
-        modal.querySelector("[data-candidate-department-filter]").hidden = !isEmployee;
+        organization.hidden = !isEmployee;
         modal.querySelector("[data-candidate-identifier]").textContent = isEmployee ? "NIP" : "Telepon";
         modal.querySelector("[data-candidate-affiliation]").textContent = isEmployee ? "Department" : "Organisasi";
         search.placeholder = isEmployee ? "Nama atau NIP" : "Nama atau telepon";
@@ -115,8 +115,12 @@ export function initializeEventParticipantPicker(modal) {
             const controller = new AbortController();
             pending = controller;
             const query = new URLSearchParams({ type: type.value, page, search: search.value.trim() });
-            if (isEmployee && department.value) {
-                query.set("department_id", department.value);
+            if (isEmployee) {
+                for (const select of organization.querySelectorAll("[data-organization-select]")) {
+                    if (select.value) {
+                        query.set(select.dataset.organizationSelect + "_id", select.value);
+                    }
+                }
             }
 
             try {
@@ -151,7 +155,7 @@ export function initializeEventParticipantPicker(modal) {
 
     modal.addEventListener("show.bs.modal", () => load());
     type.addEventListener("change", () => load());
-    department.addEventListener("change", () => load());
+    organization.addEventListener("change", () => load());
     search.addEventListener("input", () => load(1, 250));
     search.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {

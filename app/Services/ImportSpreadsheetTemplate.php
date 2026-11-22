@@ -13,12 +13,13 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class ImportSpreadsheetTemplate extends DefaultValueBinder implements FromArray, WithCustomValueBinder, WithStyles
 {
-    public function __construct(private string $module) {}
+    /** @param list<list<string>> $rows */
+    public function __construct(private string $module, private array $rows = []) {}
 
     /** @return array<int, array<int, string>> */
     public function array(): array
     {
-        return [BulkImportService::module($this->module)['columns']];
+        return [BulkImportService::module($this->module)['columns'], ...$this->rows];
     }
 
     public function bindValue(Cell $cell, mixed $value): bool
@@ -39,7 +40,9 @@ class ImportSpreadsheetTemplate extends DefaultValueBinder implements FromArray,
             $hint = match ($field) {
                 'nip' => 'Contoh EMP000001 atau 0000123. Gunakan format Text untuk menjaga nol di depan.',
                 'phone' => 'Contoh 08123456789. Gunakan format Text untuk menjaga nol di depan.',
-                'department' => 'Gunakan kode atau nama unik dari daftar departemen aktif, misalnya IT atau Operasional jika tersedia.',
+                'entity' => 'Isi kode atau nama entitas aktif. Kosongkan untuk departemen lama yang belum memiliki entitas.',
+                'department' => 'Isi kode atau nama departemen aktif di dalam entitas yang dipilih.',
+                'division' => 'Opsional. Isi kode atau nama divisi aktif di dalam departemen yang dipilih.',
                 'status' => $this->module === 'users'
                     ? 'Contoh Tidak Aktif. Akun baru selalu nonaktif sampai administrator memverifikasi identitas Keycloak.'
                     : 'Gunakan Aktif atau Tidak Aktif. Active dan Inactive juga diterima.',
@@ -48,6 +51,11 @@ class ImportSpreadsheetTemplate extends DefaultValueBinder implements FromArray,
                 'email' => 'Contoh akmal@example.com.',
                 'organization' => 'Contoh PT Nusantara.',
                 'position' => 'Contoh Manajer.',
+                default => match (true) {
+                    str_ends_with($field, '_code') => 'Gunakan format Text agar nol di depan tetap tersimpan.',
+                    str_ends_with($field, '_status') => 'Gunakan Aktif, Tidak Aktif, Active, atau Inactive.',
+                    default => 'Isi nama organisasi sesuai kode pada tingkat ini.',
+                },
             };
             $sheet->getComment($column.'1')->getText()->createTextRun($hint);
         }

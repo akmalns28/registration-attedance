@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Department;
+use App\Models\Division;
 use App\Models\Employee;
+use App\Models\Entity;
 use App\Models\Event;
 use App\Models\EventDay;
 use App\Models\EventRegistration;
@@ -53,6 +55,32 @@ class EventParticipantPickerTest extends TestCase
         $this->assertDatabaseCount('event_registrations', 2);
 
         $this->actingAs(User::factory()->create(['is_active' => true])->assignRole('monitoring'))->getJson($url(['type' => 'employee']))->assertForbidden();
+    }
+
+    public function test_event_selection_reports_and_analytics_use_the_same_organization_hierarchy(): void
+    {
+        $event = Event::factory()->create(['status' => Event::STATUS_PUBLISHED]);
+        $day = EventDay::factory()->for($event)->create();
+        $entity = Entity::factory()->create();
+        $department = Department::factory()->for($entity)->create();
+        $division = Division::factory()->for($department)->create();
+        $otherDivision = Division::factory()->for($department)->create();
+        $employee = Employee::factory()->for($department)->for($division)->create();
+        $other = Employee::factory()->for($department)->for($otherDivision)->create();
+        $legacy = Employee::factory()->create();
+        foreach ([$employee, $other, $legacy] as $participant) {
+            EventRegistration::factory()->for($event)->for($participant)->invitedTo($day)->create();
+        }
+
+        $filters = ['entity_id' => $entity->id, 'department_id' => $department->id, 'division_id' => $division->id];
+        $this->getJson(route('events.participants.candidates', [$event, 'type' => 'employee', ...$filters]))
+            ->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $employee->id);
+        $this->getJson(route('events.reports.data', [$event, ...$filters]))
+            ->assertOk()->assertJsonPath('summary.expected', 1);
+        $this->getJson(route('analytic.data', $filters))->assertOk()
+            ->assertJsonPath('data.kpis.total_registrations', 1)->assertJsonPath('data.kpis.expected_attendance', 1);
+        $this->getJson(route('analytic.data', [...$filters, 'department_id' => $legacy->department_id]))
+            ->assertUnprocessable()->assertJsonValidationErrors(['department_id', 'division_id']);
     }
 
     #[TestWith(['all', 2])]

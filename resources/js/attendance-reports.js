@@ -4,7 +4,8 @@ import "datatables.net-responsive-bs5/css/responsive.bootstrap5.css";
 import { getDataTableOptions, adjustDataTables } from "./plugins/datatables";
 
 const filters = {
-    report_day: "event_day", report_type: "participant_type", report_status: "attendance_status", report_department: "department_id",
+    report_day: "event_day", report_type: "participant_type", report_status: "attendance_status",
+    report_entity: "entity_id", report_department: "department_id", report_division: "division_id",
 };
 const number = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 const requestOptions = {
@@ -55,7 +56,7 @@ export class AttendanceReports {
         this.form = page.querySelector("[data-report-filters]");
         this.feedback = page.querySelector("[data-report-feedback]");
         this.search = this.form.elements.namedItem("report_search");
-        this.department = this.form.elements.namedItem("report_department");
+        this.organization = this.form.querySelector("[data-organization-filter]");
         this.type = this.form.elements.namedItem("report_type");
         this.refreshButton = page.querySelector("[data-report-refresh]");
         this.exportButtons = [...page.querySelectorAll("[data-report-export]")];
@@ -76,7 +77,7 @@ export class AttendanceReports {
             }
             field.value = value;
         }
-        this.department.disabled = this.type.value === "external";
+        this.syncOrganization();
         const options = { signal: this.listeners.signal };
         this.exportButtons.forEach((button) => {
             button.dataset.label = button.querySelector("span").textContent;
@@ -91,10 +92,7 @@ export class AttendanceReports {
                 return;
             }
             if (event.target === this.type) {
-                this.department.disabled = this.type.value === "external";
-                if (this.department.disabled) {
-                    this.department.value = "";
-                }
+                this.syncOrganization();
             }
             this.applyFilters();
         }, options);
@@ -107,7 +105,8 @@ export class AttendanceReports {
             window.clearTimeout(this.searchTimer);
             this.form.reset();
             this.form.querySelectorAll("[data-invalid-filter]").forEach((option) => option.remove());
-            this.department.disabled = false;
+            this.organization.querySelectorAll("select").forEach((select) => { select.value = ""; });
+            this.syncOrganization();
             if (this.table) {
                 this.table.page.len(10).order([6, "asc"]).search("").draw();
             } else {
@@ -275,6 +274,19 @@ export class AttendanceReports {
         this.exportFeedback.textContent = message;
         if (failed) {
             window.notify?.error(message);
+        }
+    }
+
+    syncOrganization() {
+        const external = this.type.value === "external";
+        this.organization.hidden = external;
+        if (external) {
+            this.organization.querySelectorAll("select").forEach((select) => { select.value = ""; });
+        }
+        this.organization.dispatchEvent(new Event("organization:refresh"));
+        this.organization.querySelector('[data-organization-select="entity"]').disabled = external;
+        if (external) {
+            this.organization.querySelectorAll("select").forEach((select) => { select.disabled = true; });
         }
     }
 

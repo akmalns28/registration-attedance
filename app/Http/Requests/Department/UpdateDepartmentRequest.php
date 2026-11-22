@@ -16,11 +16,12 @@ class UpdateDepartmentRequest extends FormRequest
     public function rules(): array
     {
         $department = $this->route('department');
+        $code = Rule::unique('departments', 'code')->where('entity_id', $department->entity_id)->ignore($department);
 
         return [
-            'code' => ['required', 'string', 'max:20', 'regex:/^[A-Z0-9_-]+$/', Rule::unique('departments', 'code')->ignore($department)],
+            'code' => [$department->code === null ? 'nullable' : 'required', 'string', 'max:20', 'regex:/^[A-Z0-9_-]+$/', $code],
 
-            'name' => ['required', 'string', 'max:150', Rule::unique('departments', 'name')->ignore($department)],
+            'name' => ['required', 'string', 'max:150'],
 
             'description' => ['nullable', 'string', 'max:2000'],
 
@@ -31,7 +32,7 @@ class UpdateDepartmentRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'code' => strtoupper(trim((string) $this->input('code'))),
+            'code' => is_string($this->input('code')) ? Department::normalizeCode($this->input('code')) : $this->input('code'),
             'name' => trim((string) $this->input('name')),
             'is_active' => $this->boolean('is_active'),
         ]);

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\AttendanceReport;
 
+use App\Services\OrganizationFilters;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -31,7 +32,7 @@ class AttendanceReportRequest extends FormRequest
             'event_day' => ['nullable', 'integer', 'min:1', Rule::exists('event_days', 'id')->where('event_id', $this->route('event')->id)],
             'participant_type' => ['nullable', Rule::in(['employee', 'external'])],
             'attendance_status' => ['nullable', Rule::in(['present', 'not_present'])],
-            'department_id' => ['nullable', Rule::prohibitedIf($this->input('participant_type') === 'external'), 'integer', 'min:1', Rule::exists('departments', 'id')],
+            ...OrganizationFilters::rules($this, $this->input('participant_type') === 'external'),
             'draw' => ['sometimes', 'integer', 'min:0', 'max:2147483647'],
             'start' => ['sometimes', 'integer', 'min:0', 'max:2147483647'],
             'length' => ['sometimes', 'integer', 'min:1', 'max:100'],

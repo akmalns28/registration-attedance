@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Department;
+use App\Models\Entity;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -48,15 +50,16 @@ class DepartmentModelTest extends TestCase
         $this->assertCount(1, Department::active()->get());
     }
 
-    public function test_department_code_must_be_unique(): void
+    public function test_department_code_must_be_unique_within_its_entity(): void
     {
-        Department::factory()->create([
+        $department = Department::factory()->for(Entity::factory())->create([
             'code' => 'FIN',
         ]);
+        Department::factory()->for(Entity::factory())->create(['code' => 'FIN']);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
-        Department::factory()->create([
+        Department::factory()->for($department->entity)->create([
             'code' => 'FIN',
         ]);
     }

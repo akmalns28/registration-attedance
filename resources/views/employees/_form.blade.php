@@ -1,8 +1,16 @@
 @php
     $isEdit = isset($employee);
 
-    $selectedDepartment = old('department_id', $employee->department_id ?? '');
-
+    $legacyAvailable = $departments->contains(fn ($department) => $department->entity_id === null);
+    $defaultEntity = isset($employee) ? ($employee->department?->entity_id ?? 'legacy')
+        : ($entities->isEmpty() && $legacyAvailable ? 'legacy' : '');
+    $legacySelected = $departments->contains(fn ($department) => $department->entity_id === null
+        && (string) $department->id === (string) (is_scalar(old('department_id')) ? old('department_id') : ''));
+    $selected = [
+        'entity' => old('entity_id', $defaultEntity) ?? ($legacySelected ? 'legacy' : ''),
+        'department' => old('department_id', $employee->department_id ?? ''),
+        'division' => old('division_id', $employee->division_id ?? ''),
+    ];
     $isActive = old('is_active', $employee->is_active ?? true);
 @endphp
 
@@ -62,41 +70,52 @@
                     @enderror
                 </div>
 
-                {{-- Department --}}
-                <div class="mb-3">
-                    <label for="department_id" class="form-label required">
-                        Departemen
-                    </label>
-
-                    <select id="department_id" name="department_id"
-                        class="form-select @error('department_id') is-invalid @enderror" data-tom-select
-                        data-placeholder="Pilih departemen..." required>
-                        <option value="">
-                            Pilih Departemen
-                        </option>
-
-                        @foreach ($departments as $department)
-                            <option value="{{ $department->id }}" @selected((string) $selectedDepartment === (string) $department->id)>
-                                {{ $department->name }}
-
-                                @unless ($department->is_active)
-                                    (Inactive)
-                                @endunless
-                            </option>
-                        @endforeach
-                    </select>
-
-                    @error('department_id')
-                        <div class="invalid-feedback d-block">
-                            {{ $message }}
+                <div data-employee-organization data-organization-selects>
+                    <p class="small text-secondary" data-organization-loading role="status">Menyiapkan pilihan organisasi…</p>
+                    @foreach (['entity' => 'Entitas', 'department' => 'Departemen', 'division' => 'Divisi'] as $level => $label)
+                        @php
+                            $field = $level.'_id';
+                            $selectedId = is_scalar($selected[$level]) ? (string) $selected[$level] : '';
+                            $options = match ($level) {
+                                'entity' => $entities,
+                                'department' => $departments,
+                                'division' => $departments->flatMap->divisions,
+                            };
+                        @endphp
+                        <div class="mb-3">
+                            <label for="{{ $field }}" class="form-label {{ $level !== 'division' ? 'required' : '' }}">
+                                {{ $label }}{{ $level === 'division' ? ' (opsional)' : '' }}
+                            </label>
+                            <select id="{{ $field }}" name="{{ $field }}" data-organization-select="{{ $level }}" data-tom-select
+                                @class(['form-select', 'is-invalid' => $errors->has($field)])
+                                data-placeholder="Pilih {{ strtolower($label) }}..." @required($level !== 'division')>
+                                <option value="">{{ $level === 'division' ? 'Tanpa Divisi' : 'Pilih '.$label }}</option>
+                                @if ($level === 'entity' && $legacyAvailable)
+                                    <option value="legacy" @selected($selectedId === 'legacy')>Departemen lama (tanpa entitas)</option>
+                                @endif
+                                @foreach ($options as $option)
+                                    <option value="{{ $option->id }}" @selected($selectedId === (string) $option->id)
+                                        data-parent="{{ match ($level) {
+                                            'department' => $option->entity_id ?? 'legacy',
+                                            'division' => $option->department_id,
+                                            default => '',
+                                        } }}">
+                                        {{ filled($option->code) ? '['.$option->code.'] ' : '' }}{{ $option->name }}{{ $option->is_active ? '' : ' (Tidak Aktif)' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @if ($level === 'entity' && $options->isEmpty() && !$legacyAvailable)
+                                <p class="form-hint mb-0">Belum ada entitas aktif.</p>
+                            @elseif ($level !== 'entity')
+                                <p class="form-hint mb-0" data-organization-empty="{{ $level }}" role="status" hidden>
+                                    {{ $level === 'department' ? 'Tidak ada departemen yang dapat dipilih.' : 'Tidak ada divisi yang dapat dipilih.' }}
+                                </p>
+                            @endif
+                            @error($field)
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                            @enderror
                         </div>
-                    @enderror
-
-                    <div class="form-hint">
-                        Hanya departemen aktif yang dapat dipilih.
-                        Departemen lama yang nonaktif tetap ditampilkan
-                        apabila sedang digunakan oleh karyawan ini.
-                    </div>
+                    @endforeach
                 </div>
 
                 {{-- Email --}}

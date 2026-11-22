@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\EventDay;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
@@ -33,7 +34,7 @@ class NavigationService
                     continue;
                 }
 
-                $items[] = [...$item, 'url' => route($item['route']), 'is_active' => request()->routeIs($item['active'] ?? $item['route'])];
+                $items[] = [...$item, 'url' => route($item['route']), 'is_active' => request()->routeIs(...Arr::wrap($item['active'] ?? $item['route']))];
             }
 
             if (! empty($items)) {
@@ -59,14 +60,14 @@ class NavigationService
 
         foreach (config('navigation', []) as $section) {
             foreach ($section['items'] as $item) {
-                if (! $request->routeIs($item['active'] ?? $item['route']) || ! Route::has($item['route'])) {
+                if (! $request->routeIs(...Arr::wrap($item['active'] ?? $item['route'])) || ! Route::has($item['route'])) {
                     continue;
                 }
 
                 if ($section['title'] !== 'Main Menu') {
                     $items[] = ['label' => $section['title']];
                 }
-                if ($request->routeIs($item['route'])) {
+                if ($request->routeIs($item['route']) || ($item['route'] === 'organizations.index' && $request->routeIs('departments.index'))) {
                     return [...$items, ['label' => $item['label']]];
                 }
 

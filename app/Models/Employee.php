@@ -12,7 +12,7 @@ class Employee extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['nip', 'name', 'department_id', 'email', 'phone', 'is_active'];
+    protected $fillable = ['nip', 'name', 'department_id', 'division_id', 'email', 'phone', 'is_active'];
 
     protected function casts(): array
     {
@@ -27,6 +27,11 @@ class Employee extends Model
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
+    }
+
+    public function division(): BelongsTo
+    {
+        return $this->belongsTo(Division::class);
     }
 
     /**

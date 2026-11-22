@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Analytic;
 
+use App\Services\OrganizationFilters;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
@@ -25,6 +26,7 @@ class AnalyticFilterRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...OrganizationFilters::rules($this),
             'event' => ['nullable', 'uuid', Rule::exists('events', 'uuid')],
             'start_date' => ['nullable', 'date_format:Y-m-d'],
             'end_date' => ['nullable', 'date_format:Y-m-d', Rule::when($this->filled('start_date'), ['after_or_equal:start_date'])],

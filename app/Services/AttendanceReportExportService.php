@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Department;
+use App\Models\Division;
+use App\Models\Entity;
 use App\Models\Event;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Response;
@@ -97,6 +99,8 @@ class AttendanceReportExportService
     {
         $day = empty($filters['event_day']) ? null : $event->days()->find($filters['event_day']);
         $department = empty($filters['department_id']) ? null : Department::find($filters['department_id']);
+        $entity = empty($filters['entity_id']) ? null : Entity::find($filters['entity_id']);
+        $division = empty($filters['division_id']) ? null : Division::find($filters['division_id']);
         $sort = $filters['order'][0] ?? ['column' => 6, 'dir' => 'asc'];
         $search = trim($filters['search']['value'] ?? '');
         $description = [
@@ -107,7 +111,9 @@ class AttendanceReportExportService
             'Kehadiran: '.match ($filters['attendance_status'] ?? '') {
                 'present' => 'Hadir', 'not_present' => 'Belum Hadir', default => 'Semua'
             },
+            'Entitas: '.($entity?->organizationLabel() ?? 'Semua'),
             'Departemen: '.($department?->name ?? 'Semua'),
+            'Divisi: '.($division?->organizationLabel() ?? 'Semua'),
             'Pencarian: '.($search !== '' ? $search : 'Semua'),
             'Urutan: '.self::HEADINGS[(int) $sort['column']].' '.$sort['dir'],
         ];

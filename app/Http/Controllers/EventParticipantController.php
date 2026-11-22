@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\EventRegistration;
 use App\Models\ExternalParticipant;
 use App\Services\EventRegistrationService;
+use App\Services\OrganizationFilters;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\JsonResponse;
@@ -27,7 +28,7 @@ class EventParticipantController extends Controller
 
         $filters = $request->validate([
             'type' => ['required', Rule::in(EventRegistration::types())],
-            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            ...OrganizationFilters::rules($request),
             'search' => ['nullable', 'string', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
@@ -43,8 +44,8 @@ class EventParticipantController extends Controller
                 ->where('registration.event_id', $event->id)
                 ->where('registration.registration_type', $filters['type']));
 
-        if ($isEmployee && isset($filters['department_id'])) {
-            $query->where('employees.department_id', $filters['department_id']);
+        if ($isEmployee) {
+            OrganizationFilters::applyToEmployees($query, $filters);
         }
         if (isset($filters['search'])) {
             $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $filters['search']).'%';

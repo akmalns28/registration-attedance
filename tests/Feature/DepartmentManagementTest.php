@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Department;
+use App\Models\Entity;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -77,10 +78,13 @@ class DepartmentManagementTest extends TestCase
     public function test_authorized_user_can_create_department(): void
     {
         $user = $this->createUser(['departments.create']);
+        $entity = Entity::factory()->create();
 
-        $this->actingAs($user)->post(route('departments.store'), $this->departmentData())->assertRedirect(route('departments.index'));
+        $this->actingAs($user)->post(route('departments.store'), $this->departmentData(['entity_id' => $entity->id]))
+            ->assertRedirect(route('departments.index'));
 
         $this->assertDatabaseHas('departments', [
+            'entity_id' => $entity->id,
             'code' => 'IT',
             'name' => 'Information Technology',
             'is_active' => true,
@@ -90,11 +94,13 @@ class DepartmentManagementTest extends TestCase
     public function test_department_code_is_normalized_to_uppercase(): void
     {
         $user = $this->createUser(['departments.create']);
+        $entity = Entity::factory()->create();
 
         $this->actingAs($user)
             ->post(
                 route('departments.store'),
                 $this->departmentData([
+                    'entity_id' => $entity->id,
                     'code' => 'hrd',
                     'name' => 'Human Resources',
                 ]),
@@ -110,11 +116,12 @@ class DepartmentManagementTest extends TestCase
     {
         $user = $this->createUser(['departments.create']);
 
-        Department::factory()->create([
+        $department = Department::factory()->for(Entity::factory())->create([
             'code' => 'IT',
         ]);
 
-        $this->actingAs($user)->post(route('departments.store'), $this->departmentData())->assertSessionHasErrors('code');
+        $this->actingAs($user)->post(route('departments.store'), $this->departmentData(['entity_id' => $department->entity_id]))
+            ->assertSessionHasErrors('code');
     }
 
     public function test_authorized_user_can_update_department(): void

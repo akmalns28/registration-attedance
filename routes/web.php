@@ -21,6 +21,7 @@ use App\Http\Controllers\EventRegistrationQrController;
 use App\Http\Controllers\EventScheduleController;
 use App\Http\Controllers\ExternalParticipantController;
 use App\Http\Controllers\ManualAttendanceController;
+use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\Settings\RoleController;
 use App\Http\Controllers\Settings\UserController;
 use App\Services\BulkImportService;
@@ -62,8 +63,9 @@ Route::post('/logout', [KeycloakController::class, 'logout'])->middleware('auth'
 Route::middleware(['auth', 'active'])->group(function () {
     foreach (BulkImportService::MODULES as $module => $definition) {
         $prefix = $module === 'users' ? 'settings/users' : $module;
+        $permission = is_array($definition['permission']) ? 'permission:'.implode('|', $definition['permission']) : 'can:'.$definition['permission'];
         Route::prefix($prefix.'/import')->name($definition['route'].'.import.')
-            ->middleware('can:'.$definition['permission'])->group(function () use ($module) {
+            ->middleware($permission)->group(function () use ($module) {
                 Route::get('/', [BulkImportController::class, 'index'])->defaults('module', $module)->name('index');
                 Route::get('/template', [BulkImportController::class, 'template'])->defaults('module', $module)->name('template');
                 Route::post('/preview', [BulkImportController::class, 'preview'])->defaults('module', $module)->name('preview');
@@ -130,6 +132,17 @@ Route::middleware(['auth', 'active'])->group(function () {
     | Master Data - Department Management
     |--------------------------------------------------------------------------
     */
+
+    Route::get('organizations/export', [OrganizationController::class, 'export'])
+        ->middleware(['can:departments.view', 'can:departments.export'])->name('organizations.export');
+
+    Route::resource('organizations', OrganizationController::class)
+        ->only(['index', 'create', 'store', 'edit', 'update'])
+        ->middlewareFor('index', 'can:departments.view')
+        ->middlewareFor('create', 'can:departments.create')
+        ->middlewareFor('store', 'can:departments.create')
+        ->middlewareFor('edit', 'can:departments.update')
+        ->middlewareFor('update', 'can:departments.update');
 
     Route::resource('departments', DepartmentController::class)
         ->except(['show'])

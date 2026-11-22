@@ -93,7 +93,7 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                     const deadline = Date.now() + 12000;
                     while (!predicate()) { if (Date.now() > deadline) { throw new Error("UI did not become ready"); } await new Promise((resolve) => setTimeout(resolve, 20)); }
                 };
-                await until(() => window.notify?.system === "attendance" && (${["dashboard", "notifications", "employeeForm"].includes(page)} || document.querySelector(".dt-container")));
+                await until(() => window.notify?.system === "attendance" && (${["dashboard", "notifications", "employeeForm", "departments"].includes(page)} || document.querySelector(".dt-container")));
                 if (!document.querySelector('script[type="module"][src*="/build/"]') || document.querySelector('script[src*="@vite/client"]')) {
                     throw new Error("UI verification must use production Vite assets");
                 }
@@ -130,7 +130,7 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
         }
 
         for (const [page, filename] of Object.entries({ events: "event-management", employees: "employee-management", external: "external-participants",
-            departments: "department-management", users: "user-management", roles: "role-management", event: "event-participants" })) {
+            users: "user-management", roles: "role-management", event: "event-participants" })) {
             await suite.test(`${page}: real Excel, CSV, PDF and Print exports include every intended row and omit actions`, async () => {
                 await fresh(page, page === "event" ? "#event-participants" : "");
                 const directory = await downloadDirectory(page);
@@ -241,15 +241,15 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
             assert.equal(result.restored, true);
         });
 
-        await suite.test("SVG action clicks still open destructive confirmation with the correct row and support Escape", async () => {
-            await fresh("departments");
+        await suite.test("SVG action clicks open Employee confirmation with the correct row and support Escape", async () => {
+            await fresh("employees");
             const result = await client.evaluate(`
                 const button = document.querySelector('[data-row-action][data-delete-url]');
                 button.querySelector("svg path").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-                await until(() => document.getElementById("deleteDepartmentModal").classList.contains("show"));
-                return { name: document.getElementById("deleteDepartmentName").textContent, expectedName: button.dataset.deleteName,
-                    url: document.getElementById("deleteDepartmentForm").action, expectedUrl: button.dataset.deleteUrl,
-                    csrf: Boolean(document.querySelector('#deleteDepartmentForm input[name="_token"]')), injected: Boolean(window.uiXss) };
+                await until(() => document.getElementById("deleteEmployeeModal").classList.contains("show"));
+                return { name: document.getElementById("deleteEmployeeName").textContent, expectedName: button.dataset.deleteName,
+                    url: document.getElementById("deleteEmployeeForm").action, expectedUrl: button.dataset.deleteUrl,
+                    csrf: Boolean(document.querySelector('#deleteEmployeeForm input[name="_token"]')), injected: Boolean(window.uiXss) };
             `);
             assert.equal(result.name, result.expectedName);
             assert.equal(result.url, result.expectedUrl);
@@ -257,7 +257,7 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
             assert.equal(result.injected, false);
             await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
             await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
-            await client.evaluate(`await until(() => !document.getElementById("deleteDepartmentModal").classList.contains("show"));`);
+            await client.evaluate(`await until(() => !document.getElementById("deleteEmployeeModal").classList.contains("show"));`);
         });
 
         for (const [width, height] of [[1440, 900], [375, 620]]) {

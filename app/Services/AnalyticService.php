@@ -35,13 +35,23 @@ class AnalyticService
             'start_date' => $input['start_date'] ?? null,
             'end_date' => $input['end_date'] ?? null,
             'event_day' => empty($input['event_day']) ? null : (int) $input['event_day'],
+            'entity_id' => $input['entity_id'] ?? null,
+            'department_id' => $input['department_id'] ?? null,
+            'division_id' => $input['division_id'] ?? null,
         ];
         $eventQuery = Event::query()->when($filters['event'], fn (Builder $query, string $uuid): Builder => $query->where('uuid', $uuid));
         if ($filters['start_date'] || $filters['end_date'] || $filters['event_day']) {
             $eventQuery->whereHas('days', fn (Builder $query): Builder => $this->filterDays($query, $filters));
         }
+        if (OrganizationFilters::hasSelection($filters)) {
+            $eventQuery->whereHas('registrations', function (Builder $query) use ($filters): void {
+                OrganizationFilters::applyToRegistrations($query->registered(), $filters);
+            });
+        }
         $events = (clone $eventQuery)->select(['id', 'uuid', 'title'])
-            ->withCount(['registrations as active_registrations' => fn (Builder $query): Builder => $query->registered()])
+            ->withCount(['registrations as active_registrations' => function (Builder $query) use ($filters): void {
+                OrganizationFilters::applyToRegistrations($query->registered(), $filters);
+            }])
             ->orderBy('title')->orderBy('id')->get()->keyBy('id');
         $includedDays = $this->filterDays(EventDay::query(), $filters)
             ->whereIn('event_id', (clone $eventQuery)->select('events.id'));
@@ -49,6 +59,7 @@ class AnalyticService
             ->get(['id', 'event_id', 'date', 'day_number', 'title']);
 
         $invitations = $this->attendance->invitations()->whereIn('event_days.id', (clone $includedDays)->select('id'));
+        OrganizationFilters::applyToRegistrations($invitations, $filters);
         $expectedByDay = (clone $invitations)->select('event_days.id')->selectRaw('count(*) as invited')
             ->groupBy('event_days.id')->pluck('invited', 'id');
         $slots = $invitations

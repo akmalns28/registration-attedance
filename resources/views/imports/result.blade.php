@@ -9,7 +9,9 @@
     </x-ui.page-header>
     @if ($snapshot['state'] !== 'completed')<x-ui.alert variant="warning" :dismissible="false">Impor sedang berjalan atau terhenti. Ringkasan hanya mencakup hasil yang sudah tercatat. Periksa daftar sebelum mengunggah ulang; konfirmasi berulang tidak akan menjalankan impor lagi.</x-ui.alert>@endif
     <div class="row row-cards mb-3">
-        @foreach (['created' => 'Created', 'skipped' => 'Skipped', 'failed' => 'Failed'] as $key => $label)
+        @foreach (($module === 'organizations'
+            ? ['created' => 'Disimpan', 'skipped' => 'Tanpa Perubahan', 'failed' => 'Gagal']
+            : ['created' => 'Created', 'skipped' => 'Skipped', 'failed' => 'Failed']) as $key => $label)
             <div class="col-12 col-sm-4"><x-ui.stat-card :title="$label" :value="$snapshot['result_summary'][$key] ?? 0" /></div>
         @endforeach
     </div>

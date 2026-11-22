@@ -1,6 +1,10 @@
 @php
     $statusLabels = ['create' => 'Siap dibuat', 'invalid' => 'Invalid', 'existing' => 'Existing — skip', 'duplicate' => 'Duplikat — skip', 'created' => 'Tersimpan', 'skipped' => 'Dilewati', 'failed' => 'Gagal'];
     $statusColors = ['create' => 'primary', 'invalid' => 'danger', 'existing' => 'secondary', 'duplicate' => 'warning', 'created' => 'success', 'skipped' => 'secondary', 'failed' => 'danger'];
+    if ($module === 'organizations') {
+        $statusLabels['create'] = 'Siap disimpan';
+        $statusLabels['existing'] = 'Tanpa perubahan';
+    }
     $legacyColumns = array_flip(\App\Services\BulkImportService::LEGACY_HEADERS);
 @endphp
 <x-ui.card title="Detail Baris">
