@@ -112,15 +112,15 @@
                                             No.
                                         </th>
 
-                                        <th class="all">Nama Peserta</th>
+                                        <th class="all" data-priority="1">Nama Peserta</th>
                                         <th>Organisasi</th>
                                         <th>Jabatan</th>
                                         <th>Email</th>
                                         <th>No. HP</th>
-                                        <th>Status</th>
+                                        <th data-priority="3">Status</th>
 
                                         @can('external-participants.manage')
-                                            <th class="no-sort no-export text-end">
+                                            <th class="no-sort no-export text-end" data-priority="2">
                                                 Action
                                             </th>
                                         @endcan

@@ -95,7 +95,7 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                     const deadline = Date.now() + 12000;
                     while (!predicate()) { if (Date.now() > deadline) { throw new Error("UI did not become ready"); } await new Promise((resolve) => setTimeout(resolve, 20)); }
                 };
-                await until(() => window.notify?.system === "attendance" && (${["dashboard", "notifications", "employeeForm", "departments"].includes(page)} || document.querySelector(".dt-container")));
+                await until(() => window.notify?.system === "attendance" && (!${["events", "employees", "external", "users", "roles", "event", "day", "organizations"].includes(page)} || document.querySelector(".dt-container")));
                 if (!document.querySelector('script[type="module"][src*="/build/"]') || document.querySelector('script[src*="@vite/client"]')) {
                     throw new Error("UI verification must use production Vite assets");
                 }
@@ -480,6 +480,56 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
             });
         }
 
+        await suite.test("small visual viewport keeps the participant footer and search reachable", async () => {
+            await client.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+            await fresh("event", "#event-participants");
+            const result = await client.evaluate(`
+                const modal = document.querySelector("#addParticipantsModal");
+                document.querySelector('[data-bs-target="#addParticipantsModal"]').click();
+                await until(() => modal.classList.contains("show") && modal.contains(document.activeElement));
+                Object.defineProperties(visualViewport, {
+                    height: { value: 425, configurable: true },
+                    offsetTop: { value: 15, configurable: true },
+                });
+                visualViewport.dispatchEvent(new Event("resize"));
+                const search = modal.querySelector("#candidate-search");
+                search.focus();
+                await new Promise(requestAnimationFrame);
+                const searchBounds = search.getBoundingClientRect();
+                const footer = modal.querySelector('.modal-footer').getBoundingClientRect();
+                const checkbox = modal.querySelector('.candidate-check-target').getBoundingClientRect();
+                const portrait = { footerVisible: footer.bottom <= 440, searchVisible: searchBounds.top >= 15 && searchBounds.bottom < footer.top,
+                    size: parseFloat(getComputedStyle(search).fontSize), target: checkbox.height >= 44 && checkbox.width >= 44 };
+                Object.defineProperty(visualViewport, "height", { value: 225, configurable: true });
+                visualViewport.dispatchEvent(new Event("resize"));
+                search.blur();
+                await new Promise(requestAnimationFrame);
+                const content = modal.querySelector(".modal-content");
+                content.scrollTop = content.scrollHeight;
+                const shortFooter = modal.querySelector(".modal-footer").getBoundingClientRect();
+                return { ...portrait, shortFooterReachable: content.scrollTop > 0 && shortFooter.bottom <= 240 };
+            `);
+            assert.deepEqual(result, { footerVisible: true, searchVisible: true, size: 16, target: true, shortFooterReachable: true });
+
+            await fresh("employeeEdit");
+            const dropdown = await client.evaluate(`
+                const picker = document.querySelector("#department_id").tomselect;
+                picker.control.scrollIntoView({ block: "center", behavior: "instant" });
+                picker.control.click();
+                await until(() => picker.isOpen && picker.dropdown.querySelector(".option"));
+                const control = picker.control.getBoundingClientRect();
+                const keyboardTop = Math.ceil(control.bottom + 30);
+                Object.defineProperty(visualViewport, "height", { value: keyboardTop, configurable: true });
+                visualViewport.dispatchEvent(new Event("resize"));
+                await until(() => picker.dropdown.dataset.mobilePlacement === "top");
+                const bounds = picker.dropdown.getBoundingClientRect();
+                return { fits: bounds.top >= 0 && bounds.bottom <= control.top + 1 && bounds.right <= innerWidth,
+                    optionsVisible: Boolean(picker.dropdown.querySelector(".option")?.getBoundingClientRect().height),
+                    menu: bounds.toJSON(), control: control.toJSON() };
+            `);
+            assert.ok(dropdown.fits && dropdown.optionsVisible, JSON.stringify(dropdown));
+        });
+
         await suite.test("Kelola Hari Undangan saves through one accessible modal and updates the participant table", async () => {
             await client.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
             await fresh("event", "#event-participants");
@@ -657,6 +707,84 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                     assert.equal(bounds.emptyIcons, 0, page);
                     const screenshot = await client.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
                     await writeFile(join(artifacts, `ui-${page}-${width}.png`), Buffer.from(screenshot.data, "base64"));
+                }
+            });
+        }
+
+        for (const [width, height] of [[320, 568], [375, 667], [390, 844], [430, 932], [768, 1024], [844, 390], [1366, 900]]) {
+            await suite.test(`primary pages and navigation fit ${width}x${height}`, async () => {
+                const mobile = width < 992;
+                await client.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
+                await fresh("dashboard");
+                const menu = await client.evaluate(`
+                    window.navToggle = document.querySelector('[data-bs-toggle="offcanvas"][aria-controls="sidebar-menu"]');
+                    window.sidebar = document.querySelector("#sidebar-menu");
+                    if (!${mobile}) {
+                        return { toggleHidden: !navToggle.getClientRects().length, linksVisible: Boolean(sidebar.querySelector("a").getClientRects().length) };
+                    }
+                    const hidden = getComputedStyle(sidebar).visibility === "hidden";
+                    navToggle.click();
+                    await until(() => sidebar.classList.contains("show"));
+                    const button = navToggle.getBoundingClientRect();
+                    return { hidden, backdrop: Boolean(document.querySelector(".offcanvas-backdrop.show")),
+                        focusInside: sidebar.contains(document.activeElement), target: button.width >= 44 && button.height >= 44 };
+                `);
+                if (mobile) {
+                    assert.deepEqual(menu, { hidden: true, backdrop: true, focusInside: true, target: true });
+                    await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+                    await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+                    await client.evaluate('await until(() => !sidebar.classList.contains("show") && document.activeElement === navToggle);');
+                } else {
+                    assert.deepEqual(menu, { toggleHidden: true, linksVisible: true });
+                }
+
+                for (const [page, hash] of [
+                    ["dashboard"], ["events"], ["eventCreate"], ["eventEdit"], ["event", "#event-participants"],
+                    ["event", "#event-reports"], ["dayCreate"], ["dayEdit"], ["day", "#day-invitations"],
+                    ["day", "#day-attendees"], ["day", "#day-manual"], ["scanner"], ["organizations"], ["organizationForm"],
+                    ["organizationEdit"], ["employees"], ["employeeForm"], ["employeeEdit"], ["external"], ["externalForm"],
+                    ["departments"], ["import"], ["importPreview"], ["notifications"], ["analytic"],
+                ]) {
+                    await fresh(page, hash);
+                    const bounds = await client.evaluate(`
+                        if (location.hash && document.querySelector(".app-tabs")) {
+                            const panel = document.getElementById(location.hash.slice(1));
+                            await until(() => panel?.classList.contains("show"));
+                        }
+                        await new Promise(requestAnimationFrame);
+                        const title = document.querySelector("h1.page-title, h2.page-title, .page-pretitle");
+                        const badInputs = [...document.querySelectorAll(".page-body :is(.form-control,.form-select,.ts-control > input)")]
+                            .filter((input) => input.getBoundingClientRect().width > 10 && parseFloat(getComputedStyle(input).fontSize) < 16)
+                            .map((input) => input.id || input.name);
+                        const tabs = document.querySelector(".app-tabs");
+                        const active = tabs?.querySelector("a.active")?.getBoundingClientRect();
+                        const strip = tabs?.getBoundingClientRect();
+                        return { scroll: document.documentElement.scrollWidth, width: innerWidth, pageTitle: Boolean(title?.getClientRects().length),
+                            badInputs, activeTabVisible: !active || (active.left >= strip.left - 1 && active.right <= strip.right + 1),
+                            ...(tabs && { tabOffset: tabs.scrollLeft, tabWidth: tabs.scrollWidth, active: [active?.left, active?.right], strip: [strip.left, strip.right],
+                                activeName: tabs.querySelector("a.active")?.textContent.trim() }) };
+                    `);
+                    assert.ok(bounds.scroll <= bounds.width, `${page} ${hash ?? ""} at ${width}: ${JSON.stringify(bounds)}`);
+                    assert.equal(bounds.pageTitle, true, page);
+                    assert.equal(bounds.activeTabVisible, true, `${page} ${hash ?? ""} at ${width}: ${JSON.stringify(bounds)}`);
+                    if (mobile) assert.deepEqual(bounds.badInputs, [], `${page} at ${width}`);
+                    if (width === 320 && page === "employees") {
+                        await client.evaluate(`
+                            const cell = document.querySelector("#employeesTable tbody td.dtr-control");
+                            cell.click();
+                            await until(() => document.querySelector("#employeesTable tr.child .dtr-data")?.getClientRects().length);
+                        `);
+                    }
+                    if (width === 320 && page === "importPreview") {
+                        const preview = await client.evaluate(`
+                            const details = document.querySelector(".import-row-data details");
+                            const closed = !details.open;
+                            details.querySelector("summary").click();
+                            return { closed, expanded: details.open, text: details.textContent };
+                        `);
+                        assert.ok(preview.closed && preview.expanded);
+                        assert.match(preview.text, /Mobile Preview/);
+                    }
                 }
             });
         }

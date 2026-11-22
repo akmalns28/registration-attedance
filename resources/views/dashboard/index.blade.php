@@ -188,28 +188,28 @@
                             <p class="text-secondary mb-0">Belum ada event.</p>
                         @else
                             <div class="table-responsive">
-                                <table class="table table-vcenter" aria-label="Recent Events">
+                                <table class="table table-vcenter mobile-card-table" role="table" aria-label="Recent Events">
                                     <thead><tr><th>Event</th><th>Tanggal</th><th>Status</th><th>Registrasi Aktif</th><th>Kehadiran</th></tr></thead>
                                     <tbody>
                                         @foreach ($recentEvents as $event)
                                             @php($summary = $attendanceByEvent->get($event->uuid))
-                                            <tr>
-                                                <td>
+                                            <tr role="row">
+                                                <td class="mobile-row-title" role="cell">
                                                     @can('events.view')
                                                         <a href="{{ route('events.show', $event) }}">{{ $event->title }}</a>
                                                     @else
                                                         {{ $event->title }}
                                                     @endcan
                                                 </td>
-                                                <td class="text-nowrap">
+                                                <td class="text-nowrap" data-label="Tanggal" role="cell">
                                                     {{ $event->start_date->format('d/m/Y') }}
                                                     @unless ($event->start_date->isSameDay($event->end_date))
                                                         &ndash; {{ $event->end_date->format('d/m/Y') }}
                                                     @endunless
                                                 </td>
-                                                <td><span class="badge bg-{{ ['published' => 'success', 'closed' => 'azure', 'cancelled' => 'danger'][$event->status] ?? 'secondary' }}-lt">{{ ucfirst($event->status) }}</span></td>
-                                                <td>{{ $summary['active_registrations'] ?? 0 }}</td>
-                                                <td>{{ $summary['percentage'] ?? 0 }}%</td>
+                                                <td data-label="Status" role="cell"><span class="badge bg-{{ ['published' => 'success', 'closed' => 'azure', 'cancelled' => 'danger'][$event->status] ?? 'secondary' }}-lt">{{ ucfirst($event->status) }}</span></td>
+                                                <td data-label="Registrasi Aktif" role="cell">{{ $summary['active_registrations'] ?? 0 }}</td>
+                                                <td data-label="Kehadiran" role="cell">{{ $summary['percentage'] ?? 0 }}%</td>
                                             </tr>
                                         @endforeach
                                     </tbody>

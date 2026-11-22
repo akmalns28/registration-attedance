@@ -191,6 +191,7 @@ export class AnalyticPage {
                 colors: ["#206bc4", "#2fb344"],
                 dataLabels: { enabled: false },
                 legend: { position: "bottom" },
+                responsive: [{ breakpoint: 480, options: { legend: { fontSize: "12px", itemMargin: { horizontal: 6, vertical: 4 } } } }],
                 stroke: { width: key === "attendance_trend" ? 3 : 0, curve: "straight" },
                 tooltip: { custom: ({ dataPointIndex, seriesIndex }) => this.tooltip(rows[distribution ? seriesIndex : dataPointIndex], distribution) },
             };

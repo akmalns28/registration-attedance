@@ -157,8 +157,8 @@
         {{-- Event Navigation --}}
         <div class="card mt-3">
 
-            <div class="card-header">
-                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+            <div class="card-header app-tabs-header">
+                <ul class="nav nav-tabs card-header-tabs app-tabs" role="tablist">
 
                     <li class="nav-item" role="presentation">
                         <a href="#event-overview" class="nav-link active" data-bs-toggle="tab" role="tab"

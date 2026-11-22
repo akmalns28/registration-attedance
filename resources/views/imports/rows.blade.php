@@ -18,29 +18,36 @@
         </select></div>
         <x-ui.button type="submit" variant="secondary" outline>Filter</x-ui.button>
     </form>
-    <div class="table-responsive"><table class="table table-vcenter import-preview-table"><thead><tr><th>Baris</th>@foreach ($definition['columns'] as $column)<th>{{ $column }}</th>@endforeach<th>Hasil</th><th>Validasi</th></tr></thead><tbody>
+    <div class="table-responsive">
+    <table class="table table-vcenter import-preview-table mobile-card-table" role="table" aria-label="Detail Baris">
+        <thead><tr><th>Baris</th>@foreach ($definition['columns'] as $column)<th>{{ $column }}</th>@endforeach<th>Hasil</th><th>Validasi</th></tr></thead>
+        <tbody>
         @forelse ($rows as $row)
-            <tr><td>{{ $row['row'] }}</td>
+            <tr role="row">
+                <td class="mobile-row-title" role="cell"><span class="d-md-none">Baris </span>{{ $row['row'] }}</td>
                 @foreach ($definition['columns'] as $column)
-                    @php
-                        $input = $row['input'][$column] ?? $row['data'][$column] ?? $row['data'][$legacyColumns[$column] ?? $column] ?? null;
-                        $resolved = $row['display'][$column] ?? null;
-                        $value = $resolved ?? $row['data'][$column] ?? $input;
-                    @endphp
-                    <td>
-                        {{ filled($value) ? $value : '—' }}
-                        @if (filled($input) && $input !== $value)
-                            <div class="small text-secondary">Isian: {{ $input }}</div>
-                        @endif
-                        @if ($column === 'status' && $module === 'users' && $resolved !== null)
-                            <div class="small text-secondary">Status akun baru: Tidak Aktif</div>
-                        @endif
-                    </td>
+                    <td class="d-none d-md-table-cell">@include('imports.cell-value')</td>
                 @endforeach
-                <td><span class="badge bg-{{ $statusColors[$row['status']] }}-lt">{{ $statusLabels[$row['status']] }}</span></td>
-                <td>@foreach ($row['errors'] as $error)<div class="text-danger">{{ $error }}</div>@endforeach @foreach ($row['warnings'] as $warning)<div class="text-secondary">{{ $warning }}</div>@endforeach</td>
+                <td data-label="Hasil" role="cell"><span class="badge bg-{{ $statusColors[$row['status']] }}-lt">{{ $statusLabels[$row['status']] }}</span></td>
+                <td class="import-row-validation" data-label="Validasi" role="cell">
+                    @foreach ($row['errors'] as $error)<div class="text-danger">{{ $error }}</div>@endforeach
+                    @foreach ($row['warnings'] as $warning)<div class="text-secondary">{{ $warning }}</div>@endforeach
+                    @if (!$row['errors'] && !$row['warnings'])<span class="d-md-none">—</span>@endif
+                </td>
+                <td class="d-md-none import-row-data" role="cell">
+                    <details>
+                        <summary class="fw-medium text-primary">Lihat data baris</summary>
+                        <dl class="mb-0">
+                            @foreach ($definition['columns'] as $column)
+                                <dt>{{ $column }}</dt><dd>@include('imports.cell-value')</dd>
+                            @endforeach
+                        </dl>
+                    </details>
+                </td>
             </tr>
         @empty<tr><td colspan="{{ count($definition['columns']) + 3 }}" class="text-center text-secondary py-4">Tidak ada baris pada status ini.</td></tr>@endforelse
-    </tbody></table></div>
+        </tbody>
+    </table>
+    </div>
     <div class="mt-3">{{ $rows->links() }}</div>
 </x-ui.card>

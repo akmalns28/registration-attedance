@@ -122,7 +122,7 @@
     <div class="card">
         <div class="card-header"><h3 class="card-title">Riwayat Notifikasi</h3></div>
         <div class="table-responsive">
-            <table class="table table-vcenter table-hover">
+            <table class="table table-vcenter table-hover mobile-card-table" role="table" aria-label="Riwayat Notifikasi">
                 <thead>
                     <tr>
                         <th>Peserta / registrasi</th>
@@ -140,23 +140,23 @@
                             $registration = $notification->registration;
                             $participant = $registration?->isEmployee() ? $registration->employee : $registration?->externalParticipant;
                         @endphp
-                        <tr>
-                            <td>
+                        <tr role="row">
+                            <td class="mobile-row-title" role="cell">
                                 <div class="fw-semibold">{{ $participant?->name ?? 'Peserta tidak ditemukan' }}</div>
                                 <div class="small text-secondary font-monospace">{{ $registration?->registration_number ?? '-' }}</div>
                             </td>
-                            <td>
+                            <td data-label="Event" role="cell">
                                 @if ($notification->event)
                                     <a href="{{ route('events.show', $notification->event).'#event-participants' }}">{{ $notification->event->title }}</a>
                                 @else
                                     -
                                 @endif
                             </td>
-                            <td>
+                            <td data-label="Jenis / penerima" role="cell">
                                 <div>{{ $typeLabels[$notification->notification_type] ?? $notification->notification_type }}</div>
                                 <div class="text-secondary small">{{ $notification->recipient_email ?: 'Email belum tersedia' }}</div>
                             </td>
-                            <td>
+                            <td data-label="Status" role="cell">
                                 <span class="badge bg-{{ $statusColors[$notification->status] ?? 'secondary' }}-lt">{{ $statusLabels[$notification->status] ?? $notification->status }}</span>
                                 @can('events.update')
                                     @if ($deliveryErrors[$notification->id] ?? null)
@@ -170,15 +170,15 @@
                                     @endif
                                 @endcan
                             </td>
-                            <td>{{ $notification->attempts }} / {{ config('event_notifications.tries', 3) }}</td>
-                            <td class="small text-secondary">
+                            <td data-label="Percobaan" role="cell">{{ $notification->attempts }} / {{ config('event_notifications.tries', 3) }}</td>
+                            <td data-label="Waktu" role="cell" class="small text-secondary">
                                 <div>Dibuat: {{ $notification->created_at->format('d/m/Y H:i') }}</div>
                                 @if ($notification->sent_at)<div>Terkirim: {{ $notification->sent_at->format('d/m/Y H:i') }}</div>@endif
                                 @if ($notification->failed_at)<div>Gagal: {{ $notification->failed_at->format('d/m/Y H:i') }}</div>@endif
                                 @if ($notification->last_attempt_at)<div>Dicoba: {{ $notification->last_attempt_at->format('d/m/Y H:i') }}</div>@endif
                             </td>
                             @can('events.update')
-                                <td class="text-end">
+                                <td class="text-end mobile-row-action" data-label="Tindakan" role="cell">
                                     @if (in_array($notification->status, ['sent', 'skipped'], true))
                                         <x-ui.action icon="send" label="Kirim Ulang Notifikasi" variant="primary" data-bs-toggle="modal" data-bs-target="#resendNotification{{ $notification->id }}" :disabled="! $delivery['ready']" />
                                     @else

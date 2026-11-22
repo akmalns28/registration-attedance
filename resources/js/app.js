@@ -6,6 +6,7 @@ import { initializeDataTables } from "./plugins/datatables";
 import { initializeNotify } from "./plugins/notify";
 import { initializeTomSelect } from "./plugins/tom-select";
 import { initializeEventPage } from "./events";
+import { initializeMobileLayout } from "./mobile-layout";
 import { initializeOrganizationForm, initializeOrganizationIndex, initializeOrganizationSelections } from "./organizations";
 
 window.$ = window.jQuery = $;
@@ -17,6 +18,7 @@ function initializeApp() {
     initializeOrganizationIndex();
     initializeOrganizationSelections();
     initializeTomSelect();
+    initializeMobileLayout();
     initializeEventPage();
     initializeDataTables();
 

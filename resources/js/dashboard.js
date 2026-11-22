@@ -9,6 +9,7 @@ function barChart(rows, metrics, stacked = false) {
         dataLabels: { enabled: false },
         xaxis: { categories: rows.map((row) => row.label), tooltip: { enabled: false } },
         yaxis: { labels: { maxWidth: 160 } },
+        responsive: [{ breakpoint: 480, options: { yaxis: { labels: { maxWidth: 102 } }, legend: { position: "bottom" } } }],
         tooltip: { x: { formatter: (label) => String(label)
             .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;") } },
     };

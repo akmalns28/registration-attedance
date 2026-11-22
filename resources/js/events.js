@@ -3,6 +3,7 @@ import { adjustDataTables } from "./plugins/datatables";
 import DataTable from "datatables.net-bs5";
 import { initializeEventDayInvitations } from "./event-day-invitations";
 import { initializeEventParticipantPicker } from "./event-participant-picker";
+import { revealSelectedTab } from "./mobile-layout";
 
 export function initializeEventPage(root = document) {
     const page = root.querySelector("[data-event-details]");
@@ -184,7 +185,10 @@ export function initializeEventPage(root = document) {
     tabs.forEach((tab) => {
         tab.addEventListener("shown.bs.tab", () => {
             history.replaceState(null, "", tab.getAttribute("href"));
-            requestAnimationFrame(() => adjustDataTables(page));
+            requestAnimationFrame(() => {
+                adjustDataTables(page);
+                revealSelectedTab(tab);
+            });
         });
     });
 

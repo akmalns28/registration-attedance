@@ -84,10 +84,22 @@ export function initializeEventParticipantPicker(modal) {
         check.dataset.candidateId = participant.id;
         check.disabled = participant.status === "registered";
         check.setAttribute("aria-label", `Pilih ${participant.name}`);
-        row.insertCell().append(check);
-        row.insertCell().textContent = participant.name;
-        row.insertCell().textContent = participant.identifier || "–";
-        row.insertCell().textContent = participant.affiliation || "–";
+        const target = document.createElement("label");
+        target.className = "candidate-check-target";
+        target.append(check);
+        row.insertCell().append(target);
+        const name = row.insertCell();
+        name.textContent = participant.name;
+        const context = document.createElement("div");
+        context.className = "d-md-none small text-secondary";
+        context.textContent = [participant.identifier, participant.affiliation].filter(Boolean).join(" · ");
+        name.append(context);
+        const identifier = row.insertCell();
+        identifier.className = "d-none d-md-table-cell";
+        identifier.textContent = participant.identifier || "–";
+        const affiliation = row.insertCell();
+        affiliation.className = "d-none d-md-table-cell";
+        affiliation.textContent = participant.affiliation || "–";
 
         const badge = document.createElement("span");
         const status = {

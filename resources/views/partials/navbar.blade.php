@@ -1,6 +1,10 @@
-<header class="navbar navbar-expand-md d-print-none" aria-label="Account navigation">
+<header class="navbar navbar-expand-md app-navbar d-print-none" aria-label="Account navigation">
     <div class="container-xl">
-        <div class="navbar-nav">
+        <button class="navbar-toggler btn btn-icon d-lg-none flex-shrink-0" type="button" data-bs-toggle="offcanvas"
+            data-bs-target="#sidebar-menu" aria-controls="sidebar-menu" aria-haspopup="dialog" aria-label="Buka navigasi">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="navbar-nav app-navbar-title">
             <span class="navbar-text fw-medium">@yield('title', 'Dashboard')</span>
         </div>
 
@@ -13,7 +17,7 @@
                     ->map(fn ($name) => \Illuminate\Support\Str::headline($name))->join(', ');
             @endphp
 
-            <div class="navbar-nav flex-row align-items-center gap-3 ms-auto">
+            <div class="navbar-nav flex-row align-items-center gap-1 gap-lg-3 ms-auto">
                 @can('events.view')
                     <a href="{{ route('notifications.index') }}" class="nav-link btn-icon notification-entry {{ request()->routeIs('notifications.*') ? 'active' : '' }}"
                         data-notification-entry aria-label="Pengelolaan notifikasi email" title="Pengelolaan notifikasi email"
