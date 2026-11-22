@@ -42,7 +42,7 @@ class MasterDataAuthorizationTest extends TestCase
 
         $this->actingAs($user);
 
-        foreach (['departments.index', 'employees.index', 'external-participants.index'] as $routeName) {
+        foreach (['organizations.index', 'employees.index', 'external-participants.index'] as $routeName) {
             $this->get(route($routeName))->assertForbidden();
         }
     }
@@ -53,7 +53,7 @@ class MasterDataAuthorizationTest extends TestCase
 
         $this->actingAs($user);
 
-        $this->get(route('departments.index'))->assertOk();
+        $this->get(route('organizations.index'))->assertOk();
 
         $this->get(route('employees.index'))->assertForbidden();
 
@@ -88,7 +88,7 @@ class MasterDataAuthorizationTest extends TestCase
 
         $this->actingAs($user);
 
-        foreach (['departments.index', 'departments.create', 'employees.index', 'employees.create', 'external-participants.index', 'external-participants.create'] as $routeName) {
+        foreach (['organizations.index', 'organizations.create', 'employees.index', 'employees.create', 'external-participants.index', 'external-participants.create'] as $routeName) {
             $this->get(route($routeName))->assertOk();
         }
     }
@@ -102,7 +102,7 @@ class MasterDataAuthorizationTest extends TestCase
 
         $this->assertFalse($user->fresh()->is_active);
 
-        foreach (['departments.index', 'employees.index', 'external-participants.index'] as $routeName) {
+        foreach (['organizations.index', 'employees.index', 'external-participants.index'] as $routeName) {
             $this->actingAs($user)->get(route($routeName))->assertRedirect(route('login'));
         }
     }

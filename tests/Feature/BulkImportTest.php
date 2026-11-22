@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Department;
+use App\Models\Division;
 use App\Models\Employee;
+use App\Models\Entity;
 use App\Models\ExternalParticipant;
 use App\Models\User;
 use App\Services\BulkImportService;
@@ -205,12 +207,16 @@ class BulkImportTest extends TestCase
         $this->postJson($this->url($module, 'confirm', $id), ['confirm' => 1])->assertForbidden();
     }
 
-    #[TestWith(['employees', ['nip', 'name', 'department', 'email', 'phone', 'status'], '0000123,Sample,IT,,08123456789,Active'])]
+    #[TestWith(['employees', ['nip', 'name', 'entity', 'department', 'division', 'email', 'phone', 'status'], '0000123,Sample,HQ,IT,QA,,08123456789,Active'])]
     #[TestWith(['external-participants', ['name', 'email', 'phone', 'organization', 'position', 'status'], 'Sample,,08123456789,,,Inactive'])]
     #[TestWith(['users', ['name', 'email', 'status', 'role'], 'Sample,sample@example.test,Tidak Aktif,panitia'])]
     public function test_templates_use_supported_fields_and_text_formats(string $module, array $columns, string $csvRow): void
     {
-        Department::factory()->create(['code' => 'IT']);
+        if ($module === 'employees') {
+            $entity = Entity::factory()->create(['code' => 'HQ']);
+            $department = Department::factory()->for($entity)->create(['code' => 'IT']);
+            Division::factory()->for($department)->create(['code' => 'QA']);
+        }
         $this->actingAs($this->admin());
         $response = $this->get($this->url($module, 'template'))->assertOk()->assertDownload('template-'.$module.'.xlsx');
         $path = $response->baseResponse->getFile()->getPathname();
@@ -362,6 +368,61 @@ class BulkImportTest extends TestCase
         $this->get($this->url('employees', 'show', $id))->assertStatus(410);
     }
 
+    public function test_employee_import_scopes_codes_and_names_to_each_selected_parent(): void
+    {
+        $this->actingAs($this->admin());
+        $hq = Entity::factory()->create(['code' => 'HQ', 'name' => 'Head Office']);
+        $branch = Entity::factory()->create(['code' => 'BR', 'name' => 'Branch']);
+        $hqOps = Department::factory()->for($hq)->create(['code' => 'OPS', 'name' => 'Operations']);
+        $branchOps = Department::factory()->for($branch)->create(['code' => 'OPS', 'name' => 'Operations']);
+        Department::factory()->for($hq)->create(['code' => 'IT', 'name' => 'Support']);
+        Department::factory()->for($hq)->create(['code' => 'FAC', 'name' => 'Support']);
+        Department::factory()->for($branch)->create(['code' => 'BR-ONLY']);
+        $hqQuality = Division::factory()->for($hqOps)->create(['code' => 'QA', 'name' => 'Quality']);
+        Division::factory()->for($hqOps)->create(['code' => 'Q2', 'name' => 'Quality']);
+        $branchQuality = Division::factory()->for($branchOps)->create(['code' => 'QA', 'name' => 'Quality']);
+        Division::factory()->for($branchOps)->create(['code' => 'BR-QA']);
+
+        $headers = ['nip', 'name', 'entity', 'department', 'division', 'status'];
+        $id = $this->preview('employees', [
+            ['HQ-OK', 'HQ Employee', ' hq ', 'ops', 'qa', 'Aktif'],
+            ['BR-OK', 'Branch Employee', 'Branch', 'Operations', 'Quality', 'Aktif'],
+            ['NO-DIV', 'Optional Division', 'Head Office', 'OPS — Operations', null, 'Aktif'],
+            ['BAD-ENT', 'Unknown Entity', 'UNKNOWN', 'OPS', null, 'Aktif'],
+            ['BAD-DEPT', 'Wrong Entity', 'HQ', 'BR-ONLY', null, 'Aktif'],
+            ['BAD-DIV', 'Wrong Dept', 'HQ', 'OPS', 'BR-QA', 'Aktif'],
+            ['AMB-DEPT', 'Ambiguous Department', 'HQ', 'Support', null, 'Aktif'],
+            ['AMB-DIV', 'Ambiguous Division', 'HQ', 'OPS', 'Quality', 'Aktif'],
+            ['NO-ENT', 'Missing Entity', null, 'OPS', null, 'Aktif'],
+        ], $headers);
+
+        $this->get($this->url('employees', 'show', $id))->assertOk()
+            ->assertSee('HQ — Head Office')->assertSee('QA — Quality')->assertSee('Entitas tidak tersedia.')
+            ->assertSee('Departemen memiliki lebih dari satu kecocokan.')->assertSee('Divisi memiliki lebih dari satu kecocokan.')
+            ->assertSee('Divisi tidak tersedia.')->assertViewHas('snapshot', fn (array $snapshot): bool => $snapshot['summary']['create'] === 3);
+        $this->post($this->url('employees', 'confirm', $id), ['confirm' => 1])->assertRedirect();
+        $this->assertDatabaseCount('employees', 3);
+        $this->assertDatabaseHas('employees', ['nip' => 'HQ-OK', 'department_id' => $hqOps->id, 'division_id' => $hqQuality->id]);
+        $this->assertDatabaseHas('employees', ['nip' => 'BR-OK', 'department_id' => $branchOps->id, 'division_id' => $branchQuality->id]);
+        $this->assertDatabaseHas('employees', ['nip' => 'NO-DIV', 'department_id' => $hqOps->id, 'division_id' => null]);
+    }
+
+    public function test_employee_import_rechecks_the_full_hierarchy_at_confirmation(): void
+    {
+        $this->actingAs($this->admin());
+        $department = Department::factory()->for(Entity::factory()->create(['code' => 'HQ']))->create(['code' => 'OPS']);
+        $division = Division::factory()->for($department)->create(['code' => 'QA']);
+        $pending = $this->preview('employees', [
+            ['PENDING', 'Preview Name', 'HQ', 'OPS', 'QA', 'Aktif'],
+        ], ['nip', 'name', 'entity', 'department', 'division', 'status']);
+        $division->update(['code' => 'OLD-QA']);
+        Division::factory()->for($department)->create(['code' => 'QA']);
+
+        $this->post($this->url('employees', 'confirm', $pending), ['confirm' => 1])->assertRedirect();
+        $this->assertDatabaseMissing('employees', ['nip' => 'PENDING']);
+        $this->get($this->url('employees', 'result', $pending))->assertOk()->assertSee('Referensi berubah sejak preview.');
+    }
+
     public function test_tampered_storage_and_interrupted_processing_cannot_be_replayed(): void
     {
         $department = Department::factory()->create();
@@ -409,7 +470,8 @@ class BulkImportTest extends TestCase
     {
         $book = new Spreadsheet;
         $sheet = $book->getActiveSheet();
-        foreach ([$headers ?? BulkImportService::module($module)['columns'], ...$rows] as $number => $row) {
+        $headers ??= $module === 'employees' ? ['nip', 'name', 'department', 'email', 'phone', 'status'] : BulkImportService::module($module)['columns'];
+        foreach ([$headers, ...$rows] as $number => $row) {
             foreach ($row as $column => $value) {
                 $cell = $sheet->getCell([$column + 1, $number + 1]);
                 $type = $types[$cell->getCoordinate()] ?? (is_int($value) || is_float($value) ? DataType::TYPE_NUMERIC : ($value === null ? DataType::TYPE_NULL : DataType::TYPE_STRING));

@@ -12,7 +12,7 @@ class UploadImportRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can(BulkImportService::module($this->route('module'))['permission']) ?? false;
+        return BulkImportService::canAccess($this->user(), $this->route('module'));
     }
 
     /**

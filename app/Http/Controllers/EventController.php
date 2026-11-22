@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Event\StoreEventRequest;
 use App\Http\Requests\Event\UpdateEventRequest;
-use App\Models\Department;
 use App\Models\Event;
 use App\Models\EventDay;
 use App\Models\User;
 use App\Services\EventDayAttendanceService;
 use App\Services\EventPublicationNotificationService;
+use App\Services\OrganizationFilters;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\QueryException;
@@ -164,16 +164,15 @@ class EventController extends Controller
         $user = auth()->user();
         $canAddParticipants = $user->can('events.update') && in_array($event->status, [Event::STATUS_DRAFT, Event::STATUS_PUBLISHED], true);
         $canViewReports = $user->can('reports.view');
-        $departments = $canAddParticipants || $canViewReports ? Department::query()->orderBy('name')->get(['id', 'name']) : collect();
+        $organizationOptions = $canAddParticipants || $canViewReports ? OrganizationFilters::options() : [];
 
         return view('events.show', [
             'event' => $event,
             'registrations' => $registrations,
             'canAddParticipants' => $canAddParticipants,
-            'participantDepartments' => $canAddParticipants ? $departments : collect(),
+            'organizationOptions' => $organizationOptions,
             'remainingCapacity' => $remainingCapacity,
             'eventAttendanceSummary' => $eventAttendanceSummary,
-            'reportDepartments' => $canViewReports ? $departments : collect(),
         ]);
     }
 

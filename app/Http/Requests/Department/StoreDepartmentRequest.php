@@ -14,10 +14,14 @@ class StoreDepartmentRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
-            'code' => ['required', 'string', 'max:20', 'regex:/^[A-Z0-9_-]+$/', Rule::unique('departments', 'code')],
+        $entityId = $this->integer('entity_id');
 
-            'name' => ['required', 'string', 'max:150', Rule::unique('departments', 'name')],
+        return [
+            'entity_id' => ['required', 'integer', Rule::exists('entities', 'id')],
+
+            'code' => ['required', 'string', 'max:20', 'regex:/^[A-Z0-9_-]+$/', Rule::unique('departments', 'code')->where('entity_id', $entityId)],
+
+            'name' => ['required', 'string', 'max:150'],
 
             'description' => ['nullable', 'string', 'max:2000'],
 
@@ -41,7 +45,6 @@ class StoreDepartmentRequest extends FormRequest
             'code.unique' => 'Kode departemen sudah digunakan.',
             'code.regex' => 'Kode hanya boleh berisi huruf, angka, underscore, dan tanda hubung.',
             'name.required' => 'Nama departemen wajib diisi.',
-            'name.unique' => 'Nama departemen sudah digunakan.',
         ];
     }
 }

@@ -9,8 +9,15 @@
     </x-ui.page-header>
     <p class="text-secondary">Belum ada data yang disimpan ke database. Preview berlaku {{ config('bulk_imports.ttl_minutes') }} menit; data dan izin akan diperiksa kembali saat konfirmasi.</p>
     @if ($module === 'users')<x-ui.alert variant="warning" :dismissible="false">Semua akun hasil impor akan nonaktif. Identitas Keycloak belum diverifikasi. Role hanya disiapkan pada akun lokal, tanpa membuat akun Keycloak atau password.</x-ui.alert>@endif
+    @php
+        $organizationImport = $module === 'organizations';
+        $canConfirm = $snapshot['summary']['create'] > 0 && (!$organizationImport || $snapshot['summary']['invalid'] === 0);
+        $statistics = $organizationImport
+            ? ['total' => 'Total Baris', 'invalid' => 'Perlu Diperbaiki', 'existing' => 'Tanpa Perubahan', 'create' => 'Akan Disimpan']
+            : ['total' => 'Total Baris', 'valid' => 'Valid', 'invalid' => 'Invalid', 'existing' => 'Existing', 'duplicate' => 'Duplikat', 'create' => 'Akan Dibuat', 'skip' => 'Tidak Dibuat'];
+    @endphp
     <div class="row row-cards mb-3">
-        @foreach (['total' => 'Total Baris', 'valid' => 'Valid', 'invalid' => 'Invalid', 'existing' => 'Existing', 'duplicate' => 'Duplikat', 'create' => 'Akan Dibuat', 'skip' => 'Tidak Dibuat'] as $key => $label)
+        @foreach ($statistics as $key => $label)
             <div class="col-6 col-md-4 col-xl-3"><x-ui.stat-card :title="$label" :value="$snapshot['summary'][$key]" /></div>
         @endforeach
     </div>
@@ -19,10 +26,19 @@
     <x-ui.card title="Konfirmasi Import" class="mt-3">
         <form method="POST" action="{{ route($definition['route'].'.import.confirm', ['import' => $importId]) }}" data-form data-loading-text="Mengimpor data...">
             @csrf
-            <label class="form-check mb-3"><input type="checkbox" name="confirm" value="1" class="form-check-input" required @disabled(!$snapshot['summary']['create'])><span class="form-check-label">Saya setuju membuat {{ $snapshot['summary']['create'] }} baris valid. Baris invalid, existing, dan duplikat tidak akan dibuat; data existing tidak diubah.</span></label>
+            @if ($organizationImport && $snapshot['summary']['invalid'] > 0)
+                <p class="text-danger">Perbaiki semua baris yang bermasalah, lalu unggah ulang berkas.</p>
+            @endif
+            <label class="form-check mb-3"><input type="checkbox" name="confirm" value="1" class="form-check-input" required @disabled(!$canConfirm)><span class="form-check-label">
+                @if ($organizationImport)
+                    Simpan penambahan dan pembaruan dari {{ $snapshot['summary']['create'] }} baris dalam satu transaksi.
+                @else
+                    Saya setuju membuat {{ $snapshot['summary']['create'] }} baris valid. Baris invalid, existing, dan duplikat tidak akan dibuat; data existing tidak diubah.
+                @endif
+            </span></label>
             <div class="d-flex flex-wrap justify-content-end gap-2">
                 <x-ui.button :href="route($definition['route'].'.import.index')" variant="secondary" outline>Batal</x-ui.button>
-                <x-ui.button type="submit" :disabled="!$snapshot['summary']['create']">Konfirmasi Import ({{ $snapshot['summary']['create'] }})</x-ui.button>
+                <x-ui.button type="submit" :disabled="!$canConfirm">Konfirmasi Import ({{ $snapshot['summary']['create'] }})</x-ui.button>
             </div>
         </form>
     </x-ui.card>

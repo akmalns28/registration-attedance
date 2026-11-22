@@ -10,11 +10,18 @@
     </x-ui.page-header>
     @if ($module === 'users')
         <x-ui.alert variant="warning" :dismissible="false">Impor hanya menyiapkan akun lokal nonaktif. Identitas Keycloak belum diverifikasi; akun Keycloak dan password tidak dibuat. Administrator harus memverifikasi identitas sebelum mengaktifkan akun melalui User Management. Role super-admin tidak dapat diimpor.</x-ui.alert>
+    @elseif ($module === 'organizations')
+        <p class="text-secondary">Impor membuat atau memperbarui organisasi berdasarkan kode. Seluruh berkas harus valid sebelum perubahan disimpan.</p>
     @else
         <p class="text-secondary">Impor hanya membuat data baru. Data existing dan duplikat akan dilewati tanpa ditimpa.</p>
     @endif
     <x-ui.card title="Unggah Berkas">
-        <p>Gunakan kolom <code>{{ implode(', ', $definition['columns']) }}</code>. Isi <code>status</code> dengan Aktif atau Tidak Aktif. Active dan Inactive juga diterima.</p>
+        @if ($module === 'organizations')
+            <p>Gunakan template di atas. Ulangi kode, nama, dan status induk pada setiap baris terkait. Isi status dengan Aktif atau Tidak Aktif. Active dan Inactive juga diterima.</p>
+            <p>Untuk baris entitas saja, kosongkan kolom departemen dan divisi. Isi kolom departemen saat menambahkan divisi.</p>
+        @else
+            <p>Gunakan kolom <code>{{ implode(', ', $definition['columns']) }}</code>. Isi <code>status</code> dengan Aktif atau Tidak Aktif. Active dan Inactive juga diterima.</p>
+        @endif
         <form method="POST" action="{{ route($definition['route'].'.import.preview') }}" enctype="multipart/form-data" data-form data-loading-text="Memvalidasi berkas...">
             @csrf
             <div class="mb-3">
@@ -22,8 +29,10 @@
                 <input id="import-file" type="file" name="file" class="form-control @error('file') is-invalid @enderror" accept=".xlsx,.xls,.csv" required aria-describedby="import-file-help @error('file') import-file-error @enderror">
                 <div id="import-file-help" class="form-hint">
                     XLSX, XLS, atau CSV UTF-8 · maksimal {{ number_format(config('bulk_imports.max_upload_kb') / 1024, 1) }} MB · {{ number_format(config('bulk_imports.max_rows'), 0, ',', '.') }} baris.
-                    @if ($module !== 'users')
-                        Gunakan format Text untuk @if ($module === 'employees') NIP, kode departemen, dan @endif nomor telepon saat mengedit di Excel agar nol di depan tetap tersimpan.
+                    @if ($module === 'organizations')
+                        Gunakan format Text pada kolom kode untuk menjaga nol di depan.
+                    @elseif ($module !== 'users')
+                        Gunakan format Text untuk @if ($module === 'employees') NIP, kode organisasi, dan @endif nomor telepon saat mengedit di Excel agar nol di depan tetap tersimpan.
                     @endif
                     Gunakan nilai biasa tanpa formula atau macro.
                 </div>
@@ -39,16 +48,31 @@
         </form>
     </x-ui.card>
     @if ($module === 'employees')
-        <x-ui.card title="Referensi Departemen Aktif" class="mt-3">
-            <p class="text-secondary">Isi <code>department</code> dengan kode atau nama unik dari daftar berikut.</p>
-            <div class="table-responsive"><table class="table table-vcenter"><thead><tr><th>Kode</th><th>Departemen</th></tr></thead><tbody>
-                @forelse ($departments as $department)<tr><td>{{ $department->code }}</td><td>{{ $department->name }}</td></tr>
-                @empty<tr><td colspan="2">Belum ada departemen aktif. Siapkan departemen sebelum mengimpor karyawan.</td></tr>@endforelse
+        <x-ui.card title="Referensi Organisasi Aktif" class="mt-3">
+            <p class="text-secondary">
+                Gunakan kode atau nama unik untuk <code>entity</code>, <code>department</code>, dan <code>division</code>.
+                Pilih departemen dalam entitasnya dan divisi dalam departemennya. Divisi boleh dikosongkan.
+                Untuk departemen lama tanpa entitas, kosongkan <code>entity</code>.
+            </p>
+            <div class="table-responsive"><table class="table table-vcenter"><thead><tr><th>Entitas</th><th>Departemen</th><th>Divisi</th></tr></thead><tbody>
+                @forelse ($departments as $department)
+                    <tr>
+                        <td>{{ $department->entity?->organizationLabel() ?? 'Belum ditetapkan' }}</td>
+                        <td>{{ $department->organizationLabel() }}</td>
+                        <td>
+                            @forelse ($department->divisions as $division)
+                                <div>{{ $division->organizationLabel() }}</div>
+                            @empty
+                                —
+                            @endforelse
+                        </td>
+                    </tr>
+                @empty<tr><td colspan="3">Belum ada departemen aktif. Siapkan departemen sebelum mengimpor karyawan.</td></tr>@endforelse
             </tbody></table></div>
         </x-ui.card>
     @elseif ($module === 'users')
         <x-ui.card title="Role yang Dapat Dipakai" class="mt-3"><div class="d-flex flex-wrap gap-2">@foreach ($roles as $role)<code>{{ $role }}</code>@endforeach</div></x-ui.card>
-    @else
+    @elseif ($module === 'external-participants')
         <p class="text-secondary mt-3">Sertakan email atau telepon untuk pemeriksaan duplikasi. Kemiripan kontak atau nama dan organisasi ditandai untuk pemeriksaan dan tidak dibuat otomatis.</p>
     @endif
 @endsection

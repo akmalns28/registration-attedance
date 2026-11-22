@@ -88,7 +88,7 @@ class ImportSpreadsheetReader
 
                             continue;
                         }
-                        if (in_array($field, ['nip', 'phone'], true) && is_numeric($value) && ! is_string($value)) {
+                        if ((in_array($field, ['nip', 'phone'], true) || str_ends_with($field, '_code')) && is_numeric($value) && ! is_string($value)) {
                             $errors[] = "Kolom {$field}: gunakan format Text agar nol di depan tidak hilang.";
 
                             continue;

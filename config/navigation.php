@@ -53,10 +53,10 @@ return [
         'title' => 'Master Data',
         'items' => [
             [
-                'label' => 'Departments',
+                'label' => 'Organization Management',
                 'icon' => 'building',
-                'route' => 'departments.index',
-                'active' => 'departments.*',
+                'route' => 'organizations.index',
+                'active' => ['organizations.*', 'departments.*'],
                 'permission' => 'departments.view',
             ],
             [

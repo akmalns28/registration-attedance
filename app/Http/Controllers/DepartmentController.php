@@ -7,30 +7,25 @@ use App\Http\Requests\Department\UpdateDepartmentRequest;
 use App\Models\Department;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Schema;
 
 class DepartmentController extends Controller
 {
     /**
      * Display a listing of departments.
      */
-    public function index(): View
+    public function index(Request $request, OrganizationController $organizations): View
     {
-        $departments = Department::query()->orderBy('name')->get();
-
-        return view('departments.index', [
-            'departments' => $departments,
-        ]);
+        return $organizations->index($request);
     }
 
     /**
      * Show the form for creating a new department.
      */
-    public function create(): View
+    public function create(): RedirectResponse
     {
-        return view('departments.create');
+        return redirect()->route('organizations.create');
     }
 
     /**
@@ -48,11 +43,13 @@ class DepartmentController extends Controller
     /**
      * Show the form for editing the specified department.
      */
-    public function edit(Department $department): View
+    public function edit(Department $department): View|RedirectResponse
     {
-        return view('departments.edit', [
-            'department' => $department,
-        ]);
+        if ($department->entity_id !== null) {
+            return redirect()->route('organizations.edit', $department->entity_id);
+        }
+
+        return view('organizations.form', ['organization' => null, 'legacyDepartment' => $department]);
     }
 
     /**
@@ -74,9 +71,11 @@ class DepartmentController extends Controller
     {
         Gate::authorize('departments.delete');
 
-        // The employees table will be introduced in Sprint 1B.
-        // Prevent deletion if it already references this department.
-        if (Schema::hasTable('employees') && DB::table('employees')->where('department_id', $department->id)->exists()) {
+        if ($department->divisions()->exists()) {
+            return redirect()->route('departments.index')->with('error', 'Departemen masih memiliki divisi. Nonaktifkan departemen jika sudah tidak digunakan.');
+        }
+
+        if ($department->employees()->exists()) {
             return redirect()->route('departments.index')->with('error', 'Departemen tidak dapat dihapus karena sudah digunakan oleh karyawan. Nonaktifkan departemen jika sudah tidak digunakan.');
         }
 

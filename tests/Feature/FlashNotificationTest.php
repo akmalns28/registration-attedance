@@ -58,22 +58,23 @@ class FlashNotificationTest extends TestCase
         $this->assertSame('Akun Anda telah dinonaktifkan.', $this->notificationData($response)['error']);
     }
 
-    public function test_department_creation_flashes_success_on_the_redirected_page_once(): void
+    public function test_organization_creation_flashes_success_on_the_redirected_page_once(): void
     {
         $this->actingAs($this->authorizedUser(['departments.create', 'departments.view']))
-            ->post(route('departments.store'), [
-                'code' => 'IT',
-                'name' => 'Information Technology',
+            ->post(route('organizations.store'), [
+                'code' => 'HQ',
+                'name' => 'Head Office',
                 'is_active' => true,
+                'departments' => [['code' => 'IT', 'name' => 'Information Technology', 'is_active' => true]],
             ])
-            ->assertRedirectToRoute('departments.index')
-            ->assertSessionHas('success', 'Departemen berhasil ditambahkan.');
+            ->assertRedirectToRoute('organizations.index')
+            ->assertSessionHas('success', 'Organisasi berhasil ditambahkan.');
 
-        $response = $this->get(route('departments.index'))->assertOk();
+        $response = $this->get(route('organizations.index'))->assertOk();
 
-        $this->assertSame('Departemen berhasil ditambahkan.', $this->notificationData($response)['success']);
+        $this->assertSame('Organisasi berhasil ditambahkan.', $this->notificationData($response)['success']);
 
-        $nextResponse = $this->get(route('departments.index'))->assertOk();
+        $nextResponse = $this->get(route('organizations.index'))->assertOk();
 
         $this->assertNull($this->notificationData($nextResponse)['success']);
     }

@@ -46,9 +46,8 @@ class AttendanceReportService
     {
         $query = $this->rows($event)
             ->when($filters['event_day'] ?? null, fn (Builder $query, int|string $id): Builder => $query->where('event_days.id', $id))
-            ->when($filters['participant_type'] ?? null, fn (Builder $query, string $type): Builder => $query->where('event_registrations.registration_type', $type))
-            ->when($filters['department_id'] ?? null, fn (Builder $query, int|string $id): Builder => $query
-                ->where('event_registrations.registration_type', EventRegistration::TYPE_EMPLOYEE)->where('employees.department_id', $id));
+            ->when($filters['participant_type'] ?? null, fn (Builder $query, string $type): Builder => $query->where('event_registrations.registration_type', $type));
+        OrganizationFilters::applyToRegistrations($query, $filters);
         if (($filters['attendance_status'] ?? null) === 'present') {
             $query->whereNotNull('report_attendance.id');
         } elseif (($filters['attendance_status'] ?? null) === 'not_present') {

@@ -101,11 +101,12 @@ class UiRefinementTest extends TestCase
         $this->get(route('events.index'))->assertOk()->assertSee('data-export="false"', false)->assertDontSee('aria-label="Edit Event"', false);
     }
 
-    public function test_department_export_uses_its_existing_permission_and_other_tables_require_reports_export(): void
+    public function test_organization_export_uses_the_existing_department_permission_and_other_tables_require_reports_export(): void
     {
         $user = User::factory()->create(['is_active' => true]);
         $user->givePermissionTo(['departments.view', 'employees.view']);
         $this->actingAs($user)->get(route('departments.index'))->assertOk()->assertSee('data-export="false"', false);
+        $this->get(route('organizations.export'))->assertForbidden();
         $user->givePermissionTo('departments.export');
         $this->get(route('departments.index'))->assertOk()->assertSee('data-export="true"', false);
         $this->get(route('employees.index'))->assertOk()->assertSee('data-export="false"', false);

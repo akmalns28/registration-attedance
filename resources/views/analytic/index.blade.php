@@ -34,6 +34,7 @@
 
         <x-ui.card class="mb-3">
             <form data-analytic-filters action="{{ route('analytic.index') }}" method="GET" class="row g-3 align-items-end">
+                @include('organizations._filters', ['filterPrefix' => 'analytic', 'organizationSelection' => $filters])
                 <div class="col-12 col-md-6 col-xl-3">
                     <label for="analytic-event" class="form-label">Event</label>
                     <select id="analytic-event" name="event" class="form-select">

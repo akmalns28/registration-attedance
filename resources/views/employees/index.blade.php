@@ -108,7 +108,9 @@
                                         <th class="no-export">No.</th>
                                         <th>NIP</th>
                                         <th class="all">Nama Karyawan</th>
+                                        <th>Entitas</th>
                                         <th>Departemen</th>
+                                        <th>Divisi</th>
                                         <th>Email</th>
                                         <th>No. HP</th>
                                         <th>Status</th>
@@ -141,7 +143,23 @@
                                             </td>
 
                                             <td>
-                                                {{ $employee->department?->name ?? '-' }}
+                                                @if ($entity = $employee->department?->entity)
+                                                    {{ $entity->organizationLabel() }}
+                                                @else
+                                                    <span class="no-export-content">—</span>
+                                                @endif
+                                            </td>
+
+                                            <td>
+                                                {{ $employee->department?->organizationLabel() ?? '—' }}
+                                            </td>
+
+                                            <td>
+                                                @if ($employee->division)
+                                                    {{ $employee->division->organizationLabel() }}
+                                                @else
+                                                    <span class="no-export-content">—</span>
+                                                @endif
                                             </td>
 
                                             <td>

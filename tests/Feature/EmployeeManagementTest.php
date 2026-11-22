@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Department;
+use App\Models\Division;
 use App\Models\Employee;
+use App\Models\Entity;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -281,6 +283,62 @@ class EmployeeManagementTest extends TestCase
         ]);
 
         $this->actingAs($user)->post(route('employees.store'), $this->employeeData($department))->assertSessionHasErrors('department_id');
+    }
+
+    public function test_employee_form_displays_organization_codes_and_saves_an_optional_division(): void
+    {
+        $this->actingAs($this->createUser(['employees.view', 'employees.manage']));
+        $entity = Entity::factory()->create(['code' => 'HQ', 'name' => 'Head Office']);
+        $department = Department::factory()->for($entity)->create(['code' => 'OPS', 'name' => 'Operations']);
+        $division = Division::factory()->for($department)->create(['code' => 'QA', 'name' => 'Quality']);
+        $data = $this->employeeData($department, ['entity_id' => $entity->id, 'division_id' => $division->id]);
+
+        $this->get(route('employees.create'))->assertOk()->assertSee('[HQ] Head Office')->assertSee('[OPS] Operations')
+            ->assertSee('[QA] Quality')->assertSee('Divisi (opsional)');
+        $this->post(route('employees.store'), $data)->assertSessionHasNoErrors()->assertRedirect();
+        $employee = Employee::query()->sole();
+        $this->assertSame($division->id, $employee->division_id);
+        $this->get(route('employees.index'))->assertOk()->assertSee('HQ — Head Office')->assertSee('QA — Quality');
+
+        $this->put(route('employees.update', $employee), [...$data, 'division_id' => null])
+            ->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertNull($employee->fresh()->division_id);
+    }
+
+    public function test_employee_form_rejects_departments_and_divisions_outside_selected_parents(): void
+    {
+        $this->actingAs($this->createUser(['employees.manage']));
+        $office = Entity::factory()->create();
+        $department = Department::factory()->for($office)->create();
+        $other = Department::factory()->for(Entity::factory())->create();
+        $division = Division::factory()->for($other)->create();
+
+        $this->post(route('employees.store'), $this->employeeData($department))
+            ->assertSessionHasErrors('department_id');
+        $this->post(route('employees.store'), $this->employeeData($other, ['entity_id' => $office->id]))
+            ->assertSessionHasErrors('department_id');
+        $this->post(route('employees.store'), $this->employeeData($department, ['entity_id' => $office->id, 'division_id' => $division->id]))
+            ->assertSessionHasErrors('division_id');
+        $this->assertDatabaseCount('employees', 0);
+    }
+
+    public function test_inactive_organization_can_be_retained_but_blocks_new_assignments(): void
+    {
+        $this->actingAs($this->createUser(['employees.manage']));
+        $entity = Entity::factory()->create(['is_active' => false]);
+        $department = Department::factory()->for($entity)->create();
+        $otherDepartment = Department::factory()->for($entity)->create();
+        $division = Division::factory()->for($department)->create(['is_active' => false]);
+        $replacement = Division::factory()->for($department)->create();
+        $employee = Employee::factory()->for($department)->for($division)->create();
+        $data = $this->employeeData($department, ['entity_id' => $entity->id, 'division_id' => $division->id, 'nip' => $employee->nip]);
+
+        $this->get(route('employees.edit', $employee))->assertOk()->assertSee($division->name)->assertDontSee($replacement->name);
+        $this->put(route('employees.update', $employee), $data)->assertSessionHasNoErrors()->assertRedirect();
+        $this->put(route('employees.update', $employee), [...$data, 'division_id' => $replacement->id])->assertSessionHasErrors('division_id');
+        $this->put(route('employees.update', $employee), [...$data, 'department_id' => $otherDepartment->id, 'division_id' => null])->assertSessionHasErrors('entity_id');
+        $this->post(route('employees.store'), [...$data, 'nip' => 'NEW'])->assertSessionHasErrors(['entity_id', 'division_id']);
+        $this->assertSame($division->id, $employee->fresh()->division_id);
     }
 
     public function test_authorized_user_can_update_employee(): void
