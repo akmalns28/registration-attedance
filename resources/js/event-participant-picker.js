@@ -1,6 +1,12 @@
+import { initializeCompactFilters } from "./compact-filters";
+
 export function initializeEventParticipantPicker(modal) {
     const type = modal.querySelector("#candidate-type");
     const organization = modal.querySelector("[data-candidate-department-filter]");
+    const filterControls = modal.querySelector("[data-compact-filters]");
+    const filterToggle = filterControls.querySelector("[data-filter-toggle]");
+    const filterChips = filterControls.querySelector("[data-filter-chips]");
+    const filters = initializeCompactFilters(filterControls);
     const search = modal.querySelector("#candidate-search");
     const selectAll = modal.querySelector("#candidate-select-all");
     const rows = modal.querySelector("[data-candidate-rows]");
@@ -94,6 +100,20 @@ export function initializeEventParticipantPicker(modal) {
         return row;
     }
 
+    function updateType() {
+        const isEmployee = type.value === "employee";
+        filterToggle.hidden = !isEmployee;
+        if (isEmployee) {
+            filters.sync();
+        } else {
+            filters.close();
+            filterChips.hidden = true;
+        }
+        modal.querySelector("[data-candidate-identifier]").textContent = isEmployee ? "NIP" : "Telepon";
+        modal.querySelector("[data-candidate-affiliation]").textContent = isEmployee ? "Department" : "Organisasi";
+        search.placeholder = isEmployee ? "Nama atau NIP" : "Nama atau telepon";
+    }
+
     function load(page = 1, delay = 0) {
         window.clearTimeout(searchTimer);
         pending?.abort();
@@ -105,17 +125,11 @@ export function initializeEventParticipantPicker(modal) {
         displayFeedback("");
         updateSelection();
 
-        const isEmployee = type.value === "employee";
-        organization.hidden = !isEmployee;
-        modal.querySelector("[data-candidate-identifier]").textContent = isEmployee ? "NIP" : "Telepon";
-        modal.querySelector("[data-candidate-affiliation]").textContent = isEmployee ? "Department" : "Organisasi";
-        search.placeholder = isEmployee ? "Nama atau NIP" : "Nama atau telepon";
-
         searchTimer = window.setTimeout(async () => {
             const controller = new AbortController();
             pending = controller;
             const query = new URLSearchParams({ type: type.value, page, search: search.value.trim() });
-            if (isEmployee) {
+            if (type.value === "employee") {
                 for (const select of organization.querySelectorAll("[data-organization-select]")) {
                     if (select.value) {
                         query.set(select.dataset.organizationSelect + "_id", select.value);
@@ -154,8 +168,12 @@ export function initializeEventParticipantPicker(modal) {
     }
 
     modal.addEventListener("show.bs.modal", () => load());
-    type.addEventListener("change", () => load());
+    type.addEventListener("change", () => {
+        updateType();
+        load();
+    });
     organization.addEventListener("change", () => load());
+    filterControls.addEventListener("compact-filters:change", () => load());
     search.addEventListener("input", () => load(1, 250));
     search.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -174,6 +192,9 @@ export function initializeEventParticipantPicker(modal) {
     coverage?.addEventListener("change", updateSelection);
     days?.addEventListener("change", updateSelection);
     modal.querySelector("form").addEventListener("submit", (event) => {
+        if (!event.submitter && submit.disabled) {
+            event.preventDefault();
+        }
         if (event.defaultPrevented) {
             return;
         }
@@ -186,5 +207,6 @@ export function initializeEventParticipantPicker(modal) {
         }));
         inputs.replaceChildren(...fields);
     });
+    updateType();
     updateSelection();
 }

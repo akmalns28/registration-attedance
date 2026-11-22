@@ -228,6 +228,32 @@ test("Analytic in a real browser", { skip: !browser, timeout: 180000 }, async (s
             assert.equal(requests.length, 3);
         });
 
+        await suite.test("compact date filters reset without losing the selected event and day", async () => {
+            await fresh(true);
+            const result = await client.evaluate(`
+                const change = async (field, value) => {
+                    field.value = value;
+                    field.dispatchEvent(new Event("change", { bubbles: true }));
+                    await waitForAnalytic();
+                };
+                await change(analytic.event, fixture.first.filters.event);
+                await change(analytic.day, String(fixture.day.filters.event_day));
+                const form = analytic.form;
+                form.querySelector("[data-filter-toggle]").click();
+                await change(form.elements.namedItem("start_date"), "2025-01-01");
+                const chip = form.querySelector("[data-filter-chips] button")?.textContent;
+                form.querySelector("[data-filter-reset]").click();
+                await waitForAnalytic();
+                return { chip, event: analytic.event.value, day: analytic.day.value,
+                    date: form.elements.namedItem("start_date").value, chipsHidden: form.querySelector("[data-filter-chips]").hidden };
+            `);
+            assert.match(result.chip, /Tanggal Mulai: 2025-01-01/);
+            assert.equal(result.event, fixture.first.filters.event);
+            assert.equal(result.day, String(fixture.day.filters.event_day));
+            assert.equal(result.date, "");
+            assert.equal(result.chipsHidden, true);
+        });
+
         await suite.test("switching Events clears a stale day and only offers the new Event days", async () => {
             await fresh(true);
             const result = await client.evaluate(`

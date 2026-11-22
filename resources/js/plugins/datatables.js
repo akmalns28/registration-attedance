@@ -1,5 +1,6 @@
 import DataTable from "datatables.net-bs5";
 import { createPopper } from "@popperjs/core";
+import { initializeCompactFilters } from "../compact-filters";
 
 import "datatables.net-buttons-bs5";
 import "datatables.net-responsive-bs5";
@@ -184,12 +185,46 @@ export function initializeDataTables() {
         }
 
         const invalidRow = table.querySelector(".is-invalid")?.closest("tr");
-        const instance = new DataTable(table, getDataTableOptions(table));
+        const filters = document.querySelector(`[data-filter-table="${CSS.escape(table.id)}"]`);
+        const instance = new DataTable(table, { ...getDataTableOptions(table), ...(filters && { searchDelay: 250 }) });
+        if (filters) {
+            attachTableFilters(instance, filters);
+        }
 
         if (invalidRow) {
             instance.page(Math.floor(instance.row(invalidRow).index() / instance.page.len())).draw("page");
         }
     });
+}
+
+function attachTableFilters(table, controls) {
+    const search = table.table().container().querySelector(".dt-search");
+    const searchInput = search.querySelector("input");
+    search.parentElement.append(controls);
+    controls.querySelector(".compact-filter-toolbar").prepend(search);
+    const { fields } = initializeCompactFilters(controls);
+
+    function filterRows() {
+        const criteria = fields.filter((field) => field.value && !field.disabled).map((field) => [
+            field.dataset.organizationSelect ?? field.dataset.filterKey, field.value,
+        ]);
+        const matches = (_text, _data, index) => {
+            const row = table.row(index).node();
+            return criteria.every(([key, value]) => row.getAttribute(`data-filter-${key}`) === value);
+        };
+        table.search.fixed("compact-filters", criteria.length ? matches : null);
+        if (searchInput.value !== table.search()) {
+            table.search(searchInput.value);
+        }
+        table.draw();
+    }
+
+    controls.addEventListener("change", (event) => {
+        if (fields.includes(event.target)) {
+            filterRows();
+        }
+    });
+    controls.addEventListener("compact-filters:change", filterRows);
 }
 
 export function getDataTableOptions(table) {

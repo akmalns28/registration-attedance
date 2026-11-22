@@ -6,10 +6,10 @@
                 $value = $organizationSelection[$field] ?? null;
                 $name = $filterPrefix === 'report' ? 'report_'.$level : $field;
             @endphp
-            <div class="col-12 col-sm-4">
+            <div class="col-12">
                 <label for="{{ $filterPrefix }}-{{ $level }}" class="form-label">{{ $label }}</label>
                 <select id="{{ $filterPrefix }}-{{ $level }}" @unless ($filterPrefix === 'candidate') name="{{ $name }}" @endunless
-                    data-organization-select="{{ $level }}" class="form-select">
+                    data-organization-select="{{ $level }}" data-filter-label="{{ $label }}" class="form-select">
                     <option value="">Semua {{ $label }}</option>
                     @foreach ($organizationOptions[$level] as $option)
                         <option value="{{ $option->id }}" @selected(is_scalar($value) && (string) $value === (string) $option->id)

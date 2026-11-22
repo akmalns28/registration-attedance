@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Department;
+use App\Models\Division;
 use App\Models\Employee;
+use App\Models\Entity;
 use App\Models\Event;
 use App\Models\EventDay;
 use App\Models\EventRegistration;
@@ -148,10 +150,12 @@ class UiRefinementTest extends TestCase
             return;
         }
         Vite::useHotFile($directory.'/vite.hot');
+        $entity = Entity::factory()->create(['code' => 'UI', 'name' => 'UI Entity']);
         $names = ['=1+1', '+SUM(1,2)', '-1+1', '@SUM(1,2)', '  =1+1', 'Doe, "Jane"; café', '<img src=x onerror="window.uiXss=true">', 'Peserta Indonesia Éka', 'Participant Nine', 'Participant Ten', 'Participant Eleven', 'Participant Twelve'];
         foreach ($names as $index => $name) {
-            $department = Department::factory()->create(['name' => $name, 'code' => 'UI'.$index]);
-            $employee = Employee::factory()->for($department)->create(['name' => $name]);
+            $department = Department::factory()->for($entity)->create(['name' => $name, 'code' => 'UI'.$index]);
+            $division = Division::factory()->for($department)->create();
+            $employee = Employee::factory()->for($department)->for($division)->create(['name' => $name]);
             ExternalParticipant::factory()->create(['name' => $name]);
             Event::factory()->create(['title' => $name]);
             EventRegistration::factory()->for($fixture['event'])->for($employee)->invitedTo($fixture['day'])->create();

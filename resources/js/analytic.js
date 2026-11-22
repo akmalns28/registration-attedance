@@ -1,4 +1,5 @@
 import ApexCharts from "apexcharts";
+import { initializeCompactFilters } from "./compact-filters";
 
 const number = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 const percent = (value) => `${number.format(value)}%`;
@@ -18,8 +19,9 @@ export class AnalyticPage {
         this.destroyed = false;
         this.listeners = new AbortController();
         this.renderQueue = Promise.resolve();
+        initializeCompactFilters(this.form.querySelector("[data-compact-filters]"));
         const initial = JSON.parse(page.querySelector("[data-analytic-initial]").textContent);
-        this.ready = this.enqueueRender(initial, 0).catch(() => this.showError("Grafik belum dapat ditampilkan. Tekan Refresh untuk mencoba kembali."));
+        this.ready = this.enqueueRender(initial, 0).catch(() => this.showError("Grafik belum dapat ditampilkan."));
         const options = { signal: this.listeners.signal };
         this.form.addEventListener("submit", (event) => {
             event.preventDefault();
@@ -32,6 +34,7 @@ export class AnalyticPage {
             }
             this.refresh();
         }, options);
+        this.form.addEventListener("compact-filters:change", () => this.refresh(), options);
         window.addEventListener("pagehide", (event) => {
             if (event.persisted) {
                 this.version++;
@@ -46,8 +49,8 @@ export class AnalyticPage {
     setLoading(loading) {
         this.page.setAttribute("aria-busy", String(loading));
         this.refreshButton.disabled = loading;
-        (this.refreshButton.querySelector("[data-button-label]") ?? this.refreshButton).textContent = loading ? "Memuat..." : "Refresh";
         if (loading) {
+            this.refreshButton.classList.add("d-none");
             this.feedback.className = "alert alert-info";
             this.feedback.textContent = "Memperbarui ringkasan dan grafik...";
         }
@@ -59,6 +62,7 @@ export class AnalyticPage {
         }
         this.feedback.className = "alert alert-danger";
         this.feedback.textContent = `${message} Ringkasan dan grafik masih menampilkan hasil terakhir yang berhasil dimuat.`;
+        this.refreshButton.classList.remove("d-none");
         window.notify?.error(message);
     }
 
@@ -99,7 +103,7 @@ export class AnalyticPage {
                 const errors = Object.values(body?.errors ?? {}).flat().join(" ");
                 throw new Error(errors || ([401, 403, 419].includes(response.status) || response.redirected
                     ? "Akses Analytic berakhir. Muat ulang halaman atau login kembali."
-                    : "Data Analytic belum dapat dimuat. Coba Refresh kembali."));
+                    : "Data Analytic belum dapat dimuat."));
             }
             await this.enqueueRender(body.data, version);
             if (version === this.version && !this.destroyed) {
@@ -109,7 +113,7 @@ export class AnalyticPage {
             }
         } catch (error) {
             if (version === this.version && !this.destroyed) {
-                this.showError(error.name === "AbortError" ? "Permintaan melewati batas waktu. Coba Refresh kembali." : error.message || "Koneksi terputus. Coba Refresh kembali.");
+                this.showError(error.name === "AbortError" ? "Permintaan melewati batas waktu." : error.message || "Koneksi terputus.");
             }
         } finally {
             window.clearTimeout(timeout);

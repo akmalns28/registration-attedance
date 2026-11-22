@@ -12,6 +12,12 @@
 @if ($canManage)
     <p class="text-secondary"><a href="{{ route('events.show', $event) }}#event-participants">Buka daftar peserta event</a> untuk menambah atau mengubah hari undangan.</p>
 @endif
+<x-ui.compact-filters :id="'day-invitee-filters-'.$day->id" :table="'day-invitations-'.$day->id">
+    <x-ui.compact-filter-select id="day-invitees-type" label="Jenis Peserta" data-filter-key="type"
+        :options="['' => 'Semua Jenis', 'employee' => 'Employee', 'external' => 'External']" />
+    <x-ui.compact-filter-select id="day-invitees-status" label="Status Undangan" data-filter-key="status"
+        :options="['' => 'Semua Status', 'invited' => 'Diundang', 'revoked' => 'Undangan dicabut', 'cancelled' => 'Registrasi dibatalkan']" />
+</x-ui.compact-filters>
 <div class="table-responsive">
     <table id="day-invitations-{{ $day->id }}" data-datatable data-day-invitations-table
         data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}" data-filename="peserta-diundang-day-{{ $day->day_number }}" class="table table-vcenter w-100">
@@ -29,7 +35,8 @@
                     $canSend = $invitee->isRegistered() && $day->is_active && $event->isPublished();
                     $notification = $canManage || $canPreview ? $invitee->latestInvitation : null;
                 @endphp
-                <tr>
+                <tr data-filter-type="{{ $invitee->isEmployee() ? 'employee' : 'external' }}"
+                    data-filter-status="{{ $invitee->isCancelled() ? 'cancelled' : ($revoked ? 'revoked' : 'invited') }}">
                     <td>{{ $invitee->registration_number }}</td>
                     <td>{{ $invitee->participant_name ?? '-' }}</td>
                     <td>{{ $invitee->isEmployee() ? 'Employee' : 'External' }}</td>

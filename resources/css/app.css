@@ -18,6 +18,66 @@
     --tblr-font-sans-serif: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
+[data-filter-toggle][hidden],
+[data-filter-panel][hidden],
+[data-filter-chips][hidden] {
+    display: none !important;
+}
+
+.compact-filter-panel {
+    width: min(22rem, calc(100vw - 1rem));
+    max-height: min(28rem, calc(100dvh - 1rem));
+    overflow-y: auto;
+    color: var(--tblr-body-color);
+}
+
+.compact-filter-panel[popover] {
+    inset: auto;
+    margin: 0;
+}
+
+.compact-filter-panel:not([popover]) {
+    margin-top: .5rem;
+}
+
+.compact-filter-chip {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: start;
+}
+
+.compact-filter-toolbar .form-control,
+.compact-filter-toolbar .dt-search,
+.analytic-filter-context {
+    min-width: 0;
+}
+
+[data-filter-table] .dt-search {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+[data-filter-table] .dt-search .form-control {
+    width: min(14rem, 100%);
+    margin: 0;
+    padding-block: var(--tblr-input-padding-y, .4375rem);
+}
+
+.participant-picker-search {
+    flex: 1;
+    min-width: 0;
+}
+
+[data-participant-picker] .compact-filter-toolbar .form-label {
+    margin-bottom: .25rem;
+}
+
+[data-participant-picker] [data-invitation-coverage] {
+    max-width: 16rem;
+}
+
 .analytic-chart-card,
 .analytic-chart,
 .analytic-kpis .card {

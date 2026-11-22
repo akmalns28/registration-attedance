@@ -100,6 +100,16 @@
 
                     <div class="card-body">
 
+                        @php
+                            $employeeOrganizationOptions = collect([
+                                'entity' => 'department.entity', 'department' => 'department', 'division' => 'division',
+                            ])->map(fn ($relation) => $employees->pluck($relation)->filter()->unique('id')->sortBy('name'));
+                        @endphp
+                        <x-ui.compact-filters id="employee-filters" table="employeesTable">
+                            @include('organizations._filters', ['filterPrefix' => 'employees', 'organizationOptions' => $employeeOrganizationOptions])
+                            <x-ui.compact-filter-select id="employees-status" label="Status Karyawan" data-filter-key="status"
+                                :options="['' => 'Semua Status', 'active' => 'Active', 'inactive' => 'Inactive']" />
+                        </x-ui.compact-filters>
                         <div class="table-responsive">
                             <table id="employeesTable" class="table table-vcenter table-hover w-100" data-datatable
                                 data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}" data-filename="employee-management">
@@ -125,7 +135,8 @@
 
                                 <tbody>
                                     @foreach ($employees as $employee)
-                                        <tr>
+                                        <tr data-filter-entity="{{ $employee->department?->entity_id }}" data-filter-department="{{ $employee->department_id }}"
+                                            data-filter-division="{{ $employee->division_id }}" data-filter-status="{{ $employee->is_active ? 'active' : 'inactive' }}">
                                             <td>
                                                 {{ $loop->iteration }}
                                             </td>
