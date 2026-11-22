@@ -3,7 +3,7 @@
     $previousSelection = old('participant_groups', in_array($previousType, ['employee', 'external'], true)
         ? [$previousType => old('participant_ids', [])] : []);
 @endphp
-<div id="addParticipantsModal" class="modal modal-blur fade" tabindex="-1" aria-labelledby="addParticipantsModalLabel"
+<div id="addParticipantsModal" class="modal modal-blur fade app-mobile-modal" tabindex="-1" aria-labelledby="addParticipantsModalLabel"
     aria-hidden="true" data-participant-picker data-candidates-url="{{ route('events.participants.candidates', $event, absolute: false) }}"
     data-selection-limit="{{ \App\Services\EventRegistrationService::MAX_BULK_PARTICIPANTS }}"
     @if ($participantErrors->isNotEmpty() && (session()->hasOldInput('participant_groups') || $previousType)) data-reopen @endif>
@@ -24,7 +24,7 @@
                     <div class="alert alert-danger" role="alert">{{ $participantErrors->first() }}</div>
                 @endif
 
-                <x-ui.compact-filters id="participant-organization-filters" class="mb-3">
+                <x-ui.compact-filters id="participant-organization-filters" class="participant-picker-toolbar mb-3">
                     <x-slot:leading>
                         <div class="flex-shrink-0">
                             <label for="candidate-type" class="form-label">Jenis Peserta</label>
@@ -43,16 +43,18 @@
 
                 <div class="border rounded overflow-hidden">
                     <div class="table-responsive">
-                        <table class="table table-sm table-vcenter table-hover card-table mb-0">
+                        <table class="table table-sm table-vcenter table-hover card-table mb-0 participant-candidate-table">
                             <thead>
                                 <tr>
                                     <th class="w-1">
-                                        <input type="checkbox" id="candidate-select-all" class="form-check-input m-0"
-                                            aria-label="Pilih semua hasil filter yang memenuhi syarat" aria-describedby="candidate-selection-scope" disabled>
+                                        <label class="candidate-check-target">
+                                            <input type="checkbox" id="candidate-select-all" class="form-check-input m-0"
+                                                aria-label="Pilih semua hasil filter yang memenuhi syarat" aria-describedby="candidate-selection-scope" disabled>
+                                        </label>
                                     </th>
                                     <th>Nama</th>
-                                    <th data-candidate-identifier>NIP</th>
-                                    <th data-candidate-affiliation>Department</th>
+                                    <th class="d-none d-md-table-cell" data-candidate-identifier>NIP</th>
+                                    <th class="d-none d-md-table-cell" data-candidate-affiliation>Department</th>
                                     <th>Status registrasi</th>
                                 </tr>
                             </thead>
@@ -71,12 +73,12 @@
                 <p data-candidate-feedback class="small text-danger mb-0 mt-2" role="status" hidden></p>
             </div>
 
-            <div class="border-top px-3 pt-2 pb-1">
+            <div class="participant-picker-invitation border-top px-3 pt-2 pb-1">
                 @include('events.partials.invitation-day-picker', ['pickerId' => 'participant-invitation'])
             </div>
 
             <div class="modal-footer">
-                <div class="d-flex flex-wrap align-items-center gap-2 me-auto">
+                <div class="participant-picker-summary d-flex flex-wrap align-items-center gap-2 me-auto">
                     <span class="badge bg-primary-lt" data-selected-count aria-live="polite">0 peserta dipilih</span>
                     <button type="button" class="btn btn-sm btn-ghost-secondary" data-clear-participants disabled>Hapus pilihan</button>
                     <span class="text-secondary small">Sisa kapasitas <strong>{{ $remainingCapacity ?? 'Unlimited' }}</strong></span>

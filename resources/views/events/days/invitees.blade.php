@@ -23,8 +23,8 @@
         data-export="{{ auth()->user()->can('reports.export') ? 'true' : 'false' }}" data-filename="peserta-diundang-day-{{ $day->day_number }}" class="table table-vcenter w-100">
         <thead>
             <tr>
-                <th>Nomor Registrasi</th><th>Nama Peserta</th><th>Jenis Peserta</th><th>Status Undangan</th>
-                @can('attendance.view')<th>Kehadiran</th>@endcan
+                <th>Nomor Registrasi</th><th data-priority="1">Nama Peserta</th><th>Jenis Peserta</th><th data-priority="3">Status Undangan</th>
+                @can('attendance.view')<th data-priority="2">Kehadiran</th>@endcan
                 @if ($canManage || $canPreview)<th>Email Undangan</th><th class="no-sort no-export all">Aksi</th>@endif
             </tr>
         </thead>
@@ -54,7 +54,7 @@
                     @endcan
                     @if ($canManage || $canPreview)
                         <td>{{ $notification ? $emailStatuses[$notification->status] : 'Belum dijadwalkan' }}</td>
-                        <td>
+                        <td class="table-row-actions">
                             <div class="d-flex gap-2 flex-wrap">
                                 @if ($canManage && $invitee->isRegistered() && $event->status !== 'cancelled')
                                     <x-ui.action icon="calendar" label="Kelola Hari Undangan" data-bs-toggle="modal"

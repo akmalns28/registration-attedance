@@ -1,4 +1,4 @@
-<div class="modal fade" id="eventDayInvitationModal" tabindex="-1" aria-labelledby="eventDayInvitationTitle"
+<div class="modal fade app-mobile-modal" id="eventDayInvitationModal" tabindex="-1" aria-labelledby="eventDayInvitationTitle"
     aria-describedby="eventDayInvitationHelp" aria-hidden="true" data-event-day-invitation-modal>
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <form class="modal-content" method="POST">

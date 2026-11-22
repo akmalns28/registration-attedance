@@ -37,8 +37,8 @@
         <p class="text-secondary small">Ringkasan menghitung undangan aktif untuk hari ini. Riwayat check-in tersimpan setelah undangan dicabut atau registrasi dibatalkan. Waktu check-in menggunakan {{ config('app.timezone') }}.</p>
 
         <div class="card">
-            <div class="card-header">
-                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+            <div class="card-header app-tabs-header">
+                <ul class="nav nav-tabs card-header-tabs app-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <a href="#day-rundown" id="day-rundown-tab" class="nav-link active" data-bs-toggle="tab" role="tab"
                             aria-controls="day-rundown" aria-selected="true">Rundown</a>
@@ -101,7 +101,7 @@
                         <div data-attendance-refresh-feedback class="d-none" role="status" aria-live="polite"></div>
                         <div class="table-responsive">
                             <table id="day-attendance-{{ $day->id }}" data-datatable data-attendance-table class="table table-vcenter w-100">
-                                <thead><tr><th>Nomor Registrasi</th><th>Nama Peserta</th><th>Jenis Peserta</th><th>Status Registrasi</th><th>Waktu Check-in</th><th>Petugas</th><th>Kehadiran</th></tr></thead>
+                                <thead><tr><th>Nomor Registrasi</th><th data-priority="1">Nama Peserta</th><th>Jenis Peserta</th><th>Status Registrasi</th><th data-priority="3">Waktu Check-in</th><th>Petugas</th><th data-priority="2">Kehadiran</th></tr></thead>
                                 <tbody>
                                     @foreach ($attendees as $attendee)
                                         <tr>

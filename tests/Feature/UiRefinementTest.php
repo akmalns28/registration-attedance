@@ -17,6 +17,7 @@ use Database\Seeders\RolePermissionSeeder;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Vite;
@@ -163,9 +164,28 @@ class UiRefinementTest extends TestCase
             Role::create(['name' => 'ui-role-'.$index, 'guard_name' => 'web']);
         }
         $fixture['day']->update(['date' => $fixture['event']->start_date->toDateString()]);
-        $pages = $this->pages($fixture);
-        $pages['dashboard'] = route('dashboard');
-        $pages['employeeForm'] = route('employees.create');
+        $fixture['event']->update(['status' => Event::STATUS_PUBLISHED]);
+        $upload = UploadedFile::fake()->createWithContent('mobile-preview.csv', "nip,name,entity,department,division,email,phone,status\n"
+            ."90123,Mobile Preview,UI,UI0,,,08123456789,active\n"
+            ."90124,Mobile Validation,UI,MISSING,,,,active\n");
+        $preview = $this->post(route('employees.import.preview'), ['file' => $upload])->assertRedirect();
+        $pages = $this->pages($fixture) + [
+            'dashboard' => route('dashboard'),
+            'analytic' => route('analytic.index'),
+            'scanner' => route('attendance.scanner'),
+            'eventCreate' => route('events.create'),
+            'eventEdit' => route('events.edit', $fixture['event']),
+            'dayCreate' => route('events.days.create', $fixture['event']),
+            'dayEdit' => route('events.days.edit', [$fixture['event'], $fixture['day']]),
+            'employeeForm' => route('employees.create'),
+            'employeeEdit' => route('employees.edit', $employee),
+            'externalForm' => route('external-participants.create'),
+            'organizations' => route('organizations.index'),
+            'organizationForm' => route('organizations.create'),
+            'organizationEdit' => route('organizations.edit', $entity),
+            'import' => route('employees.import.index'),
+            'importPreview' => $preview->headers->get('Location'),
+        ];
         foreach ($pages as $key => $url) {
             if ($key === 'dashboard') {
                 $this->withSession(['success' => 'Pengaturan berhasil disimpan.']);

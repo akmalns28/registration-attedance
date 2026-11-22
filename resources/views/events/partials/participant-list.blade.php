@@ -4,7 +4,7 @@
     $canViewInvitations = auth()->user()->can('registrations.view');
 @endphp
 
-<div class="card">
+<div class="card participant-list">
 
     <div class="card-header">
 
@@ -54,7 +54,7 @@
                             Registration Number
                         </th>
 
-                        <th class="no-sort no-export" data-priority="2">
+                        <th class="no-sort no-export">
                             QR Code
                         </th>
 
@@ -70,7 +70,7 @@
                             Department / Organization
                         </th>
 
-                        <th>
+                        <th data-priority="2">
                             Status
                         </th>
 
@@ -211,8 +211,8 @@
                             </td>
 
                             {{-- Actions --}}
-                            <td class="text-end text-nowrap">
-
+                            <td class="text-end text-nowrap table-row-actions">
+                                <div class="participant-row-actions">
                                 @if ($isRegistered && $canViewInvitations)
                                     <x-ui.action icon="file-type-pdf" label="Download Invitation PDF"
                                         :href="route('events.participants.invitation', [$event, $registration])" />
@@ -248,6 +248,7 @@
                                     </span>
                                 @endcan
 
+                                </div>
                             </td>
 
                         </tr>

@@ -114,13 +114,13 @@
                                 <thead>
                                     <tr>
                                         <th class="no-sort no-export">No.</th>
-                                        <th class="all">Nama Event</th>
-                                        <th>Tanggal Mulai</th>
+                                        <th class="all" data-priority="1">Nama Event</th>
+                                        <th data-priority="4">Tanggal Mulai</th>
                                         <th>Tanggal Selesai</th>
                                         <th>Lokasi</th>
                                         <th>Kapasitas</th>
-                                        <th>Status</th>
-                                        <th class="no-sort no-export text-end text-nowrap w-1">
+                                        <th data-priority="3">Status</th>
+                                        <th class="no-sort no-export text-end w-1" data-priority="2">
                                             Action
                                         </th>
                                     </tr>
@@ -185,7 +185,7 @@
                                                 @endswitch
                                             </td>
 
-                                            <td class="text-end text-nowrap">
+                                            <td class="text-end text-nowrap table-row-actions">
                                                 <div class="btn-list flex-nowrap justify-content-end">
 
                                                     <x-ui.action icon="eye" label="Detail Event" :href="route('events.show', $event)" />

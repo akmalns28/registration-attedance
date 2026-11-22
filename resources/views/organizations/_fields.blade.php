@@ -8,7 +8,7 @@
     $compact = $prefix !== '';
 @endphp
 <div class="row g-2">
-    <div class="col-5 col-sm-3">
+    <div class="col-12 col-sm-3">
         <label for="{{ $idPrefix }}code" @class(['form-label', 'small mb-1' => $compact, 'required' => $codeRequired])>Kode</label>
         <input id="{{ $idPrefix }}code" name="{{ $inputNames['code'] }}" maxlength="20"
             @class(['form-control text-uppercase', 'form-control-sm' => $compact, 'is-invalid' => $errors->has($path.'code')])
@@ -16,7 +16,7 @@
             aria-describedby="{{ $idPrefix }}code-error" @if ($errors->has($path.'code')) aria-invalid="true" @endif @required($codeRequired)>
         <div id="{{ $idPrefix }}code-error" class="invalid-feedback">{{ $errors->first($path.'code') }}</div>
     </div>
-    <div class="col-7 col-sm-6">
+    <div class="col-12 col-sm-6">
         <label for="{{ $idPrefix }}name" @class(['form-label required', 'small mb-1' => $compact])>Nama</label>
         <input id="{{ $idPrefix }}name" name="{{ $inputNames['name'] }}" maxlength="150"
             @class(['form-control', 'form-control-sm' => $compact, 'is-invalid' => $errors->has($path.'name')])

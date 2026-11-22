@@ -117,16 +117,16 @@
                                     <tr>
                                         <th class="no-export">No.</th>
                                         <th>NIP</th>
-                                        <th class="all">Nama Karyawan</th>
+                                        <th class="all" data-priority="1">Nama Karyawan</th>
                                         <th>Entitas</th>
                                         <th>Departemen</th>
                                         <th>Divisi</th>
                                         <th>Email</th>
                                         <th>No. HP</th>
-                                        <th>Status</th>
+                                        <th data-priority="3">Status</th>
 
                                         @can('employees.manage')
-                                            <th class="no-sort no-export text-end">
+                                            <th class="no-sort no-export text-end" data-priority="2">
                                                 Action
                                             </th>
                                         @endcan

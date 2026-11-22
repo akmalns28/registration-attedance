@@ -48,7 +48,7 @@
                 <span class="spinner-border spinner-border-sm d-none" data-manual-loading aria-hidden="true"></span>
                 <div id="manual-status" class="form-hint mt-0" role="status" aria-live="polite">{{ $fixedDay ? 'Ketik minimal 2 karakter.' : 'Pilih event dan hari pelaksanaan.' }}</div>
             </div>
-            <div class="list-group shadow-sm mt-2 overflow-auto" style="max-height: 18rem" id="manual-results" data-manual-results></div>
+            <div class="list-group shadow-sm mt-2 manual-attendance-results" id="manual-results" data-manual-results></div>
         </fieldset>
 
         <section class="border rounded p-3" data-manual-confirmation hidden aria-label="Konfirmasi peserta">

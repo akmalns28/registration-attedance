@@ -14,7 +14,7 @@
     </div>
     <fieldset data-invitation-days @if (old('day_selection') !== 'selected') hidden disabled @endif>
         <legend class="form-label">Hari yang dipilih</legend>
-        <div class="overflow-auto" style="max-height: 10rem">
+        <div class="invitation-day-list overflow-auto">
             @foreach ($availableDays as $availableDay)
                 <label class="form-check">
                     <input class="form-check-input" type="checkbox" name="day_ids[]" value="{{ $availableDay->id }}"
