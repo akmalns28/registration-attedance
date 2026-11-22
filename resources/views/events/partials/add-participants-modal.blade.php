@@ -24,29 +24,31 @@
                     <div class="alert alert-danger" role="alert">{{ $participantErrors->first() }}</div>
                 @endif
 
-                <div class="row g-2 mb-3">
-                    <div class="col-sm-3">
-                        <label for="candidate-type" class="form-label">Participant Type</label>
-                        <select id="candidate-type" class="form-select">
-                            <option value="employee">Employee</option>
-                            <option value="external" @selected($previousType === 'external')>External</option>
-                        </select>
-                    </div>
-                    <div class="col-sm">
-                        <label for="candidate-search" class="form-label">Cari peserta</label>
-                        <input type="search" id="candidate-search" class="form-control" maxlength="100" placeholder="Nama atau NIP">
-                    </div>
+                <x-ui.compact-filters id="participant-organization-filters" class="mb-3">
+                    <x-slot:leading>
+                        <div class="flex-shrink-0">
+                            <label for="candidate-type" class="form-label">Jenis Peserta</label>
+                            <select id="candidate-type" class="form-select">
+                                <option value="employee">Employee</option>
+                                <option value="external" @selected($previousType === 'external')>External</option>
+                            </select>
+                        </div>
+                        <div class="participant-picker-search">
+                            <label for="candidate-search" class="form-label">Cari peserta</label>
+                            <input type="search" id="candidate-search" class="form-control" maxlength="100" placeholder="Nama atau NIP" autocomplete="off">
+                        </div>
+                    </x-slot:leading>
                     @include('organizations._filters', ['filterPrefix' => 'candidate'])
-                </div>
+                </x-ui.compact-filters>
 
                 <div class="border rounded overflow-hidden">
                     <div class="table-responsive">
-                        <table class="table table-vcenter table-hover card-table mb-0">
+                        <table class="table table-sm table-vcenter table-hover card-table mb-0">
                             <thead>
                                 <tr>
                                     <th class="w-1">
                                         <input type="checkbox" id="candidate-select-all" class="form-check-input m-0"
-                                            aria-label="Select All (filtered results)" title="Select All (filtered results)" disabled>
+                                            aria-label="Pilih semua hasil filter yang memenuhi syarat" aria-describedby="candidate-selection-scope" disabled>
                                     </th>
                                     <th>Nama</th>
                                     <th data-candidate-identifier>NIP</th>
@@ -65,9 +67,11 @@
                         </div>
                     </div>
                 </div>
-                <div class="form-hint mb-3">Centang kotak di header untuk memilih semua peserta yang dapat didaftarkan dalam hasil filter.</div>
-                <p data-candidate-feedback class="small text-danger mb-3" role="status" hidden></p>
+                <div class="form-hint" id="candidate-selection-scope">Pilih semua mencakup peserta yang dapat didaftarkan dari semua halaman hasil filter.</div>
+                <p data-candidate-feedback class="small text-danger mb-0 mt-2" role="status" hidden></p>
+            </div>
 
+            <div class="border-top px-3 pt-2 pb-1">
                 @include('events.partials.invitation-day-picker', ['pickerId' => 'participant-invitation'])
             </div>
 

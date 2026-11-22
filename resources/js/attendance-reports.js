@@ -2,6 +2,7 @@ import DataTable from "datatables.net-bs5";
 import "datatables.net-bs5/css/dataTables.bootstrap5.css";
 import "datatables.net-responsive-bs5/css/responsive.bootstrap5.css";
 import { getDataTableOptions, adjustDataTables } from "./plugins/datatables";
+import { initializeCompactFilters } from "./compact-filters";
 
 const filters = {
     report_day: "event_day", report_type: "participant_type", report_status: "attendance_status",
@@ -78,6 +79,7 @@ export class AttendanceReports {
             field.value = value;
         }
         this.syncOrganization();
+        this.compactFilters = initializeCompactFilters(this.form.querySelector("[data-compact-filters]"));
         const options = { signal: this.listeners.signal };
         this.exportButtons.forEach((button) => {
             button.dataset.label = button.querySelector("span").textContent;
@@ -101,17 +103,9 @@ export class AttendanceReports {
             this.updateExportButtons();
             this.searchTimer = window.setTimeout(() => this.applyFilters(), 350);
         }, options);
-        page.querySelector("[data-report-reset]").addEventListener("click", () => {
-            window.clearTimeout(this.searchTimer);
-            this.form.reset();
-            this.form.querySelectorAll("[data-invalid-filter]").forEach((option) => option.remove());
-            this.organization.querySelectorAll("select").forEach((select) => { select.value = ""; });
+        this.form.addEventListener("compact-filters:change", () => {
             this.syncOrganization();
-            if (this.table) {
-                this.table.page.len(10).order([6, "asc"]).search("").draw();
-            } else {
-                this.start();
-            }
+            this.applyFilters();
         }, options);
         document.getElementById("event-reports-tab")?.addEventListener("shown.bs.tab", () => this.start(), options);
         window.addEventListener("pagehide", (event) => {
@@ -175,8 +169,8 @@ export class AttendanceReports {
         this.updateExportButtons();
         this.page.setAttribute("aria-busy", String(loading));
         this.refreshButton.disabled = loading;
-        (this.refreshButton.querySelector("[data-button-label]") ?? this.refreshButton).textContent = loading ? "Memuat..." : "Perbarui";
         if (loading) {
+            this.refreshButton.classList.add("d-none");
             this.feedback.className = "alert alert-info";
             this.feedback.textContent = "Memuat laporan dan ringkasan kehadiran...";
         }
@@ -288,6 +282,7 @@ export class AttendanceReports {
         if (external) {
             this.organization.querySelectorAll("select").forEach((select) => { select.disabled = true; });
         }
+        this.compactFilters?.sync();
     }
 
     summary(values) {
@@ -324,10 +319,10 @@ export class AttendanceReports {
                 return;
             }
             if (!response.ok || response.redirected) {
-                throw responseError(response, body, "Laporan belum dapat dimuat. Tekan Perbarui untuk mencoba kembali.");
+                throw responseError(response, body, "Laporan belum dapat dimuat. Silakan coba kembali.");
             }
             if (!Array.isArray(body?.data) || !body.summary || body.draw !== data.draw) {
-                throw new Error("Respons laporan tidak valid. Tekan Perbarui untuk mencoba kembali.");
+                throw new Error("Respons laporan tidak valid. Silakan coba kembali.");
             }
             this.lastFilters = { ...selected, report_search: data.search.value };
             this.summary(body.summary);
@@ -339,9 +334,10 @@ export class AttendanceReports {
                 this.lastFilters = null;
                 this.summary(null);
                 callback({ draw: data.draw, recordsTotal: 0, recordsFiltered: 0, data: [] });
-                const message = requestErrorMessage(error, "Permintaan melewati batas waktu. Tekan Perbarui untuk mencoba kembali.");
+                const message = requestErrorMessage(error, "Permintaan melewati batas waktu. Silakan coba kembali.");
                 this.feedback.className = "alert alert-danger";
                 this.feedback.textContent = message;
+                this.refreshButton.classList.remove("d-none");
                 window.notify?.error(message);
             }
         } finally {

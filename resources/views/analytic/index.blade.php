@@ -33,39 +33,43 @@
         @endif
 
         <x-ui.card class="mb-3">
-            <form data-analytic-filters action="{{ route('analytic.index') }}" method="GET" class="row g-3 align-items-end">
-                @include('organizations._filters', ['filterPrefix' => 'analytic', 'organizationSelection' => $filters])
-                <div class="col-12 col-md-6 col-xl-3">
-                    <label for="analytic-event" class="form-label">Event</label>
-                    <select id="analytic-event" name="event" class="form-select">
-                        <option value="">All Events</option>
-                        @foreach ($events as $event)
-                            <option value="{{ $event->uuid }}" @selected($filters['event'] === $event->uuid)>{{ $event->title }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-6 col-md-3 col-xl-2">
-                    <label for="analytic-start" class="form-label">Tanggal Mulai</label>
-                    <input id="analytic-start" type="date" name="start_date" value="{{ $filters['start_date'] }}" class="form-control">
-                </div>
-                <div class="col-6 col-md-3 col-xl-2">
-                    <label for="analytic-end" class="form-label">Tanggal Selesai</label>
-                    <input id="analytic-end" type="date" name="end_date" value="{{ $filters['end_date'] }}" class="form-control">
-                </div>
-                <div class="col-12 col-md-8 col-xl-3">
-                    <label for="analytic-day" class="form-label">Event Day</label>
-                    <select id="analytic-day" name="event_day" class="form-select" @disabled(! $filters['event'])>
-                        <option value="">{{ $filters['event'] ? 'Semua Event Day' : 'Pilih Event terlebih dahulu' }}</option>
-                        @foreach ($analytics['event_days'] as $day)
-                            <option value="{{ $day['id'] }}" @selected($filters['event_day'] === $day['id'])>{{ $day['label'] }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-12 col-md-4 col-xl-2">
-                    <button type="submit" data-analytic-refresh class="btn btn-primary w-100">
-                        <x-ui.icon name="refresh" class="me-2" /><span data-button-label>Refresh</span>
-                    </button>
-                </div>
+            <form id="analytic-filters" data-analytic-filters action="{{ route('analytic.index') }}" method="GET">
+                <x-ui.compact-filters id="analytic-advanced-filters" fallback>
+                    <x-slot:leading>
+                        <div class="flex-fill analytic-filter-context">
+                            <div class="row g-2">
+                                <div class="col-12 col-sm-6">
+                                    <label for="analytic-event" class="form-label">Event</label>
+                                    <select id="analytic-event" name="event" class="form-select" data-tom-select>
+                                        <option value="">All Events</option>
+                                        @foreach ($events as $event)
+                                            <option value="{{ $event->uuid }}" @selected($filters['event'] === $event->uuid)>{{ $event->title }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-12 col-sm-6">
+                                    <label for="analytic-day" class="form-label">Event Day</label>
+                                    <select id="analytic-day" name="event_day" class="form-select" @disabled(! $filters['event'])>
+                                        <option value="">{{ $filters['event'] ? 'Semua Event Day' : 'Pilih Event terlebih dahulu' }}</option>
+                                        @foreach ($analytics['event_days'] as $day)
+                                            <option value="{{ $day['id'] }}" @selected($filters['event_day'] === $day['id'])>{{ $day['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </x-slot:leading>
+                    <div class="col-6">
+                        <label for="analytic-start" class="form-label">Tanggal Mulai</label>
+                        <input id="analytic-start" type="date" name="start_date" value="{{ $filters['start_date'] }}" data-filter-label="Tanggal Mulai" class="form-control">
+                    </div>
+                    <div class="col-6">
+                        <label for="analytic-end" class="form-label">Tanggal Selesai</label>
+                        <input id="analytic-end" type="date" name="end_date" value="{{ $filters['end_date'] }}" data-filter-label="Tanggal Selesai" class="form-control">
+                    </div>
+                    @include('organizations._filters', ['filterPrefix' => 'analytic', 'organizationSelection' => $filters])
+                </x-ui.compact-filters>
+                <noscript><button type="submit" class="btn btn-primary">Tampilkan</button></noscript>
             </form>
             <p class="text-secondary small mb-0 mt-3">
                 Filter tanggal mengikuti tanggal Event Day, termasuk hari tidak aktif dan riwayat event.
@@ -74,6 +78,9 @@
         </x-ui.card>
 
         <div data-analytic-feedback class="d-none" role="status" aria-live="polite" aria-atomic="true"></div>
+        <button type="submit" form="analytic-filters" data-analytic-refresh class="btn btn-outline-primary btn-sm mb-3 d-none">
+            <x-ui.icon name="refresh" class="me-1" /> Coba lagi
+        </button>
         <p data-analytic-empty class="alert alert-info {{ $kpis['total_events'] ? 'd-none' : '' }}">Tidak ada event yang sesuai dengan filter.</p>
         <div class="row row-cards mb-3 analytic-kpis" aria-label="Ringkasan Analytic" role="group">
             @foreach ($cards as $key => [$label, $description])

@@ -33,6 +33,12 @@
 
     <div class="card-body">
 
+        <x-ui.compact-filters id="event-participant-filters" table="eventParticipantsTable">
+            <x-ui.compact-filter-select id="event-participants-type" label="Jenis Peserta" data-filter-key="type"
+                :options="['' => 'Semua Jenis', 'employee' => 'Employee', 'external' => 'External']" />
+            <x-ui.compact-filter-select id="event-participants-status" label="Status Registrasi" data-filter-key="status"
+                :options="['' => 'Semua Status', 'registered' => 'Registered', 'cancelled' => 'Cancelled']" />
+        </x-ui.compact-filters>
         <div class="table-responsive">
 
             <table id="eventParticipantsTable" class="table table-vcenter table-hover w-100" data-datatable
@@ -97,7 +103,7 @@
                             $isRegistered = $registration->isRegistered();
                         @endphp
 
-                        <tr>
+                        <tr data-filter-type="{{ $isEmployee ? 'employee' : 'external' }}" data-filter-status="{{ $registration->status }}">
 
                             {{-- No --}}
                             <td>

@@ -28,18 +28,22 @@
                 </div>
             </div>
             @endunless
-            <fieldset class="mb-3">
-                <legend class="form-label">Jenis Peserta</legend>
-                <div class="btn-group" role="group" aria-label="Jenis Peserta">
-                    <input type="radio" class="btn-check" name="manual_type" id="manual-employee" value="employee" checked>
-                    <label class="btn btn-outline-primary" for="manual-employee">Internal</label>
-                    <input type="radio" class="btn-check" name="manual_type" id="manual-external" value="external">
-                    <label class="btn btn-outline-primary" for="manual-external">External</label>
+            <div class="row g-2 align-items-end">
+                <fieldset class="col-auto">
+                    <legend class="form-label">Jenis Peserta</legend>
+                    <div class="btn-group" role="group" aria-label="Jenis Peserta">
+                        <input type="radio" class="btn-check" name="manual_type" id="manual-employee" value="employee" checked>
+                        <label class="btn btn-outline-primary" for="manual-employee">Internal</label>
+                        <input type="radio" class="btn-check" name="manual_type" id="manual-external" value="external">
+                        <label class="btn btn-outline-primary" for="manual-external">External</label>
+                    </div>
+                </fieldset>
+                <div class="col-12 col-sm">
+                    <label for="manual-search" class="form-label">Cari Peserta</label>
+                    <input type="search" id="manual-search" class="form-control" maxlength="100" autocomplete="off"
+                        placeholder="Cari NIK/NIP atau nama karyawan" aria-describedby="manual-status" aria-controls="manual-results" disabled>
                 </div>
-            </fieldset>
-            <label for="manual-search" class="form-label">Cari Peserta</label>
-            <input type="search" id="manual-search" class="form-control" maxlength="100" autocomplete="off"
-                placeholder="Cari NIK/NIP atau nama karyawan" aria-describedby="manual-status" aria-controls="manual-results" disabled>
+            </div>
             <div class="d-flex align-items-center gap-2 mt-1">
                 <span class="spinner-border spinner-border-sm d-none" data-manual-loading aria-hidden="true"></span>
                 <div id="manual-status" class="form-hint mt-0" role="status" aria-live="polite">{{ $fixedDay ? 'Ketik minimal 2 karakter.' : 'Pilih event dan hari pelaksanaan.' }}</div>

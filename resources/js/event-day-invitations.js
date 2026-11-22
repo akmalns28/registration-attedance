@@ -163,6 +163,7 @@ function updateInvitationRow(page, trigger, table, data) {
     if (summary) summary.textContent = data.days_label;
     if (status) {
         const invited = data.day_ids.includes(Number(page.dataset.dayId));
+        row.dataset.filterStatus = invited ? "invited" : "revoked";
         status.textContent = invited ? "Diundang" : "Undangan dicabut";
         status.classList.toggle("bg-primary-lt", invited);
         status.classList.toggle("bg-secondary-lt", !invited);

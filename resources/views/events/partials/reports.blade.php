@@ -2,8 +2,8 @@
     <h3 class="mb-1">Reports</h3>
     <p class="text-secondary">Registrasi aktif · Waktu check-in: {{ config('app.timezone') }}.</p>
 
-    <form data-report-filters class="row g-3 align-items-end mb-3">
-        <div class="col-12 col-md-4">
+    <form id="report-filters" data-report-filters data-filter-scope class="row g-2 mb-3">
+        <div class="col-6 col-lg-3">
             <label for="report-day" class="form-label">Event Day</label>
             <select id="report-day" name="report_day" class="form-select">
                 <option value="">Semua Event Day</option>
@@ -12,36 +12,33 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-6 col-md-4">
-            <label for="report-type" class="form-label">Jenis Peserta</label>
-            <select id="report-type" name="report_type" class="form-select">
-                <option value="">Semua Jenis</option><option value="employee">Employee</option><option value="external">External</option>
-            </select>
-        </div>
-        <div class="col-6 col-md-4">
+        <div class="col-6 col-lg-3">
             <label for="report-status" class="form-label">Status Kehadiran</label>
-            <select id="report-status" name="report_status" class="form-select">
+            <select id="report-status" name="report_status" data-filter-label="Status Kehadiran" class="form-select">
                 <option value="">Semua Status</option><option value="present">Hadir</option><option value="not_present">Belum Hadir</option>
             </select>
         </div>
-        @include('organizations._filters', ['filterPrefix' => 'report', 'organizationSelection' => [
-            'entity_id' => request()->query('report_entity'), 'department_id' => request()->query('report_department'),
-            'division_id' => request()->query('report_division'),
-        ]])
-        <div class="col-12 col-md-4">
-            <label for="report-search" class="form-label">Pencarian</label>
-            <input id="report-search" name="report_search" type="search" maxlength="200" class="form-control" placeholder="Nama peserta atau nomor registrasi">
-        </div>
-        <div class="col-12 col-md-4">
-            <div class="d-flex gap-2">
-                <button type="submit" data-report-refresh class="btn btn-primary flex-fill"><x-ui.icon name="refresh" class="me-1" /><span data-button-label>Perbarui</span></button>
-                <button type="button" data-report-reset class="btn btn-outline-secondary flex-fill">Reset</button>
-            </div>
-        </div>
+        <x-ui.compact-filters id="report-advanced-filters" class="col-12 col-lg-6">
+            <x-slot:leading>
+                <div class="flex-fill">
+                    <label for="report-search" class="form-label">Cari peserta</label>
+                    <input id="report-search" name="report_search" type="search" maxlength="200" class="form-control" placeholder="Nama atau nomor registrasi">
+                </div>
+            </x-slot:leading>
+            <x-ui.compact-filter-select id="report-type" name="report_type" label="Jenis Peserta"
+                :options="['' => 'Semua Jenis', 'employee' => 'Employee', 'external' => 'External']" />
+            @include('organizations._filters', ['filterPrefix' => 'report', 'organizationSelection' => [
+                'entity_id' => request()->query('report_entity'), 'department_id' => request()->query('report_department'),
+                'division_id' => request()->query('report_division'),
+            ]])
+        </x-ui.compact-filters>
     </form>
     <p class="text-secondary small">Filter organisasi berlaku untuk Employee. Ringkasan mengikuti seluruh hasil filter dan pencarian.</p>
 
     <div data-report-feedback class="d-none" role="status" aria-live="polite" aria-atomic="true"></div>
+    <button type="submit" form="report-filters" data-report-refresh class="btn btn-outline-primary btn-sm mb-3 d-none">
+        <x-ui.icon name="refresh" class="me-1" /> Coba lagi
+    </button>
     <div class="row row-cards mb-3" role="group" aria-label="Ringkasan Reports">
         @foreach (['expected' => 'Potensi Kehadiran', 'present' => 'Hadir', 'not_present' => 'Belum Hadir', 'percentage' => 'Persentase Kehadiran'] as $key => $title)
             <div class="col-6 col-xl-3"><x-ui.stat-card data-report-summary="{{ $key }}" :title="$title" value="—" /></div>

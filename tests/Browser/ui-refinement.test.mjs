@@ -34,6 +34,7 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
     const artifacts = await mkdtemp(join(tmpdir(), "ui-refinement-browser-"));
     suite.diagnostic(`Browser artifacts: ${artifacts}`);
     let server, client, processHandle;
+    const candidateRequests = [];
     try {
         const generated = await promisify(execFile)("php", ["vendor/bin/phpunit", "tests/Feature/UiRefinementTest.php",
             "--filter=test_browser_fixtures_cover_management_tables_and_navigation"], {
@@ -54,6 +55,7 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                     return;
                 }
                 if (url.pathname.endsWith("/participants/candidates")) {
+                    candidateRequests.push(Object.fromEntries(url.searchParams));
                     const type = url.searchParams.get("type");
                     const page = Number(url.searchParams.get("page"));
                     const search = url.searchParams.get("search").toLowerCase();
@@ -128,6 +130,69 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 catch (error) { if (Date.now() > deadline) { throw error; } await new Promise((resolve) => setTimeout(resolve, 40)); }
             }
         }
+
+        await suite.test("compact table criteria compose with search and preserve filtered exports", async () => {
+            await fresh("employees");
+            const matching = await client.evaluate(`
+                const find = (selector) => document.querySelector("#employeesTable_wrapper " + selector);
+                const search = find('input[type="search"]');
+                search.value = "Participant"; search.dispatchEvent(new Event("input", { bubbles: true }));
+                find("[data-filter-toggle]").click();
+                const entity = find("#employees-entity");
+                entity.value = entity.options[1].value; entity.dispatchEvent(new Event("change", { bubbles: true }));
+                const department = find("#employees-department");
+                department.value = [...department.options].find((option) => option.textContent.includes("Participant Nine")).value;
+                department.dispatchEvent(new Event("change", { bubbles: true }));
+                await until(() => find(".dt-info").textContent.includes("dari 1 data"));
+                find("[data-filter-close]").click();
+                return { text: find("tbody").textContent, chips: find("[data-filter-chips]").children.length, search: search.value };
+            `);
+            assert.match(matching.text, /Participant Nine/);
+            assert.doesNotMatch(matching.text, /Participant Ten/);
+            assert.equal(matching.chips, 2);
+            assert.equal(matching.search, "Participant");
+            const rows = csvRows((await exported("csv", await downloadDirectory("employees", "organization-filter"), "employee-management")).toString("utf8"));
+            assert.equal(rows.length, 2);
+            assert.ok(rows[1].includes("Participant Nine"));
+            await client.evaluate(`
+                const wrapper = document.querySelector("#employeesTable_wrapper");
+                wrapper.querySelector("[data-filter-toggle]").click();
+                wrapper.querySelector("[data-filter-reset]").click();
+                await until(() => wrapper.querySelector(".dt-info").textContent.includes("dari 4 data"));
+                if (wrapper.querySelector('input[type="search"]').value !== "Participant") { throw new Error("Reset cleared search"); }
+            `);
+        });
+
+        await suite.test("participant and invitee filters keep contextual status available", async () => {
+            for (const [page, hash, selector, status] of [
+                ["event", "#event-participants", "#eventParticipantsTable", "registered"],
+                ["day", "#day-invitations", "[data-day-invitations-table]", "invited"],
+            ]) {
+                await fresh(page, hash);
+                const result = await client.evaluate(`
+                    const table = document.querySelector(${JSON.stringify(selector)});
+                    const controls = table.closest(".dt-container").querySelector("[data-compact-filters]");
+                    await until(() => controls.querySelector("[data-filter-toggle]").getBoundingClientRect().width > 0);
+                    controls.querySelector("[data-filter-toggle]").click();
+                    const type = controls.querySelector('[data-filter-key="type"]');
+                    const status = controls.querySelector('[data-filter-key="status"]');
+                    type.value = "external"; type.dispatchEvent(new Event("change", { bubbles: true }));
+                    status.value = ${JSON.stringify(status)}; status.dispatchEvent(new Event("change", { bubbles: true }));
+                    const rows = [...table.tBodies[0].querySelectorAll("tr[data-filter-status]")];
+                    return { rows: rows.length, statuses: rows.map((row) => row.dataset.filterStatus),
+                        types: rows.map((row) => row.dataset.filterType), headers: table.tHead.textContent,
+                        search: Boolean(controls.querySelector('input[type="search"]').getBoundingClientRect().width) };
+                `);
+                assert.ok(result.rows > 0);
+                assert.ok(result.statuses.every((rowStatus) => rowStatus === status));
+                assert.ok(result.types.every((type) => type === "external"));
+                assert.match(result.headers, /Status/);
+                assert.equal(result.search, true);
+                if (page === "day") {
+                    assert.match(result.headers, /Kehadiran/);
+                }
+            }
+        });
 
         for (const [page, filename] of Object.entries({ events: "event-management", employees: "employee-management", external: "external-participants",
             users: "user-management", roles: "role-management", event: "event-participants" })) {
@@ -266,6 +331,8 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 await fresh("employeeForm");
                 const errorCount = client.errors.length;
                 const style = await client.evaluate(`
+                        const entity = document.querySelector("#entity_id");
+                        entity.tomselect.setValue([...entity.options].find((option) => option.textContent.includes("UI Entity")).value);
                         window.picker = document.querySelector("#department_id").tomselect;
                         picker.control.scrollIntoView({ block: "center" });
                         picker.control.click(); await until(() => picker.isOpen);
@@ -344,37 +411,72 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                     };
                     const bounds = find(".modal-dialog").getBoundingClientRect();
                     const search = find("#candidate-search");
+                    const type = find("#candidate-type");
+                    const toolbarAligned = Math.abs(search.getBoundingClientRect().bottom - type.getBoundingClientRect().bottom) < 1;
+                    const coverage = find("[data-invitation-coverage]");
+                    const invitationVisible = coverage.getBoundingClientRect().bottom < innerHeight;
+                    const entity = find("#candidate-entity");
                     const department = find("#candidate-department");
+                    const division = find("#candidate-division");
+                    const toggle = find("[data-filter-toggle]");
+                    const panel = find("[data-filter-panel]");
                     const submit = find('button[type="submit"]');
                     await until(() => find('[data-candidate-id="15"]'));
                     find("#candidate-select-all").click();
                     find("[data-candidate-next]").click();
                     await until(() => find('[data-candidate-id="16"]:checked'));
                     const alreadyRegisteredDisabled = find('[data-candidate-id="17"]').disabled;
+                    const zeroChipsHidden = find("[data-filter-chips]").hidden;
+                    const initiallyDisabled = division.disabled;
+                    toggle.click();
+                    await new Promise(requestAnimationFrame);
+                    const panelBounds = panel.getBoundingClientRect();
+                    const hit = document.elementFromPoint(panelBounds.x + panelBounds.width / 2, panelBounds.y + 20);
+                    const unclipped = panelBounds.left >= 0 && panelBounds.right <= innerWidth && panel.contains(hit);
+                    const filterFocus = document.activeElement === entity;
+                    change(entity, entity.options[1].value);
                     change(department, department.options[1].value);
+                    change(division, division.options[1].value);
                     await until(() => find("[data-candidate-results]").textContent.includes("2 peserta"));
+                    const chipCount = find("[data-filter-chips]").children.length;
+                    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+                    const escapeRestored = panel.hidden && document.activeElement === toggle && modal.classList.contains("show");
+                    const chip = find('[data-filter-chips] button[aria-label^="Hapus filter Divisi"]');
+                    chip.click();
+                    const divisionCleared = !division.value && Boolean(department.value);
                     change(search, "NIP-2", "input");
                     await until(() => find('[data-candidate-id="2"]:checked') && !find('[data-candidate-id="1"]'));
-                    change(find("#candidate-type"), "external");
+                    toggle.click();
+                    find("[data-filter-reset]").click();
+                    await until(() => find('[data-candidate-id="2"]:checked'));
+                    const resetKeptSearch = search.value === "NIP-2" && find("[data-filter-chips]").hidden && division.disabled;
+                    change(type, "external");
                     change(search, "0812345", "input");
                     await until(() => find('[data-candidate-id="1"]')?.closest("tr").textContent.includes("External Guest"));
                     find('[data-candidate-id="1"]').click();
                     const count = find("[data-selected-count]").textContent;
-                    change(find("[data-invitation-coverage]"), "selected");
+                    change(coverage, "selected");
                     const checkedBeforeSubmit = Boolean(submitted);
                     const requiresDay = submit.disabled;
                     const day = find('input[name="day_ids[]"]');
                     day.click();
                     submit.click();
                     return { submitted, day: day.value, count, alreadyRegisteredDisabled, checkedBeforeSubmit,
-                        requiresDay, departmentHidden: find("[data-candidate-department-filter]").hidden,
+                        requiresDay, filterHidden: toggle.hidden && panel.hidden,
+                        zeroChipsHidden, initiallyDisabled, unclipped, filterFocus, chipCount, escapeRestored, divisionCleared, resetKeptSearch, toolbarAligned, invitationVisible,
                         fits: bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight };
                 `);
                 assert.deepEqual(result.submitted, { employees: Array.from({ length: 16 }, (_, index) => String(index + 1)),
                     externals: ["1"], days: [result.day] });
                 assert.equal(result.count, "17 peserta dipilih");
                 assert.equal(result.checkedBeforeSubmit, false);
-                assert.ok(result.alreadyRegisteredDisabled && result.requiresDay && result.departmentHidden && result.fits);
+                assert.ok(result.alreadyRegisteredDisabled && result.requiresDay && result.filterHidden && result.fits);
+                assert.equal(result.chipCount, 3);
+                for (const key of ["zeroChipsHidden", "initiallyDisabled", "unclipped", "filterFocus", "escapeRestored", "divisionCleared", "resetKeptSearch", "toolbarAligned", "invitationVisible"]) {
+                    assert.equal(result[key], true, key);
+                }
+                assert.ok(candidateRequests.some((query) => query.entity_id && query.department_id && query.division_id));
+                assert.ok(candidateRequests.filter((query) => query.type === "external").every((query) => !query.entity_id && !query.department_id && !query.division_id));
             });
         }
 

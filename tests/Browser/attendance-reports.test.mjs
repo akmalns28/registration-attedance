@@ -39,6 +39,7 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
                     return `${code}
                         export { initializeEventPage } from ${JSON.stringify(resolve("resources/js/events.js").replaceAll("\\", "/"))};
                         export { initializeDataTables } from ${JSON.stringify(resolve("resources/js/plugins/datatables.js").replaceAll("\\", "/"))};
+                        export { initializeOrganizationSelections } from ${JSON.stringify(resolve("resources/js/organizations.js").replaceAll("\\", "/"))};
                         export { default as DataTable } from "datatables.net-bs5";`;
                 }
             } }],
@@ -147,7 +148,7 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
             await client.evaluate(`
                 window.fixture = ${JSON.stringify(fixture)};
                 window.reportModule = await import("/report-module.js");
-                reportModule.initializeEventPage(); reportModule.initializeDataTables();
+                reportModule.initializeOrganizationSelections(); reportModule.initializeEventPage(); reportModule.initializeDataTables();
                 window.reports = reportModule.initializeAttendanceReports();
                 window.waitForReports = async (search = null) => {
                     const deadline = Date.now() + 10000;
@@ -208,7 +209,7 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
             assert.equal(result.hash, "#event-reports");
         });
 
-        await suite.test("filters combine, External clears Department, and Reset restores the report", async () => {
+        await suite.test("filters combine, External clears Department, and Reset preserves Event Day and sort", async () => {
             await fresh();
             const result = await client.evaluate(`
                 const select = async (name, value) => {
@@ -216,20 +217,29 @@ test("Attendance Reports in Event Detail", { skip: !browser, timeout: 180000 }, 
                     field.dispatchEvent(new Event("change", { bubbles: true })); await waitForReports();
                 };
                 await select("report_day", fixture.day);
+                const dayCount = reports.table.page.info().recordsDisplay;
+                reports.table.order([2, "desc"]).draw(); await waitForReports();
+                reports.form.querySelector("[data-filter-toggle]").click();
                 await select("report_type", "employee");
                 await select("report_department", fixture.department);
                 await select("report_status", "present");
                 const filtered = { rows: reports.table.rows().count(), participant: reports.table.row(0).data().participant_name,
                     percent: reports.page.querySelector('[data-report-summary="percentage"] .h1').textContent };
                 await select("report_type", "external");
-                const external = { disabled: reports.department.disabled, department: reports.department.value, type: reports.table.row(0).data().participant_type };
-                reports.page.querySelector("[data-report-reset]").click(); await waitForReports();
-                return { filtered, external, reset: { rows: reports.table.page.info().recordsDisplay, departmentEnabled: !reports.department.disabled,
-                    type: reports.type.value, hash: location.hash, day: reports.form.elements.namedItem("report_day").value } };
+                const department = reports.form.elements.namedItem("report_department");
+                const external = { disabled: department.disabled, department: department.value, type: reports.table.row(0).data().participant_type };
+                const chips = [...reports.form.querySelector("[data-filter-chips]").children].map((chip) => chip.getAttribute("aria-label"));
+                reports.form.querySelector("[data-filter-reset]").click(); await waitForReports();
+                return { filtered, external, chips, dayCount,
+                    reset: { rows: reports.table.page.info().recordsDisplay, departmentEnabled: !department.disabled,
+                        type: reports.type.value, hash: location.hash, day: reports.form.elements.namedItem("report_day").value,
+                        order: reports.table.order()[0], chipsHidden: reports.form.querySelector("[data-filter-chips]").hidden } };
             `);
             assert.deepEqual(result.filtered, { rows: 1, participant: "Alice Employee", percent: "100%" });
             assert.deepEqual(result.external, { disabled: true, department: "", type: "external" });
-            assert.deepEqual(result.reset, { rows: 24, departmentEnabled: true, type: "", hash: "#event-reports", day: "" });
+            assert.deepEqual(result.chips, ["Hapus filter Status Kehadiran: Hadir", "Hapus filter Jenis Peserta: External"]);
+            assert.deepEqual(result.reset, { rows: result.dayCount, departmentEnabled: true, type: "", hash: "#event-reports",
+                day: String(fixture.day), order: [2, "desc"], chipsHidden: true });
         });
 
         await suite.test("search is debounced and updates global summary with server-side sorting", async () => {
