@@ -19,6 +19,8 @@
         @if ($module === 'organizations')
             <p>Gunakan template di atas. Ulangi kode, nama, dan status induk pada setiap baris terkait. Isi status dengan Aktif atau Tidak Aktif. Active dan Inactive juga diterima.</p>
             <p>Untuk baris entitas saja, kosongkan kolom departemen dan divisi. Isi kolom departemen saat menambahkan divisi.</p>
+        @elseif ($module === 'external-participants')
+            <p>Gunakan kolom <code>{{ implode(', ', $definition['columns']) }}</code>. Hanya kolom <code>name</code> yang wajib diisi. Kolom lainnya opsional. Jika mengisi <code>status</code>, gunakan Aktif, Tidak Aktif, Active, atau Inactive.</p>
         @else
             <p>Gunakan kolom <code>{{ implode(', ', $definition['columns']) }}</code>. Isi <code>status</code> dengan Aktif atau Tidak Aktif. Active dan Inactive juga diterima.</p>
         @endif
@@ -73,6 +75,6 @@
     @elseif ($module === 'users')
         <x-ui.card title="Role yang Dapat Dipakai" class="mt-3"><div class="d-flex flex-wrap gap-2">@foreach ($roles as $role)<code>{{ $role }}</code>@endforeach</div></x-ui.card>
     @elseif ($module === 'external-participants')
-        <p class="text-secondary mt-3">Sertakan email atau telepon untuk pemeriksaan duplikasi. Kemiripan kontak atau nama dan organisasi ditandai untuk pemeriksaan dan tidak dibuat otomatis.</p>
+        <p class="text-secondary mt-3">Baris dengan email, telepon, atau kombinasi nama dan organisasi yang sama ditandai dan dilewati.</p>
     @endif
 @endsection

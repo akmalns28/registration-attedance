@@ -137,7 +137,7 @@ class ImportSpreadsheetReader
             $limit = count($columns) * (self::MAX_CELL_LENGTH * 4 * 2 + 3) + 2;
             $delimiter = ',';
             $headers = $this->csvRecord($stream, $delimiter, $limit);
-            if (count($headers ?: []) === 1) {
+            if (count($headers ?: []) === 1 && str_contains($headers[0] ?? '', ';')) {
                 fseek($stream, $start);
                 $delimiter = ';';
                 $headers = $this->csvRecord($stream, $delimiter, $limit);
