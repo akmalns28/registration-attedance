@@ -28,7 +28,7 @@ class BulkImportService
         'employees' => ['title' => 'Employees', 'permission' => 'employees.manage', 'route' => 'employees',
             'columns' => ['nip', 'name', 'entity', 'department', 'division', 'email', 'phone', 'status'], 'required' => ['nip', 'name', 'department', 'status']],
         'external-participants' => ['title' => 'External Participants', 'permission' => 'external-participants.manage', 'route' => 'external-participants',
-            'columns' => ['name', 'email', 'phone', 'organization', 'position', 'status'], 'required' => ['name', 'status']],
+            'columns' => ['name', 'email', 'phone', 'organization', 'position', 'status'], 'required' => ['name']],
         'users' => ['title' => 'Application Users', 'permission' => 'users.manage', 'route' => 'settings.users',
             'columns' => ['name', 'email', 'status', 'role'], 'required' => ['name', 'email', 'status', 'role']],
     ];
@@ -202,6 +202,9 @@ class BulkImportService
         if ($module === 'employees') {
             $rules['nip'] = array_values(array_filter($rules['nip'], fn (mixed $rule): bool => ! $rule instanceof Unique));
             unset($rules['entity_id'], $rules['department_id'], $rules['division_id']);
+        } elseif ($module === 'external-participants') {
+            $rules['is_active'] = ['nullable', 'boolean'];
+            $messages['email.max'] = 'Email maksimal 255 karakter.';
         } elseif ($module === 'users') {
             $rules['email'] = array_values(array_filter($rules['email'], fn (mixed $rule): bool => ! $rule instanceof Unique));
             unset($rules['roles'], $rules['roles.*']);
@@ -211,7 +214,7 @@ class BulkImportService
         }
         $organization = $module === 'employees' ? new EmployeeOrganizationReferences : null;
         $aliases = $this->referenceAliases($references);
-        $normalized = array_map(fn (array $row): array => $this->prepareRow($row, $organization, $module === 'users', $references, $aliases), $raw);
+        $normalized = array_map(fn (array $row): array => $this->prepareRow($row, $module, $organization, $references, $aliases), $raw);
         $counts = [];
         foreach ($normalized as $row) {
             foreach ($this->keys($module, $row['data']) as $key) {
@@ -222,9 +225,6 @@ class BulkImportService
         $rows = [];
         foreach ($normalized as $row) {
             $errors = [...$row['errors'], ...Validator::make($row['data'], $rules, $messages)->errors()->all()];
-            if ($module === 'external-participants' && blank($row['data']['email']) && blank($row['data']['phone'])) {
-                $errors[] = 'Isi email atau telepon untuk pemeriksaan duplikasi. Peserta tanpa keduanya perlu ditambahkan melalui form manual.';
-            }
             $keys = $this->keys($module, $row['data']);
             $duplicate = array_any($keys, fn (string $key): bool => ($counts[$key] ?? 0) > 1);
             $exists = array_any($keys, fn (string $key): bool => isset($existing[$key]));
@@ -251,7 +251,7 @@ class BulkImportService
      * @param  array<string, array<int, Role>>  $aliases
      * @return array{row: int, input: array<string, mixed>, data: array<string, mixed>, display: array<string, string>, errors: array<int, string>}
      */
-    private function prepareRow(array $row, ?EmployeeOrganizationReferences $organization, bool $resolveRole, Collection $references, array $aliases): array
+    private function prepareRow(array $row, string $module, ?EmployeeOrganizationReferences $organization, Collection $references, array $aliases): array
     {
         $input = $row['data'];
         foreach (self::LEGACY_HEADERS as $legacy => $field) {
@@ -262,6 +262,9 @@ class BulkImportService
         }
 
         $data = $this->normalize($input);
+        if ($module === 'external-participants') {
+            $data = array_map(fn (?string $value): ?string => $value === '' ? null : $value, $data);
+        }
         $display = [];
         $errors = $row['errors'];
         $status = self::booleanStatus($data['status']);
@@ -277,7 +280,7 @@ class BulkImportService
             $data = [...$data, ...$resolved['attributes']];
             $display = [...$display, ...$resolved['display']];
             $errors = [...$errors, ...$resolved['errors']];
-        } elseif ($resolveRole) {
+        } elseif ($module === 'users') {
             $reference = $this->resolveRole($input['role'], $references, $aliases);
             unset($data['role']);
             if (is_string($reference)) {

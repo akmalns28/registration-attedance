@@ -33,7 +33,8 @@ class ImportSpreadsheetTemplate extends DefaultValueBinder implements FromArray,
     public function styles(Worksheet $sheet): array
     {
         $sheet->setTitle('Data')->freezePane('A2');
-        foreach (BulkImportService::module($this->module)['columns'] as $index => $field) {
+        $definition = BulkImportService::module($this->module);
+        foreach ($definition['columns'] as $index => $field) {
             $column = Coordinate::stringFromColumnIndex($index + 1);
             $sheet->getColumnDimension($column)->setWidth($field === 'name' || $field === 'email' ? 32 : 24);
             $sheet->getStyle($column.'2:'.$column.((int) config('bulk_imports.max_rows') + 1))->getNumberFormat()->setFormatCode('@');
@@ -57,6 +58,9 @@ class ImportSpreadsheetTemplate extends DefaultValueBinder implements FromArray,
                     default => 'Isi nama organisasi sesuai kode pada tingkat ini.',
                 },
             };
+            if ($this->module === 'external-participants') {
+                $hint = (in_array($field, $definition['required'], true) ? 'Wajib diisi. ' : 'Opsional. ').$hint;
+            }
             $sheet->getComment($column.'1')->getText()->createTextRun($hint);
         }
 

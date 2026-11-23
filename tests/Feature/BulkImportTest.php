@@ -118,21 +118,83 @@ class BulkImportTest extends TestCase
     public function test_external_import_conservatively_skips_contacts_and_possible_identity_matches(): void
     {
         $existing = ExternalParticipant::factory()->create(['name' => 'Existing Person', 'email' => 'exists@example.test', 'phone' => '0812-4455', 'organization' => 'Example']);
+        ExternalParticipant::factory()->create(['name' => 'Guest Without Contact', 'email' => null, 'phone' => null, 'organization' => null]);
         $this->actingAs($this->admin());
         $id = $this->preview('external-participants', [
             [' New   Guest ', 'NEW@EXAMPLE.TEST', '0812-0000', ' Company ', ' Manager ', 'Yes'],
             ['Contact Match', 'EXISTS@EXAMPLE.TEST', null, 'Other', null, 1], ['Phone Match', null, '08124455', 'Other', null, 'No'],
-            ['Existing Person', 'different@example.test', null, 'Example', null, 1], ['No Contact', null, null, null, null, 1], ['Bad Email', 'invalid', null, null, null, 1],
+            ['Existing Person', 'different@example.test', null, 'Example', null, 1],
             ['Duplicate A', 'same@example.test', null, 'A', null, 1], ['Duplicate B', 'same@example.test', null, 'B', null, 1],
+            ['Guest without contact'],
+            ['Duplicate Name'],
+            ['duplicate   name', '', ' '],
         ]);
+
+        $this->get($this->url('external-participants', 'show', $id))->assertOk()
+            ->assertViewHas('snapshot', fn (array $snapshot): bool => array_column($snapshot['rows'], 'status') === [
+                'create', 'existing', 'existing', 'existing', 'duplicate', 'duplicate', 'existing', 'duplicate', 'duplicate',
+            ]);
         $this->post($this->url('external-participants', 'confirm', $id), ['confirm' => 1])->assertRedirect();
-        $this->assertDatabaseCount('external_participants', 2);
+        $this->assertDatabaseCount('external_participants', 3);
         $this->assertDatabaseHas('external_participants', ['name' => 'New Guest', 'email' => 'new@example.test', 'phone' => '08120000', 'organization' => 'Company', 'position' => 'Manager']);
         $this->assertSame('exists@example.test', $existing->fresh()->email);
-        $this->get($this->url('external-participants', 'result', $id))->assertViewHas('snapshot', fn (array $s): bool => $s['result_summary'] === ['created' => 1, 'skipped' => 5, 'failed' => 2]);
+        $this->get($this->url('external-participants', 'result', $id))->assertViewHas('snapshot', fn (array $s): bool => $s['result_summary'] === ['created' => 1, 'skipped' => 8, 'failed' => 0]);
     }
 
-    public function test_external_import_normalizes_supported_statuses_and_rejects_unknown_or_missing_values(): void
+    public function test_external_import_only_requires_name_and_reports_invalid_rows(): void
+    {
+        $this->actingAs($this->admin());
+        $id = $this->preview('external-participants', [
+            ['Name Only'],
+            ['Email Only', ' guest@example.test '],
+            ['Phone Only', null, '0812-3456'],
+            ['All Fields', 'all@example.test', '08120000', ' Company ', ' Manager ', 'Tidak Aktif'],
+            ['Blank Optionals', '', " \t", " \u{00A0}", ' ', " \t"],
+            [' ', 'missing@example.test'],
+            ['Bad Email', 'invalid'],
+        ]);
+        $blankOptionals = ['email' => null, 'phone' => null, 'organization' => null, 'position' => null, 'is_active' => null];
+
+        $this->get($this->url('external-participants', 'show', $id))->assertOk()
+            ->assertSee('Nama peserta wajib diisi.')->assertSee('Format email tidak valid.')
+            ->assertViewHas('snapshot', fn (array $snapshot): bool => $snapshot['summary']['create'] === 5
+                && $snapshot['rows'][0]['data'] === ['name' => 'Name Only', ...$blankOptionals]
+                && $snapshot['rows'][4]['data'] === ['name' => 'Blank Optionals', ...$blankOptionals]);
+        $this->assertDatabaseCount('external_participants', 0);
+
+        $this->post($this->url('external-participants', 'confirm', $id), ['confirm' => 1])->assertRedirect($this->url('external-participants', 'result', $id));
+
+        $this->assertDatabaseCount('external_participants', 5);
+        $this->assertDatabaseHas('external_participants', ['name' => 'Name Only', ...$blankOptionals]);
+        $this->assertDatabaseHas('external_participants', ['name' => 'Blank Optionals', ...$blankOptionals]);
+        $this->assertDatabaseHas('external_participants', ['name' => 'Email Only', ...$blankOptionals, 'email' => 'guest@example.test']);
+        $this->assertDatabaseHas('external_participants', ['name' => 'Phone Only', ...$blankOptionals, 'phone' => '08123456']);
+        $this->assertDatabaseHas('external_participants', ['name' => 'All Fields', 'email' => 'all@example.test', 'phone' => '08120000', 'organization' => 'Company', 'position' => 'Manager', 'is_active' => false]);
+        $this->get($this->url('external-participants', 'result', $id))->assertOk()
+            ->assertSee('Nama peserta wajib diisi.')->assertSee('Format email tidak valid.')
+            ->assertViewHas('snapshot', fn (array $snapshot): bool => $snapshot['result_summary'] === ['created' => 5, 'skipped' => 0, 'failed' => 2]);
+    }
+
+    public function test_external_import_accepts_a_csv_with_only_the_name_column(): void
+    {
+        $this->actingAs($this->admin());
+        $file = UploadedFile::fake()->createWithContent('import.csv', "name\r\nGuest; Name\r\n\"Surname, Name\"\r\n");
+
+        $response = $this->post($this->url('external-participants', 'preview'), ['file' => $file])->assertRedirect();
+        $id = basename($response->headers->get('Location'));
+        $this->get($this->url('external-participants', 'show', $id))->assertOk()
+            ->assertViewHas('snapshot', fn (array $snapshot): bool => $snapshot['summary']['create'] === 2);
+        $this->post($this->url('external-participants', 'confirm', $id), ['confirm' => 1])->assertRedirect();
+
+        $this->assertDatabaseHas('external_participants', ['name' => 'Guest; Name', 'is_active' => null]);
+        $this->assertDatabaseHas('external_participants', ['name' => 'Surname, Name', 'is_active' => null]);
+
+        $missingName = UploadedFile::fake()->createWithContent('import.csv', "email\r\nguest@example.test\r\n");
+        $this->postJson($this->url('external-participants', 'preview'), ['file' => $missingName])
+            ->assertUnprocessable()->assertJsonValidationErrors(['file' => 'Kolom wajib tidak lengkap: name.']);
+    }
+
+    public function test_external_import_normalizes_supported_statuses_and_allows_blank_status(): void
     {
         $this->actingAs($this->admin());
         $statuses = [' Active ', 'Aktif', 'YeS', 'TRUE', 1, 'Inactive', ' Tidak  Aktif ', 'nO', 'FALSE', 0, 'enabled', ''];
@@ -143,11 +205,12 @@ class BulkImportTest extends TestCase
 
         $id = $this->preview('external-participants', $rows, ['name', 'email', 'phone', 'organization', 'position', 'is_active']);
         $preview = $this->get($this->url('external-participants', 'show', $id))->assertOk()
-            ->assertSee('Status tidak dikenal.')->assertSee('Status peserta wajib diisi.');
-        $this->assertSame(10, $preview->viewData('snapshot')['summary']['create']);
+            ->assertSee('Status tidak dikenal.');
+        $this->assertSame(11, $preview->viewData('snapshot')['summary']['create']);
 
         $this->post($this->url('external-participants', 'confirm', $id), ['confirm' => 1])->assertRedirect();
-        $this->assertSame(array_fill(0, 5, true) + array_fill(5, 5, false), ExternalParticipant::query()->orderBy('id')->pluck('is_active')->all());
+        $this->assertSame([...array_fill(0, 5, true), ...array_fill(0, 5, false), null], ExternalParticipant::query()->orderBy('id')->pluck('is_active')->all());
+        $this->assertDatabaseMissing('external_participants', ['name' => 'Guest 10']);
     }
 
     public function test_users_are_local_inactive_without_passwords_keycloak_calls_or_super_admin_escalation(): void
