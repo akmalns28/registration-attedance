@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
 use Illuminate\Testing\TestResponse;
 use Illuminate\View\View as BladeView;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\Attributes\TestWith;
 use RuntimeException;
 use Spatie\Permission\Models\Permission;
@@ -88,19 +90,28 @@ class EventInvitationExportTest extends TestCase
         $this->assertDatabaseCount('event_registration_notifications', 0);
     }
 
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_pdf_embeds_the_event_logo_and_maps_link(): void
     {
         Storage::fake('local');
+        config(['event_invitations.memory_limit_mb' => 96]);
         $logoPath = UploadedFile::fake()->image('logo.jpg', 70, 40)->store('event-logos', 'local');
         $url = 'https://maps.google.com/?q=Kota';
         $event = Event::factory()->create(['logo_path' => $logoPath, 'google_maps_url' => $url, 'location' => 'Hotel Kota']);
         $registration = EventRegistration::factory()->for($event)->invitedTo()->create();
         $rendered = [];
-        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
+        $previousLimit = ini_get('memory_limit');
+        $appliedLimit = 0;
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered, &$appliedLimit): void {
             $rendered = $view->getData();
+            $appliedLimit = ini_parse_quantity(ini_get('memory_limit'));
         });
 
         $response = $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk();
+        $this->assertGreaterThan(0, $appliedLimit);
+        $this->assertLessThanOrEqual(96 * 1024 * 1024, $appliedLimit);
+        $this->assertSame($previousLimit, ini_get('memory_limit'));
         $this->assertStringStartsWith('data:image/jpeg;base64,', $rendered['logoImage']);
         $this->assertStringContainsString('Klik lokasi untuk membuka Google Maps', view('events.partials.invitation-document', $rendered)->render());
         $this->assertStringContainsString('/URI ('.$url.')', $response->getContent());
@@ -201,7 +212,7 @@ class EventInvitationExportTest extends TestCase
         $lastDay = EventDay::factory()->for($event)->create(['day_number' => 3, 'date' => '2027-02-03']);
         $employee = EventRegistration::factory()->for($event)->invitedTo($firstDay)
             ->for(Employee::factory()->create(['name' => '../Putri Andini']))->create();
-        $guest = ExternalParticipant::factory()->create(['name' => 'Putri Andini']);
+        $guest = ExternalParticipant::factory()->create(['name' => 'Putri Andini', 'email' => null, 'phone' => null]);
         $external = EventRegistration::factory()->external()->for($event)->invitedTo($firstDay, $lastDay)
             ->create(['external_participant_id' => $guest->id]);
         EventRegistration::factory()->cancelled()->for($event)->invitedTo($firstDay)->create();
@@ -243,22 +254,60 @@ class EventInvitationExportTest extends TestCase
             ->assertJsonValidationErrors(['export' => 'Tidak ada peserta dengan hari undangan aktif untuk filter ini.']);
     }
 
-    public function test_bulk_export_spans_batches_and_loads_employee_details_once_per_batch(): void
+    #[TestWith([50, 1])]
+    #[TestWith([100, 2])]
+    #[TestWith([300, 6])]
+    public function test_bulk_export_limits_rendering_memory_with_a_full_size_logo(int $count, int $batches): void
     {
-        $event = Event::factory()->create();
-        EventRegistration::factory()->for($event)->invitedTo()->count(51)->create();
+        Storage::fake('local');
+        $logo = imagecreatetruecolor(3000, 2250);
+        imagealphablending($logo, false);
+        imagesavealpha($logo, true);
+        imagefill($logo, 0, 0, imagecolorallocatealpha($logo, 30, 107, 196, 60));
+        $logoPath = 'event-logos/large.png';
+        Storage::disk('local')->makeDirectory('event-logos');
+        imagepng($logo, Storage::disk('local')->path($logoPath));
+        unset($logo);
+
+        $event = Event::factory()->create(['title' => 'Forum Operasional', 'logo_path' => $logoPath]);
+        $day = EventDay::factory()->for($event)->create();
+        $employees = EventRegistration::factory()->for($event)->invitedTo($day)->count(intdiv($count, 2))->create();
+        $guests = EventRegistration::factory()->external()->for($event)->invitedTo($day)->count(intdiv($count, 2))->create();
         $this->actingAs($this->staff('registrations.manage'));
+        $previousLimit = ini_get('memory_limit');
         DB::enableQueryLog();
+        gc_collect_cycles();
+        $baselineMemory = memory_get_usage(true);
+        memory_reset_peak_usage();
 
         try {
-            $response = $this->get(route('events.participants.invitations.export', $event))->assertOk();
+            $response = $this->get(route('events.participants.invitations.export', ['event' => $event, 'participant_type' => 'all']))->assertOk();
+            $peakGrowth = memory_get_peak_usage(true) - $baselineMemory;
             $employeeQueries = array_filter(DB::getQueryLog(), fn (array $query): bool => str_contains($query['query'], 'from "employees"'));
         } finally {
             DB::disableQueryLog();
         }
 
-        $this->assertCount(51, $this->zipEntries($response));
-        $this->assertCount(2, $employeeQueries);
+        $this->assertSame($previousLimit, ini_get('memory_limit'));
+        $this->assertLessThan(64 * 1024 * 1024, $peakGrowth, 'Peak PHP memory growth during ZIP generation');
+        $entries = $this->zipEntries($response);
+        $this->assertCount($count, $entries);
+        // Employees are inserted first, so only their half of the lookup batches query employees.
+        $this->assertCount((int) ceil($batches / 2), $employeeQueries);
+        $entriesByRegistration = [];
+        foreach ($entries as $filename => $pdf) {
+            $this->assertMatchesRegularExpression('/^undangan-forum-operasional-.*-\d+\.pdf$/', $filename);
+            $registrationId = (int) str($filename)->beforeLast('.pdf')->afterLast('-')->value();
+            $entriesByRegistration[$registrationId] = $pdf;
+            $this->assertInvitationPdf($pdf);
+        }
+        $this->assertSame([...$employees->modelKeys(), ...$guests->modelKeys()], array_keys($entriesByRegistration));
+        foreach ([$employees->first(), $guests->first(), $guests->last()] as $registration) {
+            $pdf = $entriesByRegistration[$registration->id];
+            $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 256\s+/Height 192\b~', $pdf);
+            $this->assertStringContainsString('/SMask ', $pdf);
+            $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
+        }
     }
 
     public function test_bulk_export_reports_a_failed_pdf_without_returning_a_partial_zip(): void
@@ -267,17 +316,19 @@ class EventInvitationExportTest extends TestCase
         [$first, $second] = EventRegistration::factory()->for($event)->invitedTo()->count(2)->create();
         $qrCode = app(RegistrationQrCodeService::class);
         $failure = new RuntimeException('QR generator unavailable');
+        $previousLimit = ini_get('memory_limit');
         Exceptions::fake();
         $this->mock(RegistrationQrCodeService::class, function ($mock) use ($first, $second, $qrCode, $failure): void {
-            $mock->shouldReceive('generatePng')->once()->withArgs(fn (EventRegistration $row): bool => $row->is($first))
-                ->andReturn($qrCode->generatePng($first));
-            $mock->shouldReceive('generatePng')->once()->withArgs(fn (EventRegistration $row): bool => $row->is($second))
+            $mock->shouldReceive('generateInvitationPng')->once()->withArgs(fn (EventRegistration $row): bool => $row->is($first))
+                ->andReturn($qrCode->generateInvitationPng($first));
+            $mock->shouldReceive('generateInvitationPng')->once()->withArgs(fn (EventRegistration $row): bool => $row->is($second))
                 ->andThrow($failure);
         });
 
         $this->actingAs($this->staff('registrations.manage'))->getJson(route('events.participants.invitations.export', $event))
             ->assertInternalServerError()->assertJsonValidationErrors(['export' => "Undangan untuk registrasi {$second->registration_number} gagal dibuat."]);
         Exceptions::assertReported(fn (RuntimeException $reported): bool => $reported === $failure);
+        $this->assertSame($previousLimit, ini_get('memory_limit'));
     }
 
     public function test_participants_tab_shows_invitation_actions_counts_and_participant_picker_for_the_right_users(): void
@@ -338,19 +389,25 @@ class EventInvitationExportTest extends TestCase
 
     private function invitationPayload(string $pdf): string
     {
-        $this->assertStringStartsWith('%PDF-', $pdf);
-        $this->assertStringContainsString('%%EOF', $pdf);
-        $this->assertMatchesRegularExpression('/\/MediaBox\s*\[\s*0\S*\s+0\S*\s+419\.\d+\s+595\.\d+\s*\]/', $pdf);
-        $this->assertSame(1, preg_match_all('/\/Type\s*\/Page\b/', $pdf));
+        $this->assertInvitationPdf($pdf);
 
-        // Dompdf embeds the RGB image as a PDF stream using PNG row predictors.
-        $this->assertSame(1, preg_match('~/Subtype /Image\s+/Width (\d+)\s+/Height (\d+)(?:(?!endobj).)*?/ColorSpace /DeviceRGB\s+/BitsPerComponent 8\s+/Length (\d+)\s*>>\s*stream\r?\n~s', $pdf, $image, PREG_OFFSET_CAPTURE));
+        // The opaque QR is embedded as an RGB stream with PNG row predictors.
+        $this->assertSame(1, preg_match('~/Subtype /Image\s+/Width (256)\s+/Height (256)(?:(?!endobj).)*?/ColorSpace /DeviceRGB\s+/BitsPerComponent 8\s+/Length (\d+)\s*>>\s*stream\r?\n~s', $pdf, $image, PREG_OFFSET_CAPTURE));
         $streamOffset = $image[0][1] + strlen($image[0][0]);
         $imageData = substr($pdf, $streamOffset, (int) $image[3][0]);
         $png = "\x89PNG\r\n\x1a\n".$this->pngChunk('IHDR', pack('NNCCCCC', (int) $image[1][0], (int) $image[2][0], 8, 2, 0, 0, 0))
             .$this->pngChunk('IDAT', $imageData).$this->pngChunk('IEND', '');
 
         return (new QrReader($png, QrReader::SOURCE_TYPE_BLOB))->text(['TRY_HARDER' => true]);
+    }
+
+    private function assertInvitationPdf(string $pdf): void
+    {
+        $this->assertStringStartsWith('%PDF-', $pdf);
+        $this->assertStringContainsString('%%EOF', $pdf);
+        $this->assertMatchesRegularExpression('/\/MediaBox\s*\[\s*0\S*\s+0\S*\s+419\.\d+\s+595\.\d+\s*\]/', $pdf);
+        $this->assertSame(1, preg_match_all('/\/Type\s*\/Page\b/', $pdf));
+
     }
 
     private function pngChunk(string $type, string $data): string
