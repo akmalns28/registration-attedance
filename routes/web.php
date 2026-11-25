@@ -14,8 +14,10 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\EventDayController;
 use App\Http\Controllers\EventDayInvitationController;
 use App\Http\Controllers\EventInvitationExportController;
+use App\Http\Controllers\EventMediaController;
 use App\Http\Controllers\EventNotificationController;
 use App\Http\Controllers\EventParticipantController;
+use App\Http\Controllers\EventPosterController;
 use App\Http\Controllers\EventRegistrationController;
 use App\Http\Controllers\EventRegistrationQrController;
 use App\Http\Controllers\EventScheduleController;
@@ -216,6 +218,17 @@ Route::middleware(['auth', 'active'])->group(function () {
     */
 
     Route::scopeBindings()->group(function () {
+        Route::get('events/{event}/posters/{poster}', [EventPosterController::class, 'show'])
+            ->whereUuid(['event', 'poster'])->name('events.posters.show');
+
+        Route::prefix('events/{event}/gallery')->name('events.gallery.')->middleware('can:events.view')->group(function () {
+            Route::post('/', [EventMediaController::class, 'store'])->middleware('can:events.update')->name('store');
+            Route::get('{media}', [EventMediaController::class, 'show'])->whereUuid('media')->name('show');
+            Route::get('{media}/download', [EventMediaController::class, 'download'])->whereUuid('media')->name('download');
+            Route::delete('{media}', [EventMediaController::class, 'destroy'])
+                ->whereUuid('media')->middleware('can:events.update')->name('destroy');
+        });
+
         Route::get('events/{event}/reports/data', AttendanceReportController::class)
             ->middleware(['can:events.view', 'can:reports.view'])->name('events.reports.data');
 
@@ -229,8 +242,12 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('events/{event}/participants/{registration}/qr', EventRegistrationQrController::class)
             ->middleware('can:events.view')->name('events.participants.qr');
 
-        Route::get('events/{event}/participants/invitations/export', [EventInvitationExportController::class, 'bulk'])
-            ->whereUuid('event')->middleware(['can:events.view', 'can:registrations.manage'])->name('events.participants.invitations.export');
+        Route::prefix('events/{event}/participants/invitations/export')->name('events.participants.invitations.export')
+            ->whereUuid('event')->middleware(['can:events.view', 'can:registrations.manage'])->group(function () {
+                Route::match(['GET', 'HEAD', 'POST'], '/', [EventInvitationExportController::class, 'bulk'])->name('');
+                Route::get('{invitationExport}', [EventInvitationExportController::class, 'status'])->whereUuid('invitationExport')->name('.status');
+                Route::get('{invitationExport}/download', [EventInvitationExportController::class, 'archive'])->whereUuid('invitationExport')->name('.download');
+            });
 
         Route::get('events/{event}/participants/{registration}/invitation', [EventInvitationExportController::class, 'download'])
             ->whereUuid(['event', 'registration'])->middleware(['can:events.view', 'can:registrations.view'])->name('events.participants.invitation');

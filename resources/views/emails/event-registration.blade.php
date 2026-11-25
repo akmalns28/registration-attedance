@@ -46,8 +46,10 @@
                         text-align: center;
                     ">
 
-                            @isset($event_logo['contents'], $event_logo['mime'], $message)
-                                <img src="{{ $message->embedData($event_logo['contents'], $event_logo['mime'] === 'image/png' ? 'event-logo.png' : 'event-logo.jpg', $event_logo['mime']) }}"
+                            @isset($event_logo['contents'], $event_logo['mime'])
+                                <img src="{{ ($invite_preview ?? false) || ! isset($message)
+                                    ? 'data:'.$event_logo['mime'].';base64,'.base64_encode($event_logo['contents'])
+                                    : $message->embedData($event_logo['contents'], $event_logo['mime'] === 'image/png' ? 'event-logo.png' : 'event-logo.jpg', $event_logo['mime']) }}"
                                     alt="Logo {{ $event_title }}" width="72" height="72"
                                     style="display: inline-block; object-fit: contain; background-color: #ffffff; border-radius: 6px; margin-bottom: 12px;">
                             @endisset
@@ -165,16 +167,25 @@
                                             {{ $event_title }}
                                         </div>
 
-                                        @if ($event_description)
+                                        @isset($event_poster)
+                                            <img src="{{ ($invite_preview ?? false) || ! isset($message)
+                                                ? 'data:'.$event_poster['mime'].';base64,'.base64_encode($event_poster['contents'])
+                                                : $message->embedData($event_poster['contents'], 'event-poster.jpg', $event_poster['mime']) }}"
+                                                alt="Poster {{ $event_title }}" width="{{ min(500, $event_poster['width']) }}"
+                                                style="display: block; max-width: 100%; height: auto; margin: 0 auto 18px;">
+                                        @endisset
+
+                                        @if (filled($event_description))
                                             <p
                                                 style="
                                             font-size: 13px;
                                             color: #64748b;
                                             line-height: 1.7;
                                             margin: 0 0 20px;
-                                            white-space: pre-line;
+                                            overflow-wrap: anywhere;
+                                            word-break: break-word;
                                         ">
-                                                {{ $event_description }}
+                                                {!! nl2br(e($event_description)) !!}
                                             </p>
                                         @endif
 
@@ -225,27 +236,6 @@
                                                 </td>
                                             </tr>
 
-                                            <tr>
-                                                <td
-                                                    style="
-                                                padding: 8px 0;
-                                                font-size: 13px;
-                                                color: #64748b;
-                                                vertical-align: top;
-                                            ">
-                                                    Jenis Peserta
-                                                </td>
-
-                                                <td
-                                                    style="
-                                                padding: 8px 0;
-                                                font-size: 13px;
-                                                font-weight: 600;
-                                                color: #182433;
-                                            ">
-                                                    {{ $participant_type }}
-                                                </td>
-                                            </tr>
                                         </table>
 
                                     </td>
@@ -325,6 +315,11 @@
                 ">
                                                 🎟️ QR Code Registrasi
                                             </div>
+
+                                            @isset($qr_preview)
+                                                <img src="data:image/png;base64,{{ $qr_preview }}" alt="QR Code registrasi"
+                                                    width="160" height="160" style="display: block; margin: 0 auto 16px;">
+                                            @endisset
 
                                             <p
                                                 style="

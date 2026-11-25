@@ -20,7 +20,7 @@
                 $exportableCounts = $exportableRegistrations->countBy('registration_type');
             @endphp
             <div class="dropdown">
-                <button type="button" class="btn btn-outline-primary dropdown-toggle" id="invitation-export-menu"
+                <button type="button" class="btn btn-primary dropdown-toggle" id="invitation-export-menu"
                     data-bs-toggle="dropdown" aria-expanded="false">
                     <x-ui.icon name="download" class="me-2" /> Export Invitations
                 </button>
@@ -30,9 +30,13 @@
                         'employee' => ['Employee', $exportableCounts->get('employee', 0)],
                         'external' => ['External', $exportableCounts->get('external', 0)],
                     ] as $type => [$label, $count])
-                        <a class="dropdown-item" href="{{ route('events.participants.invitations.export', ['event' => $event, 'participant_type' => $type]) }}">
-                            {{ $label }} ({{ number_format($count, 0, ',', '.') }})
-                        </a>
+                        <form method="POST" action="{{ route('events.participants.invitations.export', $event) }}">
+                            @csrf
+                            <input type="hidden" name="participant_type" value="{{ $type }}">
+                            <button class="dropdown-item" type="submit" @disabled($count === 0)>
+                                {{ $label }} ({{ number_format($count, 0, ',', '.') }})
+                            </button>
+                        </form>
                     @endforeach
                 </div>
             </div>
@@ -45,6 +49,10 @@
     </div>
 
 </div>
+
+@if (! empty($invitationExports))
+    @include('events.partials.invitation-export-status')
+@endif
 
 {{-- Summary Cards --}}
 

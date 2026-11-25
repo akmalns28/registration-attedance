@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Event;
 
 use App\Models\Event;
+use App\Services\EventPosterService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -16,6 +17,7 @@ class StoreEventRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...EventPosterService::rules(),
             'title' => ['required', 'string', 'max:200'],
 
             'description' => ['nullable', 'string'],

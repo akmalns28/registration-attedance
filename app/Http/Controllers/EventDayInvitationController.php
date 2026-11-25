@@ -72,7 +72,7 @@ class EventDayInvitationController extends Controller
         ]);
         $notification->setRelation('registration', $registration);
 
-        return response((new EventRegistrationMail($notification))->render())
+        return response((new EventRegistrationMail($notification, preview: true))->render())
             ->header('Cache-Control', 'private, no-store');
     }
 

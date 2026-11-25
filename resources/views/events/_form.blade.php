@@ -108,6 +108,8 @@
             </div>
         </div>
 
+        @include('events.partials.poster-form')
+
         {{-- Event Dates --}}
         <div class="card mt-3">
 

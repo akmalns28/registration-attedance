@@ -42,6 +42,8 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
         });
         assert.match(generated.stdout, /passed/);
         const fixture = JSON.parse(await readFile(join(artifacts, "fixture.json"), "utf8"));
+        const galleryPhoto = await readFile(join(artifacts, "gallery-photo.png"));
+        const galleryClip = await readFile(new URL("./event-gallery-clip.webm", import.meta.url));
         const pages = new Map();
         for (const [key, url] of Object.entries(fixture.pages)) {
             pages.set(new URL(url).pathname, await readFile(join(artifacts, `${key}.html`), "utf8"));
@@ -52,6 +54,19 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 const url = new URL(request.url, "http://localhost");
                 if (pages.has(url.pathname)) {
                     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(pages.get(url.pathname).replaceAll(fixture.origin, origin));
+                    return;
+                }
+                if ([fixture.media.poster, fixture.media.photo].some((path) => new URL(path).pathname === url.pathname)) {
+                    response.writeHead(200, { "Content-Type": "image/png" }).end(galleryPhoto);
+                    return;
+                }
+                if (url.pathname === new URL(fixture.media.clip).pathname) {
+                    if (request.headers.range === "bytes=0-") {
+                        response.writeHead(206, { "Content-Type": "video/webm", "Content-Length": galleryClip.length,
+                            "Content-Range": `bytes 0-${galleryClip.length - 1}/${galleryClip.length}` }).end(galleryClip);
+                    } else {
+                        response.writeHead(200, { "Content-Type": "video/webm", "Content-Length": galleryClip.length }).end(galleryClip);
+                    }
                     return;
                 }
                 if (url.pathname.endsWith("/participants/candidates")) {
@@ -479,6 +494,59 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 assert.ok(candidateRequests.filter((query) => query.type === "external").every((query) => !query.entity_id && !query.department_id && !query.division_id));
             });
         }
+
+        await suite.test("poster editing and gallery previews fit and work on a mobile viewport", async () => {
+            await client.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+            await fresh("eventEdit");
+            const posters = await client.evaluate(`
+                const list = document.querySelector("[data-poster-list]");
+                const form = list.closest("form");
+                const existing = list.firstElementChild.dataset.posterKey;
+                const input = form.querySelector("#event-posters");
+                const image = await (await fetch(list.querySelector("[data-poster-preview]").href)).blob();
+                const select = (name, date) => {
+                    const files = new DataTransfer();
+                    files.items.add(new File([image], name, { type: "image/png", lastModified: date }));
+                    input.files = files.files;
+                    input.dispatchEvent(new Event("change", { bubbles: true }));
+                };
+                select("first.png", 1);
+                select("second.png", 2);
+                const last = list.lastElementChild;
+                await until(() => last.querySelector("img").naturalWidth > 0);
+                last.querySelector('[data-poster-action="primary"]').click();
+                last.querySelector('[data-poster-action="up"]').click();
+                last.querySelector('[data-poster-action="up"]').click();
+                const ordered = new FormData(form);
+                list.querySelector('[data-poster-key="' + existing + '"] [data-poster-action="remove"]').click();
+                const saved = new FormData(form);
+                return { order: ordered.getAll("poster_order[]"), selected: ordered.get("poster_primary"),
+                    uploads: saved.getAll("posters[]").map(file => file.name), existing, removed: saved.getAll("poster_remove[]"),
+                    fits: document.documentElement.scrollWidth <= innerWidth };
+            `);
+            assert.deepEqual(posters.order, ["upload:0", posters.existing, "upload:1"]);
+            assert.deepEqual(posters.uploads, ["second.png", "first.png"]);
+            assert.deepEqual(posters.removed, [posters.existing]);
+            assert.equal(posters.selected, "upload:0");
+            assert.equal(posters.fits, true);
+
+            await fresh("event", "#event-gallery");
+            const gallery = await client.evaluate(`
+                const pane = document.querySelector("#event-gallery");
+                await until(() => pane.classList.contains("active"));
+                const clip = pane.querySelector("video");
+                clip.muted = true;
+                await clip.play();
+                const card = clip.closest("article");
+                card.querySelector('[data-bs-toggle="dropdown"]').click();
+                card.querySelector("[data-media-delete]").click();
+                await until(() => document.querySelector("#deleteGalleryMedia").classList.contains("show"));
+                return { plays: clip.videoWidth === 16, controls: clip.controls, cards: pane.querySelectorAll("article").length,
+                    deleteName: document.querySelector("[data-media-delete-name]").textContent,
+                    fits: document.documentElement.scrollWidth <= innerWidth };
+            `);
+            assert.deepEqual(gallery, { plays: true, controls: true, cards: 2, deleteName: "Klip dokumentasi", fits: true });
+        });
 
         await suite.test("small visual viewport keeps the participant footer and search reachable", async () => {
             await client.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });

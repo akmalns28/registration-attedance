@@ -44,6 +44,15 @@ return [
             'after_commit' => false,
         ],
 
+        // Use the application database so enqueueing and export progress commit together.
+        'invitation_exports' => [
+            'driver' => 'database',
+            'table' => 'jobs',
+            'queue' => 'invitation-exports',
+            'retry_after' => max(30, (int) env('INVITATION_EXPORT_JOB_TIMEOUT', 120)) + 60,
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),

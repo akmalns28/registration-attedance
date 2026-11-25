@@ -6,6 +6,7 @@ import { initializeDataTables } from "./plugins/datatables";
 import { initializeNotify } from "./plugins/notify";
 import { initializeTomSelect } from "./plugins/tom-select";
 import { initializeEventPage } from "./events";
+import { initializeEventAssets } from "./event-assets";
 import { initializeMobileLayout } from "./mobile-layout";
 import { initializeOrganizationForm, initializeOrganizationIndex, initializeOrganizationSelections } from "./organizations";
 
@@ -20,6 +21,7 @@ function initializeApp() {
     initializeTomSelect();
     initializeMobileLayout();
     initializeEventPage();
+    initializeEventAssets();
     initializeDataTables();
 
     if (document.querySelector("[data-dashboard-chart]")) {
