@@ -191,6 +191,16 @@
 
                                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                                             border="0">
+                                            @isset($event_schedule)
+                                                <tr>
+                                                    <td style="padding: 8px 0; width: 115px; font-size: 13px; color: #64748b; vertical-align: top;">
+                                                        Jadwal Event
+                                                    </td>
+                                                    <td style="padding: 8px 0; font-size: 13px; font-weight: 600; color: #182433;">
+                                                        {{ $event_schedule }}
+                                                    </td>
+                                                </tr>
+                                            @endisset
                                             <tr>
                                                 <td
                                                     style="
@@ -200,7 +210,7 @@
                                                 color: #64748b;
                                                 vertical-align: top;
                                             ">
-                                                    Tanggal
+                                                    {{ isset($event_schedule) ? 'Hari Undangan' : 'Tanggal' }}
                                                 </td>
 
                                                 <td
@@ -237,6 +247,20 @@
                                             </tr>
 
                                         </table>
+
+                                        @foreach ($invited_rundown ?? [] as $day)
+                                            @if ($loop->first)
+                                                <h2 style="font-size: 14px; margin: 18px 0 8px;">Rundown Hari Undangan</h2>
+                                            @endif
+                                            <p style="font-size: 13px; font-weight: 600; margin: 12px 0 4px;">
+                                                {{ $day->date->locale('id')->translatedFormat('j F Y') }} · {{ $day->title }}
+                                            </p>
+                                            <ul style="font-size: 13px; margin: 0; padding-left: 20px;">
+                                                @foreach ($day->schedules as $session)
+                                                    <li>{{ substr($session->start_time, 0, 5) }} – {{ substr($session->end_time, 0, 5) }} · {{ $session->title }}</li>
+                                                @endforeach
+                                            </ul>
+                                        @endforeach
 
                                     </td>
                                 </tr>

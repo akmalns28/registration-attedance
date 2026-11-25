@@ -242,6 +242,9 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('events/{event}/participants/{registration}/qr', EventRegistrationQrController::class)
             ->middleware('can:events.view')->name('events.participants.qr');
 
+        Route::post('events/{event}/participants/invitations/resend', [EventNotificationController::class, 'resendInvitations'])
+            ->whereUuid('event')->middleware(['can:events.view', 'can:events.update'])->name('events.participants.invitations.resend');
+
         Route::prefix('events/{event}/participants/invitations/export')->name('events.participants.invitations.export')
             ->whereUuid('event')->middleware(['can:events.view', 'can:registrations.manage'])->group(function () {
                 Route::match(['GET', 'HEAD', 'POST'], '/', [EventInvitationExportController::class, 'bulk'])->name('');

@@ -529,6 +529,9 @@
     @endif
     @include('events.partials.cancel-registration-modal')
     @include('events.partials.reactivate-registration-modal')
+    @if ($canResendInvitations)
+        @include('events.partials.bulk-resend-invitation-modal')
+    @endif
     @can('events.update')
         @if ($event->status !== 'cancelled')
             @include('events.days.invitations')

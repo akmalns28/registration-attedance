@@ -8,6 +8,8 @@ use App\Models\EventRegistrationNotification;
 
 class EventNotificationEligibility
 {
+    public const MISSING_EMAIL = 'Recipient email is missing or invalid.';
+
     public function email(?string $email): ?string
     {
         $email = trim((string) $email);
@@ -66,7 +68,7 @@ class EventNotificationEligibility
         }
 
         return $this->dayReason($registration, $notification->notification_type)
-            ?? ($this->email($notification->recipient_email) === null ? 'Recipient email is missing or invalid.' : null);
+            ?? ($this->email($notification->recipient_email) === null ? self::MISSING_EMAIL : null);
     }
 
     public function dayReason(EventRegistration $registration, string $type): ?string

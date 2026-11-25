@@ -59,7 +59,7 @@ class EventNotificationFailure
         if (in_array($storedError, [
             self::TEMPLATE, self::CONFIGURATION, self::DELIVERY, self::UNKNOWN, self::TIMEOUT,
             self::QUEUE_DISPATCH, self::QUEUE_FAILURE, self::RETRY_LIMIT,
-            'Recipient email is missing or invalid.', 'Registration not found.', 'Participant not found.',
+            EventNotificationEligibility::MISSING_EMAIL, 'Registration not found.', 'Participant not found.',
             'Event not found.', 'Invalid notification type.', 'Notification event does not match registration.',
             'Registration is no longer cancelled.', 'Registration or event is no longer active.',
             'Peserta belum memiliki hari undangan aktif.', 'Alamat email pengirim belum valid.', 'Host atau port SMTP belum valid.',

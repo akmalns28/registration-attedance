@@ -1,6 +1,7 @@
 import { Modal, Tab } from "@tabler/core";
 import { adjustDataTables } from "./plugins/datatables";
 import DataTable from "datatables.net-bs5";
+import { initializeBulkInvitationResend } from "./event-bulk-invitation-resend";
 import { initializeEventDayInvitations } from "./event-day-invitations";
 import { initializeEventParticipantPicker } from "./event-participant-picker";
 import { revealSelectedTab } from "./mobile-layout";
@@ -14,6 +15,7 @@ export function initializeEventPage(root = document) {
 
     page.dataset.initialized = "true";
     initializeEventDayInvitations(page, root);
+    initializeBulkInvitationResend(page, root);
     const participantModal = root.querySelector("[data-participant-picker]");
     if (participantModal) {
         initializeEventParticipantPicker(participantModal);

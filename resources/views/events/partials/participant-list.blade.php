@@ -2,6 +2,7 @@
 
 @php
     $canViewInvitations = auth()->user()->can('registrations.view');
+    $notificationEligibility = $canResendInvitations ? app(\App\Services\EventNotificationEligibility::class) : null;
 @endphp
 
 <div class="card participant-list">
@@ -46,6 +47,12 @@
 
                 <thead>
                     <tr>
+                        @if ($canResendInvitations)
+                            <th class="no-sort no-export all w-1" data-dt-order="disable">
+                                <input type="checkbox" class="form-check-input m-0" data-resend-select-page
+                                    aria-label="Pilih peserta di halaman ini" disabled>
+                            </th>
+                        @endif
                         <th class="no-sort no-export">
                             No.
                         </th>
@@ -104,6 +111,16 @@
                         @endphp
 
                         <tr data-filter-type="{{ $isEmployee ? 'employee' : 'external' }}" data-filter-status="{{ $registration->status }}">
+
+                            @if ($canResendInvitations)
+                                <td>
+                                    @if ($isRegistered)
+                                        <input type="checkbox" class="form-check-input m-0" data-resend-participant
+                                            data-has-email="{{ $notificationEligibility->recipient($registration) !== null ? 'true' : 'false' }}"
+                                            value="{{ $registration->getRouteKey() }}" aria-label="Pilih {{ $participantName }}">
+                                    @endif
+                                </td>
+                            @endif
 
                             {{-- No --}}
                             <td>
@@ -278,3 +295,18 @@
     </div>
 
 </div>
+
+@if ($canResendInvitations)
+    <div class="fixed-bottom px-2 mb-3 pe-none" data-resend-bar hidden>
+        <div class="card shadow mx-auto d-table pe-auto">
+            <div class="d-flex align-items-center justify-content-center flex-wrap gap-2 p-2">
+                <span class="small fw-semibold px-1" data-resend-count aria-live="polite"></span>
+                <button type="button" class="btn btn-sm btn-primary" data-resend-open
+                    aria-haspopup="dialog" aria-controls="bulkResendInvitationModal">
+                    <x-ui.icon name="send" class="me-1" /> Kirim Ulang Undangan
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-resend-clear>Batalkan Pilihan</button>
+            </div>
+        </div>
+    </div>
+@endif
