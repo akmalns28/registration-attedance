@@ -7,13 +7,17 @@ use App\Http\Requests\Event\UpdateEventRequest;
 use App\Models\Event;
 use App\Models\EventDay;
 use App\Models\User;
+use App\Services\EventAssetStorage;
 use App\Services\EventDayAttendanceService;
+use App\Services\EventInvitationExportQueue;
+use App\Services\EventPosterService;
 use App\Services\EventPublicationNotificationService;
 use App\Services\OrganizationFilters;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +30,13 @@ class EventController extends Controller
 {
     private const MAX_EVENT_DAY_NUMBER = 65_535;
 
-    public function __construct(private readonly EventPublicationNotificationService $notifications) {}
+    private const POSTER_FIELDS = ['posters', 'poster_remove', 'poster_order', 'poster_primary'];
+
+    public function __construct(
+        private readonly EventPublicationNotificationService $notifications,
+        private readonly EventAssetStorage $assets,
+        private readonly EventPosterService $posters,
+    ) {}
 
     /**
      * Display event list.
@@ -55,25 +65,31 @@ class EventController extends Controller
      */
     public function store(StoreEventRequest $request): RedirectResponse
     {
-        $data = $request->safe()->except(['logo', 'auto_create_event_days']);
+        $data = $request->safe()->except(['logo', 'auto_create_event_days', ...self::POSTER_FIELDS]);
+        $posterChanges = $request->safe()->only(self::POSTER_FIELDS);
         $createEventDays = $request->boolean('auto_create_event_days');
         $logoPath = $this->storeLogo($request->file('logo'));
 
         try {
-            $event = DB::transaction(function () use ($data, $logoPath, $createEventDays): Event {
-                $event = Event::create([...$data, 'logo_path' => $logoPath]);
+            [$event, $discardedPosters] = $this->posters->saveUploads(
+                $request->file('posters', []),
+                fn (array $uploads): array => DB::transaction(function () use ($data, $logoPath, $createEventDays, $uploads, $posterChanges): array {
+                    $event = Event::create([...$data, 'logo_path' => $logoPath]);
 
-                if ($createEventDays) {
-                    $this->createEventDays($event);
-                }
+                    if ($createEventDays) {
+                        $this->createEventDays($event);
+                    }
 
-                return $event;
-            }, attempts: 3);
+                    return [$event, $this->posters->sync($event, $uploads, $posterChanges)];
+                }, attempts: 3),
+            );
         } catch (Throwable $exception) {
             $this->deleteLogo($logoPath);
 
             throw $exception;
         }
+
+        $this->posters->deleteFiles($discardedPosters);
 
         return redirect()->route('events.show', $event)->with('success', 'Event berhasil dibuat.');
     }
@@ -107,7 +123,7 @@ class EventController extends Controller
     /**
      * Display event details.
      */
-    public function show(Event $event, EventDayAttendanceService $attendance): View
+    public function show(Request $request, Event $event, EventDayAttendanceService $attendance, EventInvitationExportQueue $exports): View
     {
         /*
     |--------------------------------------------------------------------------
@@ -165,6 +181,14 @@ class EventController extends Controller
         $canAddParticipants = $user->can('events.update') && in_array($event->status, [Event::STATUS_DRAFT, Event::STATUS_PUBLISHED], true);
         $canViewReports = $user->can('reports.view');
         $organizationOptions = $canAddParticipants || $canViewReports ? OrganizationFilters::options() : [];
+        $event->load('posters');
+        $galleryFilter = $request->query('media_type');
+        $galleryFilter = in_array($galleryFilter, ['image', 'video'], true) ? $galleryFilter : 'all';
+        $gallery = $event->media()
+            ->when($galleryFilter !== 'all', fn ($query) => $query->where('media_type', $galleryFilter))
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->simplePaginate(config('event_assets.gallery_per_page'), pageName: 'gallery_page')
+            ->appends(['media_type' => $galleryFilter])->fragment('event-gallery');
 
         return view('events.show', [
             'event' => $event,
@@ -173,6 +197,9 @@ class EventController extends Controller
             'organizationOptions' => $organizationOptions,
             'remainingCapacity' => $remainingCapacity,
             'eventAttendanceSummary' => $eventAttendanceSummary,
+            'gallery' => $gallery,
+            'galleryFilter' => $galleryFilter,
+            'invitationExports' => $user->can('registrations.manage') ? $exports->recent($event, $user) : [],
         ]);
     }
 
@@ -194,6 +221,7 @@ class EventController extends Controller
      */
     public function edit(Event $event): View
     {
+        $event->load('posters');
         $event->loadCount([
             'registrations as registered_participants_count' => fn ($query) => $query->registered(),
         ]);
@@ -208,7 +236,8 @@ class EventController extends Controller
      */
     public function update(UpdateEventRequest $request, Event $event): RedirectResponse
     {
-        $data = $request->safe()->except('logo');
+        $data = $request->safe()->except(['logo', ...self::POSTER_FIELDS]);
+        $posterChanges = $request->safe()->only(self::POSTER_FIELDS);
         $logoPath = $this->storeLogo($request->file('logo'));
         if ($logoPath !== null) {
             $data['logo_path'] = $logoPath;
@@ -225,7 +254,10 @@ class EventController extends Controller
     */
 
         try {
-            $previousLogo = $this->updateEvent($event, $data);
+            [$previousLogo, $discardedPosters] = $this->posters->saveUploads(
+                $request->file('posters', []),
+                fn (array $uploads): array => $this->updateEvent($event, $data, $uploads, $posterChanges),
+            );
         } catch (Throwable $exception) {
             $this->deleteLogo($logoPath);
 
@@ -233,13 +265,14 @@ class EventController extends Controller
         }
 
         $this->deleteLogo($previousLogo);
+        $this->posters->deleteFiles($discardedPosters);
 
         return redirect()->route('events.show', $event)->with('success', 'Event berhasil diperbarui.');
     }
 
-    private function updateEvent(Event $event, array $data): ?string
+    private function updateEvent(Event $event, array $data, array $uploads, array $posterChanges): array
     {
-        return DB::transaction(function () use ($event, $data): ?string {
+        return DB::transaction(function () use ($event, $data, $uploads, $posterChanges): array {
             /*
         |--------------------------------------------------------------------------
         | Lock Event
@@ -303,6 +336,9 @@ class EventController extends Controller
         */
 
             $lockedEvent->update($data);
+            $discardedPosters = $uploads !== [] || $posterChanges !== []
+                ? $this->posters->sync($lockedEvent, $uploads, $posterChanges)
+                : [];
 
             /*
         |--------------------------------------------------------------------------
@@ -314,7 +350,7 @@ class EventController extends Controller
                 $this->notifications->scheduleForPublishedEvent($lockedEvent);
             }
 
-            return $lockedEvent->wasChanged('logo_path') ? $previousLogo : null;
+            return [$lockedEvent->wasChanged('logo_path') ? $previousLogo : null, $discardedPosters];
         }, attempts: 3);
     }
 
@@ -347,7 +383,7 @@ class EventController extends Controller
         Gate::authorize('events.delete');
 
         try {
-            $logoPath = DB::transaction(function () use ($event): ?string {
+            [$logoPath, $posterPaths, $mediaPaths] = DB::transaction(function () use ($event): array {
                 $lockedEvent = Event::query()->whereKey($event->getKey())->lockForUpdate()->firstOrFail();
                 $lockedEvent->loadExists(['registrationNotifications', 'registrations', 'days']);
 
@@ -358,9 +394,11 @@ class EventController extends Controller
                         ->redirectTo(route('events.index'));
                 }
 
+                $posterPaths = $lockedEvent->posters()->pluck('file_path')->all();
+                $mediaPaths = $lockedEvent->media()->pluck('file_path')->all();
                 $lockedEvent->delete();
 
-                return $lockedEvent->logo_path;
+                return [$lockedEvent->logo_path, $posterPaths, $mediaPaths];
             }, attempts: 3);
         } catch (QueryException $exception) {
             if ((int) ($exception->errorInfo[1] ?? 0) !== 1451
@@ -374,6 +412,8 @@ class EventController extends Controller
         }
 
         $this->deleteLogo($logoPath);
+        $this->posters->deleteFiles($posterPaths);
+        $this->assets->delete($mediaPaths);
 
         return redirect()->route('events.index')->with('success', 'Event berhasil dihapus.');
     }

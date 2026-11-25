@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -139,6 +140,26 @@ class Event extends Model
     public function registrations(): HasMany
     {
         return $this->hasMany(EventRegistration::class);
+    }
+
+    public function posters(): HasMany
+    {
+        return $this->hasMany(EventPoster::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function primaryPoster(): HasOne
+    {
+        return $this->hasOne(EventPoster::class)->where('is_primary', true);
+    }
+
+    public function media(): HasMany
+    {
+        return $this->hasMany(EventMedia::class);
+    }
+
+    public function invitationExports(): HasMany
+    {
+        return $this->hasMany(EventInvitationExport::class);
     }
 
     /*

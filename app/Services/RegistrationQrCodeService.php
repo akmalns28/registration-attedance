@@ -40,7 +40,7 @@ class RegistrationQrCodeService
 
         ob_start();
         try {
-            if (! imagepng($image)) {
+            if (! imagepng($image, null, 1)) {
                 throw new RuntimeException('Gagal menyimpan gambar QR undangan.');
             }
 

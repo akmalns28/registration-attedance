@@ -205,6 +205,10 @@
                             </a>
                         </li>
                     @endcan
+                    <li class="nav-item" role="presentation">
+                        <a href="#event-gallery" id="event-gallery-tab" class="nav-link" data-bs-toggle="tab" role="tab"
+                            aria-controls="event-gallery" aria-selected="false">Gallery</a>
+                    </li>
                 </ul>
             </div>
 
@@ -213,6 +217,8 @@
 
                     {{-- Overview Tab --}}
                     <div id="event-overview" class="tab-pane fade show active" role="tabpanel">
+
+                        @include('events.partials.posters')
 
                         <h3 class="mb-3">
                             Informasi Event
@@ -431,11 +437,29 @@
                         </section>
                     @endcan
 
+                    <section id="event-gallery" class="tab-pane fade" role="tabpanel" aria-labelledby="event-gallery-tab">
+                        @include('events.partials.gallery')
+                    </section>
+
                 </div>
             </div>
         </div>
 
     </div>
+
+    @can('events.update')
+        <x-ui.modal id="deleteGalleryMedia" title="Hapus dokumentasi?" size="sm">
+            <p class="mb-0 text-break">Hapus <strong data-media-delete-name></strong> dari galeri event?</p>
+            <x-slot:footer>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                <form method="POST" data-form data-media-delete-form data-loading-text="Menghapus...">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="btn btn-danger">Hapus</button>
+                </form>
+            </x-slot:footer>
+        </x-ui.modal>
+    @endcan
 
     {{-- Delete Confirmation Modals --}}
     @can('events.update')

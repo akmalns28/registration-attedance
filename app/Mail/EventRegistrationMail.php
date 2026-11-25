@@ -5,6 +5,7 @@ namespace App\Mail;
 use App\Models\Event;
 use App\Models\EventRegistrationNotification;
 use App\Services\EventDayInvitationService;
+use App\Services\EventInvitationArtwork;
 use App\Services\RegistrationQrCodeService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -21,7 +22,7 @@ class EventRegistrationMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public EventRegistrationNotification $notification) {}
+    public function __construct(public EventRegistrationNotification $notification, private bool $preview = false) {}
 
     /**
      * Email subject and sender configuration.
@@ -137,11 +138,10 @@ class EventRegistrationMail extends Mailable
         $invitedDates = $includeInvitationDetails
             ? app(EventDayInvitationService::class)->dateSummary($registration->load('activeInvitedDays'))
             : null;
+        $hasQrCode = $type !== EventRegistrationNotification::TYPE_CANCELLATION && $invitedDates !== null;
 
         return array_merge($content, [
             'participant_name' => $participant->name,
-            'participant_type' => $registration->isEmployee() ? 'Employee' : 'External Participant',
-
             'registration_number' => $registration->registration_number,
 
             'event_title' => $event->title,
@@ -150,7 +150,11 @@ class EventRegistrationMail extends Mailable
             'event_maps_url' => $event->google_maps_url,
             'event_date' => $invitedDates,
             'event_logo' => $includeInvitationDetails ? $this->eventLogo($event) : null,
-            'has_qr_code' => $type !== EventRegistrationNotification::TYPE_CANCELLATION && $invitedDates !== null,
+            'event_poster' => $includeInvitationDetails && $type !== EventRegistrationNotification::TYPE_CANCELLATION
+                ? app(EventInvitationArtwork::class)->poster($event) : null,
+            'invite_preview' => $this->preview,
+            'qr_preview' => $this->preview && $hasQrCode ? base64_encode(app(RegistrationQrCodeService::class)->generateInvitationPng($registration)) : null,
+            'has_qr_code' => $hasQrCode,
         ]);
     }
 

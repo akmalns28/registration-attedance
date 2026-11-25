@@ -8,6 +8,8 @@ use App\Models\Employee;
 use App\Models\Entity;
 use App\Models\Event;
 use App\Models\EventDay;
+use App\Models\EventMedia;
+use App\Models\EventPoster;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationNotification;
 use App\Models\EventSchedule;
@@ -165,6 +167,18 @@ class UiRefinementTest extends TestCase
         }
         $fixture['day']->update(['date' => $fixture['event']->start_date->toDateString()]);
         $fixture['event']->update(['status' => Event::STATUS_PUBLISHED]);
+        $poster = EventPoster::factory()->for($fixture['event'])->primary()->create(['original_filename' => 'Poster awal.png']);
+        $photo = EventMedia::factory()->for($fixture['event'])->create(['title' => 'Foto dokumentasi']);
+        $clip = EventMedia::factory()->for($fixture['event'])->create([
+            'title' => 'Klip dokumentasi', 'media_type' => 'video', 'mime_type' => 'video/webm', 'original_filename' => 'clip.webm',
+        ]);
+        $samplePhoto = UploadedFile::fake()->image('photo.png', 40, 60);
+        copy($samplePhoto->getPathname(), $directory.'/gallery-photo.png');
+        $media = [
+            'poster' => route('events.posters.show', [$fixture['event'], $poster]),
+            'photo' => route('events.gallery.show', [$fixture['event'], $photo]),
+            'clip' => route('events.gallery.show', [$fixture['event'], $clip]),
+        ];
         $upload = UploadedFile::fake()->createWithContent('mobile-preview.csv', "nip,name,entity,department,division,email,phone,status\n"
             ."90123,Mobile Preview,UI,UI0,,,08123456789,active\n"
             ."90124,Mobile Validation,UI,MISSING,,,,active\n");
@@ -193,7 +207,7 @@ class UiRefinementTest extends TestCase
             $response = $this->get($url)->assertOk();
             file_put_contents($directory.'/'.$key.'.html', $response->getContent());
         }
-        file_put_contents($directory.'/fixture.json', json_encode(['origin' => url('/'), 'pages' => $pages, 'names' => $names], JSON_THROW_ON_ERROR));
+        file_put_contents($directory.'/fixture.json', json_encode(['origin' => url('/'), 'pages' => $pages, 'names' => $names, 'media' => $media], JSON_THROW_ON_ERROR));
     }
 
     private function user(string $role = 'super-admin'): User

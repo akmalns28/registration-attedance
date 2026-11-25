@@ -68,6 +68,7 @@ export class DevTools {
 
 export async function launchBrowser(profile) {
     const processHandle = spawn(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+        ...(process.env.REPORT_BROWSER_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
         "--disable-background-networking", "--no-proxy-server", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
     { windowsHide: true, stdio: "ignore" });
     try {
@@ -77,7 +78,8 @@ export async function launchBrowser(profile) {
             await new Promise((resolve) => setTimeout(resolve, 100));
         }
         const port = (await readFile(join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
-        const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" })).json();
+        const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+        const target = targets.find(({ type }) => type === "page");
         const socket = new WebSocket(target.webSocketDebuggerUrl);
         await once(socket, "open");
         const client = new DevTools(socket);

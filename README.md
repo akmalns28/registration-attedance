@@ -7,6 +7,29 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## RAMS event media and invitation exports
+
+Apply the additive migrations and rebuild the frontend during deployment.
+
+```sh
+php artisan migrate --force --no-interaction
+php artisan config:cache --no-interaction
+npm run build
+php artisan queue:restart --no-interaction
+```
+
+Run a supervised export worker alongside the existing workers. The dedicated database connection uses the application's database and `jobs` table. Web, worker, and scheduler processes need a shared, writable `storage/app/private` volume. Install PHP GD with WebP support, Fileinfo, ZIP, and CLI PCNTL in the appropriate containers.
+
+```sh
+php artisan queue:work invitation_exports --queue=invitation-exports --tries=3 --timeout=120 --sleep=1 --memory=128 --max-time=3600 --no-interaction
+```
+
+- The default direct-download limit is 25 invitations. Larger exports render five invitations per PDF and deliver one ZIP. Tune `INVITATION_EXPORT_DIRECT_LIMIT` (0–50) and `INVITATION_EXPORT_BATCH_SIZE` (1–25) after measuring with production artwork.
+- Align the supervisor and container stop grace period with `INVITATION_EXPORT_JOB_TIMEOUT` (120 seconds by default). The connection's reservation expires 60 seconds after the configured job timeout. Run Laravel's scheduler every minute so it can prune expired exports hourly. `INVITATION_EXPORT_RETENTION_HOURS` defaults to 24.
+- Set `upload_max_filesize` to cover the largest allowed individual file. Set PHP `post_max_size` and Nginx `client_max_body_size` to cover the largest intended upload request, including multipart overhead. Set `max_file_uploads` to cover the larger configured file count plus an event logo if applicable. Application limits are in `config/event_assets.php` and `.env.example`.
+- A queued export evaluates current eligibility as it processes each batch and excludes registrations created after the request. The resulting count can change if staff amend registrations or invited days during processing.
+- Verify on staging with production-like artwork, Keycloak roles, and target mobile browsers. Check video playback and ranges through Nginx, scan a printed PDF QR code, and confirm the worker completes a 300-person export and the scheduler removes expired archives.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

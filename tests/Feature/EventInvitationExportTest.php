@@ -2,22 +2,27 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\GenerateEventInvitationExport;
 use App\Mail\EventRegistrationMail;
 use App\Models\Employee;
 use App\Models\Event;
 use App\Models\EventDay;
+use App\Models\EventInvitationExport;
+use App\Models\EventPoster;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationNotification;
 use App\Models\ExternalParticipant;
 use App\Models\User;
+use App\Services\EventInvitationExportQueue;
+use App\Services\EventInvitationExportService;
+use App\Services\EventPosterService;
 use App\Services\RegistrationQrCodeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Queue\WorkerOptions;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
-use Illuminate\Testing\TestResponse;
 use Illuminate\View\View as BladeView;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -58,7 +63,7 @@ class EventInvitationExportTest extends TestCase
         EventRegistration::factory()->for($event)->for(Employee::factory()->create(['name' => 'Nama Peserta Lain']))->create();
         $rendered = [];
         View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
-            $rendered = $view->getData();
+            $rendered = $view->getData() + $view->getData()['pages'][0];
         });
 
         $response = $this->actingAs($this->staff('registrations.view', 'attendance.scan'))
@@ -104,7 +109,7 @@ class EventInvitationExportTest extends TestCase
         $previousLimit = ini_get('memory_limit');
         $appliedLimit = 0;
         View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered, &$appliedLimit): void {
-            $rendered = $view->getData();
+            $rendered = $view->getData() + $view->getData()['pages'][0];
             $appliedLimit = ini_parse_quantity(ini_get('memory_limit'));
         });
 
@@ -138,7 +143,7 @@ class EventInvitationExportTest extends TestCase
         ]);
         $rendered = [];
         View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
-            $rendered = $view->getData();
+            $rendered = $view->getData() + $view->getData()['pages'][0];
         });
         $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk();
 
@@ -221,19 +226,20 @@ class EventInvitationExportTest extends TestCase
         $registrations = ['employee' => $employee, 'external' => $external];
         $renderedDates = [];
         View::composer('events.partials.invitation-document', function (BladeView $view) use (&$renderedDates): void {
-            $data = $view->getData();
-            $renderedDates[$data['registration']->id] = $data['invitedDates'];
+            foreach ($view->getData()['pages'] as $page) {
+                $renderedDates[$page['registration']->id] = $page['invitedDates'];
+            }
         });
 
         $response = $this->actingAs($this->staff('registrations.manage'))->get(route('events.participants.invitations.export', [
             'event' => $event, 'participant_type' => $filter,
-        ]))->assertOk()->assertDownload('forum-operasional-invitations.zip')->assertHeader('Content-Type', 'application/zip');
+        ]))->assertOk()->assertDownload('forum-operasional-invitations.pdf')->assertHeader('Content-Type', 'application/pdf');
 
-        $entries = $this->zipEntries($response);
-        $this->assertCount(count($expectedTypes), $entries);
-        foreach ($expectedTypes as $type) {
+        $pdf = $response->getContent();
+        $this->assertInvitationPdf($pdf, count($expectedTypes));
+        foreach ($expectedTypes as $index => $type) {
             $registration = $registrations[$type];
-            $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($entries["undangan-forum-operasional-putri-andini-{$registration->id}.pdf"]));
+            $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf, $index));
             $this->assertSame($type === 'employee' ? '1 Februari 2027' : '1 Februari 2027, 3 Februari 2027', $renderedDates[$registration->id]);
         }
         $this->assertDatabaseCount('event_registrations', 5);
@@ -254,10 +260,81 @@ class EventInvitationExportTest extends TestCase
             ->assertJsonValidationErrors(['export' => 'Tidak ada peserta dengan hari undangan aktif untuk filter ini.']);
     }
 
-    #[TestWith([50, 1])]
-    #[TestWith([100, 2])]
-    #[TestWith([300, 6])]
-    public function test_bulk_export_limits_rendering_memory_with_a_full_size_logo(int $count, int $batches): void
+    #[TestWith([1])]
+    #[TestWith([25])]
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_direct_export_threshold_renders_branded_pdfs_within_web_limits(int $count): void
+    {
+        Storage::fake('local');
+        $logo = UploadedFile::fake()->image('logo.png', 2800, 2100)->store('event-logos', 'local');
+        $event = Event::factory()->create(['description' => "Baris pertama <script>\nBaris kedua", 'logo_path' => $logo]);
+        $posters = app(EventPosterService::class);
+        $posters->saveUploads([UploadedFile::fake()->image('cover.jpg', 2400, 3600)],
+            fn (array $uploads): array => $posters->sync($event, $uploads, []));
+        EventPoster::factory()->for($event)->create();
+        $days = [$event->days()->create(['date' => $event->start_date, 'day_number' => 1, 'is_active' => true])];
+        EventRegistration::factory()->for($event)->invitedTo(...$days)->count($count)->create();
+
+        $rendered = [];
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
+            $rendered = $view->getData();
+        });
+        $this->actingAs($this->staff('registrations.manage'));
+        $started = hrtime(true);
+        memory_reset_peak_usage();
+        $response = $this->get(route('events.participants.invitations.export', $event))->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf');
+        $duration = (hrtime(true) - $started) / 1e9;
+
+        $this->assertLessThan(30, $duration);
+        $this->assertLessThan(128 * 1024 * 1024, memory_get_peak_usage(true));
+        $this->assertInvitationPdf($response->getContent(), $count);
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertSame([0 => 'Baris pertama <script>', 1 => 'Baris kedua'], $rendered['description']);
+        $this->assertStringStartsWith('data:image/jpeg;base64,', $rendered['posterImage']);
+        $this->assertEqualsWithDelta(2 / 3, $rendered['posterWidth'] / $rendered['posterHeight'], 0.01);
+        $html = view('events.partials.invitation-document', $rendered)->render();
+        $this->assertStringContainsString('Baris pertama &lt;script&gt;', $html);
+        $this->assertStringNotContainsString('Jenis Peserta', $html);
+    }
+
+    public function test_external_invitation_preview_keeps_qr_and_only_the_primary_poster_with_no_contact_details(): void
+    {
+        Storage::fake('local');
+        $event = Event::factory()->create(['description' => "Agenda <umum>\nBawa undangan"]);
+        $path = UploadedFile::fake()->image('poster.png', 240, 320)->store('event-posters', 'local');
+        EventPoster::factory()->for($event)->primary()->create(['file_path' => $path]);
+        EventPoster::factory()->for($event)->create(['original_filename' => 'unselected.png']);
+        $external = ExternalParticipant::factory()->create(['name' => 'Nama Saja', 'email' => null, 'phone' => null]);
+        $registration = EventRegistration::factory()->external()->for($event)->invitedTo()->create(['external_participant_id' => $external->id]);
+
+        $this->actingAs($this->staff('registrations.view'))
+            ->get(route('events.participants.invitations.preview', [$event, $registration]))->assertOk()
+            ->assertSee('Nama Saja')->assertSee('Agenda &lt;umum&gt;', false)->assertSee('Bawa undangan')
+            ->assertSee('src="data:image/jpeg;base64,', false)->assertSee('src="data:image/png;base64,', false)
+            ->assertDontSee('External Participant')->assertDontSee('Jenis Peserta')->assertDontSee('unselected.png');
+        $pdf = $this->get($this->invitationUrl($event, $registration))->assertOk()->getContent();
+        $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
+    }
+
+    public function test_long_description_flows_across_pages_without_losing_the_qr(): void
+    {
+        $event = Event::factory()->create(['description' => str_repeat("Paragraf informasi yang panjang.\n", 100).str_repeat('X', 500)]);
+        $registration = EventRegistration::factory()->for($event)->invitedTo()->create();
+        $pdf = $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk()->getContent();
+
+        $this->assertGreaterThan(1, preg_match_all('/\/Type\s*\/Page\b/', $pdf));
+        $this->assertStringContainsString('%%EOF', $pdf);
+        $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
+    }
+
+    #[TestWith([50])]
+    #[TestWith([100])]
+    #[TestWith([300])]
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_large_exports_process_ordered_pdf_batches_on_the_database_queue(int $count): void
     {
         Storage::fake('local');
         $logo = imagecreatetruecolor(3000, 2250);
@@ -274,43 +351,54 @@ class EventInvitationExportTest extends TestCase
         $employees = EventRegistration::factory()->for($event)->invitedTo($day)->count(intdiv($count, 2))->create();
         $guests = EventRegistration::factory()->external()->for($event)->invitedTo($day)->count(intdiv($count, 2))->create();
         $this->actingAs($this->staff('registrations.manage'));
-        $previousLimit = ini_get('memory_limit');
-        DB::enableQueryLog();
-        gc_collect_cycles();
-        $baselineMemory = memory_get_usage(true);
-        memory_reset_peak_usage();
+        $renderedIds = [];
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$renderedIds): void {
+            foreach ($view->getData()['pages'] as $page) {
+                $renderedIds[] = $page['registration']->id;
+            }
+        });
 
-        try {
-            $response = $this->get(route('events.participants.invitations.export', ['event' => $event, 'participant_type' => 'all']))->assertOk();
-            $peakGrowth = memory_get_peak_usage(true) - $baselineMemory;
-            $employeeQueries = array_filter(DB::getQueryLog(), fn (array $query): bool => str_contains($query['query'], 'from "employees"'));
-        } finally {
-            DB::disableQueryLog();
-        }
+        $url = route('events.participants.invitations.export', $event);
+        $data = $this->postJson($url, ['participant_type' => 'all'])->assertAccepted()
+            ->assertJsonPath('status', 'pending')->assertJsonPath('participant_count', $count)->json();
+        $this->assertSame([], $renderedIds);
+        $this->getJson($url)->assertAccepted()->assertJsonPath('id', $data['id']);
+        $this->assertDatabaseCount('jobs', 1);
 
-        $this->assertSame($previousLimit, ini_get('memory_limit'));
-        $this->assertLessThan(64 * 1024 * 1024, $peakGrowth, 'Peak PHP memory growth during ZIP generation');
-        $entries = $this->zipEntries($response);
-        $this->assertCount($count, $entries);
-        // Employees are inserted first, so only their half of the lookup batches query employees.
-        $this->assertCount((int) ceil($batches / 2), $employeeQueries);
-        $entriesByRegistration = [];
-        foreach ($entries as $filename => $pdf) {
-            $this->assertMatchesRegularExpression('/^undangan-forum-operasional-.*-\d+\.pdf$/', $filename);
-            $registrationId = (int) str($filename)->beforeLast('.pdf')->afterLast('-')->value();
-            $entriesByRegistration[$registrationId] = $pdf;
-            $this->assertInvitationPdf($pdf);
+        $this->workOneExportJob();
+        $this->getJson($data['status_url'])->assertOk()->assertJsonPath('status', 'processing')->assertJsonPath('processed_count', 5);
+        app()->call([new GenerateEventInvitationExport($data['id'], 0), 'handle']);
+        $this->assertDatabaseCount('jobs', 1);
+        $batches = intdiv($count, 5);
+        for ($batch = 1; $batch <= $batches; $batch++) {
+            $this->workOneExportJob();
         }
-        $this->assertSame([...$employees->modelKeys(), ...$guests->modelKeys()], array_keys($entriesByRegistration));
-        foreach ([$employees->first(), $guests->first(), $guests->last()] as $registration) {
-            $pdf = $entriesByRegistration[$registration->id];
+        $status = $this->getJson($data['status_url'])->assertOk()
+            ->assertJsonPath('status', 'completed')->assertJsonPath('processed_count', $count)->json();
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertSame([...$employees->modelKeys(), ...$guests->modelKeys()], $renderedIds);
+        $export = EventInvitationExport::findOrFail($data['id']);
+        $this->assertLessThan(128 * 1024 * 1024, $export->peak_memory_bytes);
+
+        $download = $this->get($status['download_url'])->assertOk()->assertHeader('Content-Type', 'application/zip')
+            ->assertDownload('forum-operasional-invitations.zip')->baseResponse;
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($download->getFile()->getPathname(), ZipArchive::CHECKCONS));
+        $this->assertSame($batches, $zip->numFiles);
+        for ($index = 0; $index < $batches; $index++) {
+            $this->assertSame(sprintf('undangan-%06d.pdf', $index + 1), $zip->getNameIndex($index));
+            $this->assertInvitationPdf($zip->getFromIndex($index), 5);
+        }
+        foreach ([0 => $employees->first(), $batches - 1 => $guests->slice(-5)->first()] as $index => $registration) {
+            $pdf = $zip->getFromIndex($index);
             $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 256\s+/Height 192\b~', $pdf);
             $this->assertStringContainsString('/SMask ', $pdf);
             $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
         }
+        $zip->close();
     }
 
-    public function test_bulk_export_reports_a_failed_pdf_without_returning_a_partial_zip(): void
+    public function test_bulk_export_reports_a_failed_pdf_without_returning_a_partial_document(): void
     {
         $event = Event::factory()->create();
         [$first, $second] = EventRegistration::factory()->for($event)->invitedTo()->count(2)->create();
@@ -326,9 +414,61 @@ class EventInvitationExportTest extends TestCase
         });
 
         $this->actingAs($this->staff('registrations.manage'))->getJson(route('events.participants.invitations.export', $event))
-            ->assertInternalServerError()->assertJsonValidationErrors(['export' => "Undangan untuk registrasi {$second->registration_number} gagal dibuat."]);
+            ->assertInternalServerError()->assertJsonValidationErrors(['export' => 'Ekspor undangan gagal dibuat. Silakan coba lagi.']);
         Exceptions::assertReported(fn (RuntimeException $reported): bool => $reported === $failure);
         $this->assertSame($previousLimit, ini_get('memory_limit'));
+    }
+
+    public function test_export_access_requires_owner_and_permission_and_cleanup_removes_expired_files(): void
+    {
+        Storage::fake('local');
+        $owner = $this->staff('registrations.manage');
+        $export = EventInvitationExport::factory()->create([
+            'requested_by' => $owner->id, 'status' => EventInvitationExport::COMPLETED, 'expires_at' => now()->addHour(),
+        ]);
+        Storage::disk('local')->put($export->archivePath(), 'archive');
+        $status = route('events.participants.invitations.export.status', [$export->event, $export]);
+        $download = route('events.participants.invitations.export.download', [$export->event, $export]);
+
+        $this->actingAs($this->staff('registrations.manage'))->get($download)->assertNotFound();
+        $this->getJson($status)->assertNotFound();
+        $this->actingAs($owner)->getJson($status)->assertOk()->assertJsonPath('download_url', $download);
+        $this->get(route('events.participants.invitations.export.download', [Event::factory()->create(), $export]))->assertNotFound();
+        $owner->revokePermissionTo('registrations.manage');
+        $this->get($download)->assertForbidden();
+        $owner->givePermissionTo('registrations.manage');
+
+        $this->travel(2)->hours();
+        $this->get($download)->assertNotFound();
+        $this->artisan('app:prune-event-invitation-exports', ['--no-interaction' => true])->assertSuccessful();
+        Storage::disk('local')->assertMissing($export->archivePath());
+        $this->assertModelMissing($export);
+    }
+
+    public function test_worker_retries_and_reports_terminal_failure_then_owner_can_request_again(): void
+    {
+        Storage::fake('local');
+        config(['event_invitations.direct_limit' => 0]);
+        $event = Event::factory()->create();
+        EventRegistration::factory()->for($event)->invitedTo()->create();
+        $url = route('events.participants.invitations.export', $event);
+        $this->actingAs($this->staff('registrations.manage'));
+        $first = $this->postJson($url)->assertAccepted()->json();
+        $this->mock(EventInvitationExportService::class, function ($mock): void {
+            $mock->makePartial()->shouldReceive('render')->times(3)->andThrow(new RuntimeException('Renderer unavailable'));
+        });
+        Exceptions::fake();
+
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $this->workOneExportJob();
+            $this->getJson($first['status_url'])->assertOk()
+                ->assertJsonPath('status', $attempt === 3 ? 'failed' : 'processing')->assertJsonPath('download_url', null);
+            $this->travel(61)->seconds();
+        }
+        $this->assertDatabaseCount('jobs', 0);
+        Storage::disk('local')->assertMissing(EventInvitationExport::findOrFail($first['id'])->archivePath());
+        $second = $this->postJson($url)->assertAccepted()->assertJsonPath('status', 'pending')->json();
+        $this->assertNotSame($first['id'], $second['id']);
     }
 
     public function test_participants_tab_shows_invitation_actions_counts_and_participant_picker_for_the_right_users(): void
@@ -363,36 +503,16 @@ class EventInvitationExportTest extends TestCase
         return User::factory()->create(['is_active' => true])->givePermissionTo('events.view', ...$permissions);
     }
 
-    /** @return array<string, string> */
-    private function zipEntries(TestResponse $response): array
+    private function workOneExportJob(): void
     {
-        $content = $response->streamedContent();
-        $this->assertSame((string) strlen($content), $response->headers->get('Content-Length'));
-        $path = tempnam(sys_get_temp_dir(), 'invitation-test-');
-        file_put_contents($path, $content);
-        $zip = new ZipArchive;
-        try {
-            $this->assertTrue($zip->open($path, ZipArchive::CHECKCONS));
-            $files = [];
-            for ($index = 0; $index < $zip->numFiles; $index++) {
-                $filename = $zip->getNameIndex($index);
-                $this->assertArrayNotHasKey($filename, $files);
-                $files[$filename] = $zip->getFromIndex($index);
-            }
-            $zip->close();
-
-            return $files;
-        } finally {
-            unlink($path);
-        }
+        app('queue.worker')->runNextJob(EventInvitationExportQueue::CONNECTION, EventInvitationExportQueue::QUEUE, new WorkerOptions(sleep: 0, maxTries: 3));
     }
 
-    private function invitationPayload(string $pdf): string
+    private function invitationPayload(string $pdf, int $index = 0): string
     {
-        $this->assertInvitationPdf($pdf);
-
         // The opaque QR is embedded as an RGB stream with PNG row predictors.
-        $this->assertSame(1, preg_match('~/Subtype /Image\s+/Width (256)\s+/Height (256)(?:(?!endobj).)*?/ColorSpace /DeviceRGB\s+/BitsPerComponent 8\s+/Length (\d+)\s*>>\s*stream\r?\n~s', $pdf, $image, PREG_OFFSET_CAPTURE));
+        $this->assertGreaterThan($index, preg_match_all('~/Subtype /Image\s+/Width (256)\s+/Height (256)(?:(?!endobj).)*?/ColorSpace /DeviceRGB\s+/BitsPerComponent 8\s+/Length (\d+)\s*>>\s*stream\r?\n~s', $pdf, $images, PREG_SET_ORDER | PREG_OFFSET_CAPTURE));
+        $image = $images[$index];
         $streamOffset = $image[0][1] + strlen($image[0][0]);
         $imageData = substr($pdf, $streamOffset, (int) $image[3][0]);
         $png = "\x89PNG\r\n\x1a\n".$this->pngChunk('IHDR', pack('NNCCCCC', (int) $image[1][0], (int) $image[2][0], 8, 2, 0, 0, 0))
@@ -401,13 +521,12 @@ class EventInvitationExportTest extends TestCase
         return (new QrReader($png, QrReader::SOURCE_TYPE_BLOB))->text(['TRY_HARDER' => true]);
     }
 
-    private function assertInvitationPdf(string $pdf): void
+    private function assertInvitationPdf(string $pdf, int $pages = 1): void
     {
         $this->assertStringStartsWith('%PDF-', $pdf);
         $this->assertStringContainsString('%%EOF', $pdf);
         $this->assertMatchesRegularExpression('/\/MediaBox\s*\[\s*0\S*\s+0\S*\s+419\.\d+\s+595\.\d+\s*\]/', $pdf);
-        $this->assertSame(1, preg_match_all('/\/Type\s*\/Page\b/', $pdf));
-
+        $this->assertSame($pages, preg_match_all('/\/Type\s*\/Page\b/', $pdf));
     }
 
     private function pngChunk(string $type, string $data): string
