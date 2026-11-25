@@ -73,6 +73,9 @@ function initializePosterEditor(editor) {
     const removed = editor.querySelector("[data-poster-removed]");
     const error = editor.querySelector("[data-poster-error]");
     const limit = Number(editor.dataset.limit);
+    const fileLimit = Number(editor.dataset.fileLimit);
+    const postLimit = Number(editor.dataset.postLimit);
+    const form = input.form;
     const pending = new Map();
     let nextKey = 0;
     let changed = false;
@@ -112,7 +115,16 @@ function initializePosterEditor(editor) {
 
     input.addEventListener("change", () => {
         error.textContent = "";
+        let selectedBytes = Array.from(pending.values()).reduce((sum, { file }) => sum + file.size, 0);
         for (const file of input.files) {
+            if (!/\.(jpe?g|png|webp)$/i.test(file.name)) {
+                error.textContent = "Poster harus berformat JPG, JPEG, PNG, atau WebP.";
+                continue;
+            }
+            if (file.size > fileLimit) {
+                error.textContent = `Ukuran setiap poster maksimal ${editor.dataset.fileLimitLabel}.`;
+                continue;
+            }
             const duplicate = Array.from(pending.values()).some(({ file: existing }) =>
                 existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified);
             if (duplicate) {
@@ -121,6 +133,10 @@ function initializePosterEditor(editor) {
             if (list.children.length >= limit) {
                 error.textContent = `Maksimal ${limit} poster per event.`;
                 break;
+            }
+            if (selectedBytes + file.size > postLimit) {
+                error.textContent = `Total ukuran unggahan maksimal ${postLimit / 1048576} MB per permintaan.`;
+                continue;
             }
 
             const key = `pending:${nextKey++}`;
@@ -136,10 +152,23 @@ function initializePosterEditor(editor) {
             name.title = file.name;
             pending.set(key, { file, url });
             list.append(tile);
+            selectedBytes += file.size;
             changed = true;
         }
         sync();
     });
+
+    form.addEventListener("submit", (event) => {
+        const total = Array.from(form.querySelectorAll('input[type="file"]'))
+            .flatMap((field) => Array.from(field.files))
+            .reduce((sum, file) => sum + file.size, 0);
+        if (total > postLimit) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            error.textContent = `Total ukuran unggahan maksimal ${postLimit / 1048576} MB per permintaan.`;
+            input.focus();
+        }
+    }, true);
 
     list.addEventListener("click", (event) => {
         const button = event.target.closest("[data-poster-action]");

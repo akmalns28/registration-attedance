@@ -7,13 +7,14 @@ use App\Models\EventPoster;
 use Closure;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Throwable;
 
 class EventPosterService
 {
-    public function __construct(private readonly EventAssetStorage $assets, private readonly EventInvitationArtwork $artwork) {}
+    public function __construct(private readonly EventAssetStorage $assets, private readonly EventPosterImages $images) {}
 
     public static function rules(): array
     {
@@ -21,14 +22,33 @@ class EventPosterService
 
         return [
             'posters' => ['sometimes', 'array', 'list', 'max:'.$max],
-            'posters.*' => ['bail', 'required', 'file', 'mimes:jpg,jpeg,png,webp', 'extensions:jpg,jpeg,png,webp',
-                'dimensions:max_width=4000,max_height=4000', 'max:'.config('event_assets.poster_max_kb')],
+            'posters.*' => [
+                'bail', 'required', 'file', 'max:'.config('event_assets.poster_max_kb'),
+                'mimes:jpg,jpeg,png,webp', 'extensions:jpg,jpeg,png,webp',
+                function (string $attribute, UploadedFile $file, Closure $fail): void {
+                    $dimensions = EventPosterImages::dimensions($file->getPathname());
+                    if ($dimensions === null) {
+                        $fail('Metadata poster tidak dapat dibaca. Unggah gambar JPG, PNG, atau WebP yang valid.');
+                    } elseif (! EventPosterImages::fitsDimensions($dimensions[0], $dimensions[1])) {
+                        $side = number_format(config('event_assets.poster_max_side'), 0, ',', '.');
+                        $pixels = config('event_assets.poster_max_pixels') / 1000000;
+                        $fail("Dimensi poster terlalu besar. Maksimal {$side} piksel pada sisi terpanjang dan {$pixels} megapiksel.");
+                    }
+                },
+            ],
             'poster_remove' => ['sometimes', 'array', 'list', 'max:100'],
             'poster_remove.*' => ['required', 'uuid', 'distinct'],
             'poster_order' => ['sometimes', 'array', 'list', 'max:100'],
             'poster_order.*' => ['required', 'string', 'max:36', 'distinct'],
             'poster_primary' => ['nullable', 'string', 'max:36'],
         ];
+    }
+
+    public static function uploadLimitLabel(): string
+    {
+        $kilobytes = (int) config('event_assets.poster_max_kb');
+
+        return $kilobytes % 1024 === 0 ? ($kilobytes / 1024).' MB' : $kilobytes.' KB';
     }
 
     /**
@@ -45,21 +65,28 @@ class EventPosterService
         }
 
         return $this->assets->saveUploads($files, 'event-posters', 'posters', function (array $uploads) use ($persist): mixed {
-            $renditions = [];
-            $disk = Storage::disk('local');
             try {
-                foreach ($uploads as $upload) {
-                    $rendition = EventPoster::invitationPath($upload['file_path']);
-                    $renditions[] = $rendition;
-                    $image = $this->artwork->preparePoster($disk->get($upload['file_path']));
-                    if ($image === null || ! $disk->put($rendition, $image['contents'], 'private')) {
-                        throw ValidationException::withMessages(['posters' => 'Poster gagal diproses. Gunakan gambar dengan dimensi lebih kecil.']);
+                foreach ($uploads as $index => $upload) {
+                    try {
+                        $this->images->generate($upload['file_path']);
+                    } catch (Throwable $exception) {
+                        Log::warning('Event poster processing failed.', [
+                            'file_index' => $index,
+                            'mime_type' => $upload['mime_type'],
+                            'file_size' => $upload['file_size'],
+                            'exception_type' => $exception::class,
+                            'reason' => $exception::class === RuntimeException::class ? $exception->getMessage() : 'Unexpected image processing error.',
+                        ]);
+
+                        throw ValidationException::withMessages([
+                            "posters.{$index}" => 'Poster gagal diproses. Simpan ulang gambar sebagai JPG atau PNG, lalu unggah kembali.',
+                        ]);
                     }
                 }
 
                 return $persist($uploads);
             } catch (Throwable $exception) {
-                $this->assets->delete($renditions);
+                $this->assets->delete($this->variants(array_column($uploads, 'file_path')));
 
                 throw $exception;
             }
@@ -69,7 +96,22 @@ class EventPosterService
     /** @param list<string> $paths */
     public function deleteFiles(array $paths): void
     {
-        $this->assets->delete([...$paths, ...array_map(EventPoster::invitationPath(...), $paths)]);
+        $this->assets->delete([...$paths, ...$this->variants($paths)]);
+    }
+
+    /** @param list<string> $paths
+     * @return list<string>
+     */
+    private function variants(array $paths): array
+    {
+        $variants = [];
+        foreach ($paths as $path) {
+            foreach (array_keys(config('event_assets.poster_sizes')) as $variant) {
+                $variants[] = EventPoster::variantPath($path, $variant);
+            }
+        }
+
+        return $variants;
     }
 
     /**

@@ -5,6 +5,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -30,6 +31,14 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(fn (Request $request) => $request->routeIs('events.reports.data')
             || $request->is('api/*') || $request->expectsJson());
+
+        $exceptions->render(function (PostTooLargeException $exception, Request $request): ?JsonResponse {
+            if ($request->expectsJson() && $request->is('events', 'events/*')) {
+                return response()->json(['message' => 'Total ukuran unggahan maksimal 64 MB per permintaan.'], 413);
+            }
+
+            return null;
+        });
 
         $exceptions->render(function (Throwable $exception, Request $request): ?JsonResponse {
             if (! $request->routeIs('attendance.scanner.validate', 'attendance.check-in', 'attendance.manual.*', 'events.days.attendance')) {

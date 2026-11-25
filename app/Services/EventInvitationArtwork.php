@@ -10,7 +10,9 @@ use Throwable;
 
 class EventInvitationArtwork
 {
-    /** @return array{contents: string, mime: string, width: int, height: int}|null */
+    public function __construct(private readonly EventPosterImages $posters) {}
+
+    /** @return array{contents: string, mime: string, width: int, height: int, file: string|null}|null */
     public function poster(Event $event): ?array
     {
         try {
@@ -21,7 +23,16 @@ class EventInvitationArtwork
 
             $disk = Storage::disk('local');
 
-            return $this->preparePoster($disk->get(EventPoster::invitationPath($poster->file_path)) ?? $disk->get($poster->file_path));
+            $variant = EventPoster::variantPath($poster->file_path, 'invitation');
+            $contents = $disk->get($variant);
+            $file = $contents === null ? null : $disk->path($variant);
+            $contents ??= $this->posters->legacyInvitation($poster->file_path);
+            $dimensions = $contents ? @getimagesizefromstring($contents) : false;
+            if ($dimensions === false || $dimensions[2] !== IMAGETYPE_JPEG) {
+                return null;
+            }
+
+            return ['contents' => $contents, 'mime' => 'image/jpeg', 'width' => $dimensions[0], 'height' => $dimensions[1], 'file' => $file];
         } catch (Throwable $exception) {
             Log::warning('Event invitation poster could not be read.', [
                 'event_id' => $event->id,
@@ -30,12 +41,6 @@ class EventInvitationArtwork
 
             return null;
         }
-    }
-
-    /** @return array{contents: string, mime: string, width: int, height: int}|null */
-    public function preparePoster(?string $contents): ?array
-    {
-        return $this->resize($contents, 680, 420, asJpeg: true);
     }
 
     /** @return array{contents: string, mime: string, width: int, height: int}|null */
@@ -51,7 +56,7 @@ class EventInvitationArtwork
     }
 
     /** @return array{contents: string, mime: string, width: int, height: int}|null */
-    private function resize(?string $contents, int $maxWidth, int $maxHeight, bool $asJpeg = false): ?array
+    private function resize(?string $contents, int $maxWidth, int $maxHeight): ?array
     {
         $dimensions = $contents ? @getimagesizefromstring($contents) : false;
         if ($dimensions === false || ! in_array($dimensions[2], [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_WEBP], true)) {
@@ -64,7 +69,7 @@ class EventInvitationArtwork
         }
 
         $scale = min(1, $maxWidth / $width, $maxHeight / $height);
-        if ($scale === 1 && $type !== IMAGETYPE_WEBP && (! $asJpeg || $type === IMAGETYPE_JPEG)) {
+        if ($scale === 1 && $type !== IMAGETYPE_WEBP) {
             return ['contents' => $contents, 'mime' => $dimensions['mime'], 'width' => $width, 'height' => $height];
         }
 
@@ -81,7 +86,7 @@ class EventInvitationArtwork
         $scaledWidth = max(1, (int) round($width * $scale));
         $scaledHeight = max(1, (int) round($height * $scale));
         $image = imagecreatetruecolor($scaledWidth, $scaledHeight);
-        $keepAlpha = $type === IMAGETYPE_PNG && ! $asJpeg;
+        $keepAlpha = $type === IMAGETYPE_PNG;
         if ($keepAlpha) {
             imagealphablending($image, false);
             imagesavealpha($image, true);

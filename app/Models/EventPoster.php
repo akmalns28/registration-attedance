@@ -25,8 +25,8 @@ class EventPoster extends Model
         return $this->belongsTo(Event::class);
     }
 
-    public static function invitationPath(string $posterPath): string
+    public static function variantPath(string $posterPath, string $variant): string
     {
-        return $posterPath.'.invitation.jpg';
+        return $posterPath.'.'.$variant.'.jpg';
     }
 }

@@ -292,7 +292,14 @@ class EventInvitationExportTest extends TestCase
         $this->assertInvitationPdf($response->getContent(), $count);
         $this->assertDatabaseCount('jobs', 0);
         $this->assertSame([0 => 'Baris pertama <script>', 1 => 'Baris kedua'], $rendered['description']);
-        $this->assertStringStartsWith('data:image/jpeg;base64,', $rendered['posterImage']);
+        $poster = $event->primaryPoster()->sole();
+        $variant = EventPoster::variantPath($poster->file_path, 'invitation');
+        $this->assertSame(Storage::disk('local')->path($variant), $rendered['posterImage']);
+        $posterBytes = Storage::disk('local')->get($variant);
+        $this->assertSame([1067, 1600, IMAGETYPE_JPEG], array_slice(getimagesizefromstring($posterBytes), 0, 3));
+        $this->assertLessThan(512 * 1024, strlen($posterBytes));
+        $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 1067\s+/Height 1600\b~', $response->getContent());
+        $this->assertDoesNotMatchRegularExpression('~/Subtype /Image\s+/Width 2400\s+/Height 3600\b~', $response->getContent());
         $this->assertEqualsWithDelta(2 / 3, $rendered['posterWidth'] / $rendered['posterHeight'], 0.01);
         $html = view('events.partials.invitation-document', $rendered)->render();
         $this->assertStringContainsString('Baris pertama &lt;script&gt;', $html);
