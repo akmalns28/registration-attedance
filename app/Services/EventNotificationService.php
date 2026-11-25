@@ -16,7 +16,8 @@ class EventNotificationService
         private readonly EventNotificationQueue $queue,
     ) {}
 
-    public function schedule(EventRegistration $registration, string $type, string $dedupeKey): EventRegistrationNotification
+    /** @param array<string, mixed>|null $metadata */
+    public function schedule(EventRegistration $registration, string $type, string $dedupeKey, ?array $metadata = null): EventRegistrationNotification
     {
         if (! in_array($type, EventRegistrationNotification::types(), true)) {
             throw new InvalidArgumentException('Jenis notifikasi tidak valid.');
@@ -26,7 +27,7 @@ class EventNotificationService
             throw new InvalidArgumentException('Notification dedupe key wajib diisi dan maksimal 191 karakter.');
         }
 
-        $schedule = function () use ($registration, $type, $dedupeKey): EventRegistrationNotification {
+        $schedule = function () use ($registration, $type, $dedupeKey, $metadata): EventRegistrationNotification {
             $event = Event::query()->whereKey($registration->event_id)->lockForUpdate()->firstOrFail();
             $registration = EventRegistration::query()->whereKey($registration->getKey())
                 ->where('event_id', $event->id)->lockForUpdate()->firstOrFail();
@@ -42,7 +43,7 @@ class EventNotificationService
             }
 
             $email = $this->eligibility->recipient($registration);
-            $reason = $email === null ? 'Recipient email is missing or invalid.' : $this->eligibility->dayReason($registration, $type);
+            $reason = $email === null ? EventNotificationEligibility::MISSING_EMAIL : $this->eligibility->dayReason($registration, $type);
             $notification = EventRegistrationNotification::query()->firstOrCreate(
                 ['dedupe_key' => $dedupeKey],
                 [
@@ -54,6 +55,7 @@ class EventNotificationService
                     'attempts' => 0,
                     'scheduled_for' => now(),
                     'last_error' => $reason,
+                    'metadata' => $metadata,
                 ],
             );
 

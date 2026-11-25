@@ -159,6 +159,9 @@ class UiRefinementTest extends TestCase
             $department = Department::factory()->for($entity)->create(['name' => $name, 'code' => 'UI'.$index]);
             $division = Division::factory()->for($department)->create();
             $employee = Employee::factory()->for($department)->for($division)->create(['name' => $name]);
+            if ($name === 'Participant Twelve') {
+                $employee->update(['email' => 'browser-participant@example.test']);
+            }
             ExternalParticipant::factory()->create(['name' => $name]);
             Event::factory()->create(['title' => $name]);
             EventRegistration::factory()->for($fixture['event'])->for($employee)->invitedTo($fixture['day'])->create();
@@ -247,7 +250,8 @@ class UiRefinementTest extends TestCase
         $department = Department::factory()->create();
         $employee = Employee::factory()->for($department)->create();
         $registration = EventRegistration::factory()->for($event)->for($employee)->invitedTo($day)->create();
-        EventRegistration::factory()->external()->for($event)->invitedTo($day)->create();
+        EventRegistration::factory()->external()->for($event)
+            ->invitedTo($day)->create(['external_participant_id' => ExternalParticipant::factory()->state(['email' => null])]);
         EventRegistration::factory()->cancelled()->for($event)->create();
         EventRegistrationNotification::factory()->sent()->create(['event_registration_id' => $registration->id]);
 

@@ -194,6 +194,7 @@ class EventController extends Controller
             'event' => $event,
             'registrations' => $registrations,
             'canAddParticipants' => $canAddParticipants,
+            'canResendInvitations' => $event->isPublished() && $user->can('events.update'),
             'organizationOptions' => $organizationOptions,
             'remainingCapacity' => $remainingCapacity,
             'eventAttendanceSummary' => $eventAttendanceSummary,

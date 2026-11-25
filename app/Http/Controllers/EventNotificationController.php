@@ -8,6 +8,7 @@ use App\Services\EventNotificationActionService;
 use App\Services\EventNotificationFailure;
 use App\Services\EventNotificationTransport;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Queue;
@@ -90,5 +91,20 @@ class EventNotificationController extends Controller
 
         return redirect()->route('notifications.index', ['event' => $event->uuid])
             ->with('success', sprintf('%d undangan dijadwalkan. %d registrasi tidak memerlukan pengiriman baru. Periksa status pengiriman pada tabel.', $counts['queued'], $counts['skipped']));
+    }
+
+    public function resendInvitations(Request $request, Event $event, EventNotificationActionService $actions): JsonResponse
+    {
+        $data = $request->validate([
+            'request_id' => ['required', 'string', 'regex:/\A[0-9a-f]{32}\z/'],
+            'registration_ids' => ['required', 'array', 'list'],
+            'registration_ids.*' => ['required', 'uuid'],
+        ], [
+            'registration_ids.required' => 'Pilih setidaknya satu peserta.',
+            'registration_ids.*.uuid' => 'Pilihan registrasi tidak valid.',
+        ]);
+
+        return response()->json($actions->resendInvitations($event, $data['registration_ids'], $data['request_id']))
+            ->header('Cache-Control', 'private, no-store');
     }
 }

@@ -91,6 +91,81 @@ class EventNotificationActionService
     }
 
     /**
+     * @param  list<string>  $registrationIds  Registration UUIDs.
+     * @return array{queued: int, skipped: int, no_email: int, pending: int, duplicate: int}
+     */
+    public function resendInvitations(Event $event, array $registrationIds, string $requestId): array
+    {
+        if (! $event->isPublished()) {
+            throw ValidationException::withMessages(['notification' => 'Publikasikan event sebelum mengirim ulang undangan.']);
+        }
+
+        $connection = config('event_notifications.connection') ?: config('queue.default');
+        if (! in_array(config('queue.connections.'.$connection.'.driver'), ['database', 'redis', 'sqs', 'beanstalkd'], true)) {
+            throw ValidationException::withMessages(['notification' => 'Antrean email belum dikonfigurasi untuk pengiriman oleh worker.']);
+        }
+
+        $registrationIds = array_unique(array_map(strtolower(...), $registrationIds));
+        $chunks = array_chunk($registrationIds, max(1, (int) config('event_notifications.batch_size', 100)));
+
+        foreach ($chunks as $chunk) {
+            if ($event->registrations()->whereIn('uuid', $chunk)->count() !== count($chunk)) {
+                throw ValidationException::withMessages(['registration_ids' => 'Sebagian registrasi tidak ditemukan pada event ini.']);
+            }
+        }
+
+        $this->ensureTransport();
+        $counts = ['queued' => 0, 'skipped' => 0, 'no_email' => 0, 'pending' => 0, 'duplicate' => 0];
+
+        foreach ($chunks as $chunk) {
+            $batch = DB::transaction(function () use ($event, $chunk, $requestId): array {
+                $lockedEvent = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+                $registrations = $lockedEvent->registrations()->whereIn('uuid', $chunk)
+                    ->with(['employee', 'externalParticipant'])->orderBy('id')->lockForUpdate()->get();
+                $batch = ['dispatches' => [], 'skipped' => count($chunk) - $registrations->count(), 'no_email' => 0, 'duplicate' => 0];
+                $type = EventRegistrationNotification::TYPE_INVITATION;
+
+                foreach ($registrations as $registration) {
+                    $registration->setRelation('event', $lockedEvent);
+                    if ($this->eligibility->registrationReason($registration, $type) !== null) {
+                        $batch['skipped']++;
+
+                        continue;
+                    }
+
+                    $notification = $this->notifications->schedule(
+                        $registration,
+                        $type,
+                        "event:{$lockedEvent->id}:bulk-resend:{$requestId}:registration:{$registration->id}",
+                        metadata: ['bulk_resend' => true],
+                    );
+
+                    if (! $notification->wasRecentlyCreated) {
+                        $batch['duplicate']++;
+                    } elseif ($notification->isSkipped()) {
+                        $batch['skipped']++;
+                        $batch['no_email'] += (int) ($notification->last_error === EventNotificationEligibility::MISSING_EMAIL);
+                    } else {
+                        $batch['dispatches'][] = $notification->id;
+                    }
+                }
+
+                return $batch;
+            }, attempts: 3);
+
+            // Read after commit so failed queue pushes can be reported as pending recovery.
+            $queued = EventRegistrationNotification::query()->whereKey($batch['dispatches'])->whereNotNull('queued_at')->count();
+            $counts['queued'] += $queued;
+            $counts['pending'] += count($batch['dispatches']) - $queued;
+            $counts['skipped'] += $batch['skipped'];
+            $counts['no_email'] += $batch['no_email'];
+            $counts['duplicate'] += $batch['duplicate'];
+        }
+
+        return $counts;
+    }
+
+    /**
      * @return array{created: int, queued: int, skipped: int}
      */
     public function invitations(Event $event): array

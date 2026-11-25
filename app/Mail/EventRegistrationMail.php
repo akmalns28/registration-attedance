@@ -8,6 +8,7 @@ use App\Services\EventDayInvitationService;
 use App\Services\EventInvitationArtwork;
 use App\Services\RegistrationQrCodeService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
@@ -139,6 +140,10 @@ class EventRegistrationMail extends Mailable
             ? app(EventDayInvitationService::class)->dateSummary($registration->load('activeInvitedDays'))
             : null;
         $hasQrCode = $type !== EventRegistrationNotification::TYPE_CANCELLATION && $invitedDates !== null;
+        $includeSchedule = $includeInvitationDetails && ($this->notification->metadata['bulk_resend'] ?? false);
+        if ($includeSchedule) {
+            $registration->loadMissing(['activeInvitedDays.schedules' => fn (HasMany $schedules): HasMany => $schedules->active()->ordered()]);
+        }
 
         return array_merge($content, [
             'participant_name' => $participant->name,
@@ -149,6 +154,10 @@ class EventRegistrationMail extends Mailable
             'event_location' => $event->location,
             'event_maps_url' => $event->google_maps_url,
             'event_date' => $invitedDates,
+            'event_schedule' => $includeSchedule ? $event->start_date->format('d/m/Y')
+                .($event->start_date->isSameDay($event->end_date) ? '' : ' – '.$event->end_date->format('d/m/Y')) : null,
+            'invited_rundown' => $includeSchedule
+                ? $registration->activeInvitedDays->filter(fn ($day): bool => $day->schedules->isNotEmpty()) : [],
             'event_logo' => $includeInvitationDetails ? $this->eventLogo($event) : null,
             'event_poster' => $includeInvitationDetails && $type !== EventRegistrationNotification::TYPE_CANCELLATION
                 ? app(EventInvitationArtwork::class)->poster($event) : null,

@@ -106,9 +106,9 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
             loaded = client.waitFor("Page.loadEventFired");
             await client.send("Page.navigate", { url: origin + new URL(fixture.pages[page]).pathname + hash }); await loaded;
             await client.evaluate(`
-                window.until = async (predicate) => {
+                window.until = async (predicate, message = "UI did not become ready") => {
                     const deadline = Date.now() + 12000;
-                    while (!predicate()) { if (Date.now() > deadline) { throw new Error("UI did not become ready"); } await new Promise((resolve) => setTimeout(resolve, 20)); }
+                    while (!predicate()) { if (Date.now() > deadline) { throw new Error(message); } await new Promise((resolve) => setTimeout(resolve, 20)); }
                 };
                 await until(() => window.notify?.system === "attendance" && (!${["events", "employees", "external", "users", "roles", "event", "day", "organizations"].includes(page)} || document.querySelector(".dt-container")));
                 if (!document.querySelector('script[type="module"][src*="/build/"]') || document.querySelector('script[src*="@vite/client"]')) {
@@ -206,6 +206,89 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 if (page === "day") {
                     assert.match(result.headers, /Kehadiran/);
                 }
+            }
+        });
+
+        await suite.test("bulk resend preserves selection across pages, filtering and searching on mobile", async () => {
+            await client.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+            try {
+                await fresh("event", "#event-participants");
+                const result = await client.evaluate(`
+                    const table = document.getElementById("eventParticipantsTable");
+                    const wrapper = table.closest(".dt-container");
+                    const bar = document.querySelector("[data-resend-bar]");
+                    const open = bar.querySelector("[data-resend-open]");
+                    const count = bar.querySelector("[data-resend-count]");
+                    const modal = document.getElementById("bulkResendInvitationModal");
+                    const form = modal.querySelector("form");
+                    const checkbox = (selector) => table.querySelector(selector + " [data-resend-participant]");
+                    await until(() => document.getElementById("event-participants").classList.contains("show"), "Participants tab did not open");
+                    const employee = table.querySelector('[aria-label="Pilih Participant Twelve"]');
+                    if (!bar.hidden || !employee.getBoundingClientRect().width) throw new Error("Bulk controls did not initialize");
+                    employee.click();
+                    wrapper.querySelector('[data-dt-idx="next"]').click();
+                    await until(() => checkbox('tr[data-filter-type="external"]'), "External participant did not appear on page two");
+                    const external = checkbox('tr[data-filter-type="external"]');
+                    external.click();
+                    if (count.textContent !== "2 peserta dipilih") throw new Error("Pagination lost a selection");
+
+                    const filters = wrapper.querySelector("[data-compact-filters]");
+                    filters.querySelector("[data-filter-toggle]").click();
+                    const type = filters.querySelector('[data-filter-key="type"]');
+                    type.value = "external";
+                    type.dispatchEvent(new Event("change", { bubbles: true }));
+                    if (!external.checked || table.tBodies[0].querySelectorAll("tr[data-filter-type]").length !== 1) {
+                        throw new Error("Filtering did not preserve the external selection");
+                    }
+                    const search = wrapper.querySelector('input[type="search"]');
+                    search.value = "no participant matches this search";
+                    search.dispatchEvent(new Event("input", { bubbles: true }));
+                    await until(() => !table.querySelector("tbody [data-resend-participant]"), "Search did not remove the visible participant rows");
+                    const bounds = bar.firstElementChild.getBoundingClientRect();
+                    if (count.textContent !== "2 peserta dipilih" || bounds.left < 0 || bounds.right > innerWidth || bounds.width === 0) {
+                        throw new Error("Search lost the selection or the bulk actions left the viewport");
+                    }
+                    open.click();
+                    const submit = modal.querySelector("[data-resend-submit]");
+                    await until(() => modal.classList.contains("show") && !submit.disabled, "Resend confirmation did not open");
+                    const confirmation = ["total", "with-email", "without-email"].map(key => modal.querySelector("[data-resend-" + key + "]").textContent);
+                    const requests = [];
+                    let finish;
+                    window.fetch = (url, options) => {
+                        requests.push({ url, payload: JSON.parse(options.body), csrf: options.headers["X-CSRF-TOKEN"] });
+                        if (requests.length === 1) return Promise.reject(new Error("Connection lost"));
+                        return new Promise(resolve => { finish = resolve; });
+                    };
+                    submit.click();
+                    await until(() => !modal.querySelector("[data-resend-error]").hidden, "Submission error was not shown");
+                    submit.click();
+                    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+                    if (!submit.disabled || requests.length !== 2) throw new Error("In-flight submission was repeated");
+                    finish(new Response(JSON.stringify({ queued: 1, skipped: 1, no_email: 1, pending: 0, duplicate: 0 }),
+                        { headers: { "Content-Type": "application/json" } }));
+                    await until(() => bar.hidden && !modal.classList.contains("show") && document.querySelector(".app-toast"),
+                        "Successful resend did not clear selection and display a summary");
+
+                    search.value = "";
+                    search.dispatchEvent(new Event("input", { bubbles: true }));
+                    await until(() => checkbox('tr[data-filter-type="external"]'), "Clearing search did not restore the external participant");
+                    if (external.checked) throw new Error("The completed batch retained its selections");
+                    external.click();
+                    bar.querySelector("[data-resend-clear]").click();
+                    return { requests, confirmation, selectedIds: [employee.value, external.value],
+                        cleared: bar.hidden && !external.checked, summary: document.querySelector(".app-toast").textContent };
+                `);
+                assert.deepEqual(result.confirmation, ["2", "1", "1"]);
+                assert.ok(result.cleared);
+                assert.match(result.summary, /1 undangan masuk antrean.*1 peserta dilewati/);
+                assert.equal(result.requests.length, 2);
+                assert.match(result.requests[0].url, /\/participants\/invitations\/resend$/);
+                assert.ok(result.requests[0].csrf);
+                assert.match(result.requests[0].payload.request_id, /^[a-f0-9]{32}$/);
+                assert.deepEqual(result.requests[0].payload.registration_ids, result.selectedIds);
+                assert.deepEqual(result.requests[1], result.requests[0]);
+            } finally {
+                await client.send("Emulation.clearDeviceMetricsOverride");
             }
         });
 
