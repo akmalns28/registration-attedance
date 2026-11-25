@@ -26,9 +26,86 @@ php artisan queue:work invitation_exports --queue=invitation-exports --tries=3 -
 
 - The default direct-download limit is 25 invitations. Larger exports render five invitations per PDF and deliver one ZIP. Tune `INVITATION_EXPORT_DIRECT_LIMIT` (0–50) and `INVITATION_EXPORT_BATCH_SIZE` (1–25) after measuring with production artwork.
 - Align the supervisor and container stop grace period with `INVITATION_EXPORT_JOB_TIMEOUT` (120 seconds by default). The connection's reservation expires 60 seconds after the configured job timeout. Run Laravel's scheduler every minute so it can prune expired exports hourly. `INVITATION_EXPORT_RETENTION_HOURS` defaults to 24.
-- Set `upload_max_filesize` to cover the largest allowed individual file. Set PHP `post_max_size` and Nginx `client_max_body_size` to cover the largest intended upload request, including multipart overhead. Set `max_file_uploads` to cover the larger configured file count plus an event logo if applicable. Application limits are in `config/event_assets.php` and `.env.example`.
+- Posters accept JPG, JPEG, PNG, and WebP up to 30 MiB each, with a 64 MiB request limit including multipart overhead. The longest side can be up to 10,000 pixels with a 36-megapixel total cap. Originals stay in private storage alongside 400, 1200, and 1600-pixel JPEG variants for the grid, event detail, and invitations. The gallery shares PHP's 30 MiB per-file limit.
 - A queued export evaluates current eligibility as it processes each batch and excludes registrations created after the request. The resulting count can change if staff amend registrations or invited days during processing.
 - Verify on staging with production-like artwork, Keycloak roles, and target mobile browsers. Check video playback and ranges through Nginx, scan a printed PDF QR code, and confirm the worker completes a 300-person export and the scheduler removes expired archives.
+
+### Deploy the poster upload fix
+
+The repository's FrankenPHP `Dockerfile` installs GD with JPEG, PNG, and WebP support and loads `php.prod.ini` from PHP's scanned configuration directory. Keep the existing Compose stack, its service names, and its storage mounts. Check for existing PHP overrides or a custom `PHP_INI_SCAN_DIR` in the web service. Use the checked-in settings as the single source for these six directives.
+
+After reviewing `git status --short` locally, stage the tracked hotfix changes and its new files, then push `develop`.
+
+```sh
+git add -u
+git add -- .dockerignore Dockerfile php.prod.ini app/Services/EventPosterImages.php resources/views/errors/413.blade.php
+git diff --cached --check
+git commit -m "fix: support production-sized event posters"
+git push origin develop
+```
+
+From the VPS checkout, use the existing web service and its configured local image tag. For a Compose service pinned to an image digest, update that pin through its deployment configuration instead.
+
+```sh
+git switch develop
+git pull --ff-only origin develop
+docker compose -f compose.prod.yml config --services
+read -r -p 'FrankenPHP web service name: ' WEB_SERVICE
+WEB_CONTAINER=$(docker compose -f compose.prod.yml ps -q "$WEB_SERVICE")
+test -n "$WEB_CONTAINER" || exit 1
+WEB_IMAGE=$(docker inspect --format '{{.Config.Image}}' "$WEB_CONTAINER")
+docker build --pull --tag "$WEB_IMAGE" --file Dockerfile .
+docker compose -f compose.prod.yml up -d --no-deps --no-build --pull never --force-recreate "$WEB_SERVICE"
+docker compose -f compose.prod.yml exec -T "$WEB_SERVICE" php artisan config:cache --no-interaction
+docker compose -f compose.prod.yml restart "$WEB_SERVICE"
+docker compose -f compose.prod.yml exec -T "$WEB_SERVICE" php artisan queue:restart --no-interaction
+docker compose -f compose.prod.yml exec -T "$WEB_SERVICE" php artisan config:show event_assets --no-interaction
+```
+
+Update any existing `EVENT_POSTER_MAX_KB=5120` deployment override to `30720` before rebuilding the config cache. Recreate any separate queue worker service using the rebuilt application image so it loads the updated PHP and application code. When the Compose service bind-mounts source over `/app`, also make the new production Vite build available through that mount. This fix has no schema migration.
+
+In the existing Nginx virtual host for RAMS, set the following directive in the application server block or upload location, then test and reload Nginx. Any custom Caddy request-body limit and the Cloudflare zone upload limit also need to allow at least 64 MiB.
+
+```nginx
+client_max_body_size 64M;
+```
+
+```sh
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+For Nginx managed by the same Compose stack, use its existing service name.
+
+```sh
+read -r -p 'Nginx service name: ' NGINX_SERVICE
+docker compose -f compose.prod.yml exec -T "$NGINX_SERVICE" nginx -t && \
+    docker compose -f compose.prod.yml exec -T "$NGINX_SERVICE" nginx -s reload
+```
+
+Verify the active PHP settings through FrankenPHP HTTP inside the web container. This command creates a temporary loopback-only probe in the default document root and removes it on exit. It expects the web service to listen on port 80 inside the container.
+
+```sh
+docker compose -f compose.prod.yml exec -T "$WEB_SERVICE" sh <<'SH'
+set -eu
+name="rams-limits-$(php -r 'echo bin2hex(random_bytes(16));').php"
+probe="/app/public/$name"
+trap 'rm -f "$probe"' EXIT
+cat > "$probe" <<'PHP'
+<?php
+if (!in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)) {
+    http_response_code(404);
+    exit;
+}
+header('Content-Type: application/json');
+$keys = ['upload_max_filesize', 'post_max_size', 'memory_limit', 'max_file_uploads', 'max_execution_time', 'max_input_time'];
+$limits = array_combine($keys, array_map('ini_get', $keys));
+echo json_encode(['sapi' => PHP_SAPI, 'limits' => $limits, 'gd_webp' => gd_info()['WebP Support'] ?? false], JSON_PRETTY_PRINT);
+PHP
+php -r '$body = file_get_contents($argv[1]); if ($body === false) { exit(1); } echo $body, PHP_EOL;' "http://127.0.0.1/$name"
+SH
+```
+
+Expect `frankenphp`, an enabled WebP decoder, and limits of `30M`, `64M`, `512M`, `30`, `120`, and `120`, in that order. Finish by uploading a 22 MiB poster through the public URL and opening the event thumbnail and a generated invitation.
 
 ## About Laravel
 

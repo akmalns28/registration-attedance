@@ -5,6 +5,7 @@ namespace App\Http\Requests\Event;
 use App\Models\Event;
 use App\Services\EventPosterService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Validation\Rule;
 
 class StoreEventRequest extends FormRequest
@@ -44,6 +45,10 @@ class StoreEventRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if ((int) $this->server('CONTENT_LENGTH', 0) > config('event_assets.post_max_bytes')) {
+            throw new PostTooLargeException;
+        }
+
         $registrationStart = $this->input('registration_start_at');
         $registrationEnd = $this->input('registration_end_at');
 
@@ -84,7 +89,15 @@ class StoreEventRequest extends FormRequest
 
     public function messages(): array
     {
+        $posterLimit = EventPosterService::uploadLimitLabel();
+
         return [
+            'posters.max' => 'Jumlah poster melebihi batas per event.',
+            'posters.*.uploaded' => "Poster gagal diunggah. Batas ukuran satu berkas adalah {$posterLimit}.",
+            'posters.*.max' => "Ukuran setiap poster maksimal {$posterLimit}.",
+            'posters.*.mimes' => 'Poster harus berupa gambar JPG, JPEG, PNG, atau WebP.',
+            'posters.*.extensions' => 'Gunakan ekstensi JPG, JPEG, PNG, atau WebP untuk poster.',
+            'posters.*.file' => 'Pilih berkas gambar untuk poster.',
             'google_maps_url.url' => 'URL Google Maps harus menggunakan HTTP atau HTTPS.',
             'logo.image' => 'Logo event harus berupa gambar.',
             'logo.mimes' => 'Logo event harus berformat PNG atau JPEG.',

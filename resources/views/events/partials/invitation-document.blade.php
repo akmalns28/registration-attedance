@@ -16,10 +16,12 @@
         .details { margin: 6pt 0 10pt; }
         .detail-row { padding: 3pt 0; border-bottom: 1pt solid #e1eaf4; overflow-wrap: break-word; }
         .details strong { color: #315782; }
-        .check-in { padding: 8pt 12pt; border: 1pt solid #d6e3f2; background: #f7faff; text-align: center; page-break-inside: avoid; }
+        .check-in { width: 100%; table-layout: fixed; border: 1pt solid #d6e3f2; background: #f7faff; page-break-inside: avoid; }
+        .check-in-details, .check-in-qr { padding: 8pt; vertical-align: middle; }
+        .check-in-qr { width: 43mm; }
         .label { margin: 0 0 2pt; color: #315782; font-size: 9pt; }
         .number { margin: 0 0 6pt; font-weight: bold; }
-        .qr { display: block; width: 43mm; height: 43mm; margin: 0 auto 6pt; background: #fff; }
+        .qr { display: block; width: 43mm; height: 43mm; background: #fff; }
         .instructions { margin: 0; font-size: 9pt; }
         .invitation-next { page-break-before: always; }
         .poster { text-align: center; margin: 0 0 6pt; page-break-inside: avoid; }
@@ -58,14 +60,19 @@
         <div class="detail-row"><strong>Lokasi</strong> @include('events.partials.location-link', ['location' => $event->location, 'mapsUrl' => $event->google_maps_url, 'showMapsHint' => true])</div>
     </div>
 
-    <p>Yth. <strong>{{ $participantName }}</strong></p>
-
-    <section class="check-in">
-        <p class="label">Nomor Registrasi</p>
-        <p class="number">{{ $registration->registration_number }}</p>
-        <img class="qr" src="{{ $qrImage }}" alt="QR Code registrasi">
-        <p class="instructions">Tunjukkan QR Code ini kepada panitia saat check-in.</p>
-    </section>
+    <table class="check-in" role="presentation">
+        <tr>
+            <td class="check-in-details">
+                <p>Yth. <strong>{{ $participantName }}</strong></p>
+                <p class="label">Nomor Registrasi</p>
+                <p class="number">{{ $registration->registration_number }}</p>
+                <p class="instructions">Tunjukkan QR Code ini kepada panitia saat check-in.</p>
+            </td>
+            <td class="check-in-qr">
+                <img class="qr" src="{{ $qrImage }}" alt="QR Code registrasi">
+            </td>
+        </tr>
+    </table>
     </article>
     @endforeach
 </body>

@@ -1,7 +1,7 @@
 <div class="border rounded p-2 position-relative" data-poster-key="{{ $key }}">
     <input type="hidden" name="poster_order[]" value="{{ $key }}" data-poster-order disabled>
     <a href="{{ $url }}" target="_blank" rel="noopener" data-poster-preview>
-        <img @if ($url) src="{{ $url }}" @endif alt="{{ $name }}" loading="lazy" class="event-poster-thumb w-100">
+        <img @if ($url) src="{{ $thumbnail ?? $url }}" @endif alt="{{ $name }}" loading="lazy" class="event-poster-thumb w-100">
     </a>
     <div class="small mt-1 text-truncate" data-poster-name title="{{ $name }}">{{ $name }}</div>
     <div class="d-none d-flex flex-wrap gap-1 mt-1" data-poster-controls>

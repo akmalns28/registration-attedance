@@ -10,6 +10,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -129,7 +130,7 @@ class EventInvitationExportService
                 'event' => $event,
                 'pages' => $pages,
                 'logoImage' => $this->artwork->dataUri($this->artwork->logo($event)),
-                'posterImage' => $this->artwork->dataUri($poster),
+                'posterImage' => $poster['file'] ?? $this->artwork->dataUri($poster),
                 'posterWidth' => round(($poster['width'] ?? 0) * $scale, 2),
                 'posterHeight' => round(($poster['height'] ?? 0) * $scale, 2),
                 'description' => $description === '' ? [] : (preg_split('/\R/u', $description) ?: [$description]),
@@ -139,6 +140,7 @@ class EventInvitationExportService
                 'isPhpEnabled' => false,
                 'isJavascriptEnabled' => false,
                 'isFontSubsettingEnabled' => true,
+                'chroot' => [base_path(), Storage::disk('local')->path('event-posters')],
             ]);
 
             return $pdf->output();
