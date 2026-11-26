@@ -7,6 +7,7 @@ use App\Models\EventPoster;
 use Closure;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -41,6 +42,13 @@ class EventPosterService
             'poster_order' => ['sometimes', 'array', 'list', 'max:100'],
             'poster_order.*' => ['required', 'string', 'max:36', 'distinct'],
             'poster_primary' => ['nullable', 'string', 'max:36'],
+            'poster_assignments' => ['sometimes', 'array', 'max:100'],
+            'poster_assignments.*' => ['required', 'array:scope,days,day_count,upload_reference'],
+            'poster_assignments.*.scope' => ['required', 'in:all,days'],
+            'poster_assignments.*.day_count' => ['sometimes', 'integer', 'min:0'],
+            'poster_assignments.*.days' => ['sometimes', 'array', 'list'],
+            'poster_assignments.*.days.*' => ['required', 'integer', 'min:1'],
+            'poster_assignments.*.upload_reference' => ['sometimes', 'string', 'max:1024'],
         ];
     }
 
@@ -118,7 +126,7 @@ class EventPosterService
      * Called inside the transaction holding the event row lock.
      *
      * @param  array<int, array{file_path: string, original_filename: string, mime_type: string, content_hash: string, file_size: int}>  $uploads
-     * @param  array{poster_remove?: list<string>, poster_order?: list<string>, poster_primary?: string|null}  $changes
+     * @param  array{poster_remove?: list<string>, poster_order?: list<string>, poster_primary?: string|null, poster_assignments?: array<string, array{scope: string, days?: list<int|string>, day_count?: int|string, upload_reference?: string}>}  $changes
      * @return list<string>
      */
     public function sync(Event $event, array $uploads, array $changes): array
@@ -149,6 +157,7 @@ class EventPosterService
             throw ValidationException::withMessages(['posters' => 'Jumlah poster melebihi batas event.']);
         }
 
+        $assignments = $this->resolveAssignments($event, $remaining, $aliases, $changes['poster_assignments'] ?? []);
         $order = collect($changes['poster_order'] ?? [])->map(fn (string $key): string => $aliases[$key] ?? $key)
             ->merge($remaining->keys())->unique()->filter(fn (string $key): bool => $remaining->has($key))->values();
         $requestedPrimary = $changes['poster_primary'] ?? '';
@@ -169,9 +178,57 @@ class EventPosterService
         foreach ($order as $position => $id) {
             $poster = $remaining->get($id);
             $poster->fill(['is_primary' => $id === $primary, 'sort_order' => $position]);
+            if (isset($assignments[$id])) {
+                $poster->is_event_wide = $assignments[$id] === [];
+            }
             $event->posters()->save($poster);
+            if (isset($assignments[$id])) {
+                $poster->days()->sync($assignments[$id]);
+            }
         }
 
         return $discardedPaths;
+    }
+
+    /**
+     * @param  Collection<string, EventPoster>  $posters
+     * @param  array<string, string>  $aliases
+     * @param  array<string, array{scope: string, days?: list<int|string>, day_count?: int|string, upload_reference?: string}>  $requested
+     * @return array<string, list<int>>
+     */
+    private function resolveAssignments(Event $event, Collection $posters, array $aliases, array $requested): array
+    {
+        $assignments = [];
+        $dayIds = [];
+        foreach ($requested as $key => $assignment) {
+            $id = $aliases[$key] ?? $key;
+            if (! $posters->has($id)) {
+                throw ValidationException::withMessages(['poster_assignments' => 'Poster yang dipilih tidak tersedia pada event ini.']);
+            }
+
+            $submittedDays = $assignment['days'] ?? [];
+            if (isset($assignment['day_count']) && (int) $assignment['day_count'] !== count($submittedDays)) {
+                throw ValidationException::withMessages(['poster_assignments' => 'Pilihan hari untuk poster tidak lengkap. Pilih kembali hari yang diinginkan.']);
+            }
+
+            $days = array_values(array_unique(array_map('intval', $submittedDays)));
+            sort($days);
+            if (($assignment['scope'] === 'all') !== ($days === [])) {
+                throw ValidationException::withMessages(['poster_assignments' => 'Pilih Semua Hari atau centang minimal satu hari untuk setiap poster yang diubah.']);
+            }
+            if (isset($assignments[$id]) && $assignments[$id] !== $days) {
+                throw ValidationException::withMessages(['poster_assignments' => 'Poster yang sama memiliki pilihan hari berbeda. Gunakan satu pilihan untuk setiap poster.']);
+            }
+
+            $assignments[$id] = $days;
+            $dayIds = [...$dayIds, ...$days];
+        }
+
+        $dayIds = array_values(array_unique($dayIds));
+        if ($dayIds !== [] && $event->days()->whereKey($dayIds)->count() !== count($dayIds)) {
+            throw ValidationException::withMessages(['poster_assignments' => 'Hari pelaksanaan yang dipilih tidak tersedia pada event ini.']);
+        }
+
+        return $assignments;
     }
 }

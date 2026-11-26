@@ -45,6 +45,11 @@ class EventDay extends Model
         return $this->belongsToMany(EventRegistration::class, 'event_day_invitations')->withPivot('revoked_at');
     }
 
+    public function posters(): BelongsToMany
+    {
+        return $this->belongsToMany(EventPoster::class)->orderBy('sort_order')->orderBy('event_posters.id');
+    }
+
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);

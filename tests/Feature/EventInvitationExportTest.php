@@ -294,16 +294,76 @@ class EventInvitationExportTest extends TestCase
         $this->assertSame([0 => 'Baris pertama <script>', 1 => 'Baris kedua'], $rendered['description']);
         $poster = $event->primaryPoster()->sole();
         $variant = EventPoster::variantPath($poster->file_path, 'invitation');
-        $this->assertSame(Storage::disk('local')->path($variant), $rendered['posterImage']);
+        $pagePoster = $rendered['pages'][0]['poster'];
+        $this->assertSame(Storage::disk('local')->path($variant), $pagePoster['image']);
         $posterBytes = Storage::disk('local')->get($variant);
         $this->assertSame([1067, 1600, IMAGETYPE_JPEG], array_slice(getimagesizefromstring($posterBytes), 0, 3));
         $this->assertLessThan(512 * 1024, strlen($posterBytes));
         $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 1067\s+/Height 1600\b~', $response->getContent());
         $this->assertDoesNotMatchRegularExpression('~/Subtype /Image\s+/Width 2400\s+/Height 3600\b~', $response->getContent());
-        $this->assertEqualsWithDelta(2 / 3, $rendered['posterWidth'] / $rendered['posterHeight'], 0.01);
+        $this->assertEqualsWithDelta(2 / 3, $pagePoster['width'] / $pagePoster['height'], 0.01);
         $html = view('events.partials.invitation-document', $rendered)->render();
         $this->assertStringContainsString('Baris pertama &lt;script&gt;', $html);
         $this->assertStringNotContainsString('Jenis Peserta', $html);
+    }
+
+    public function test_individual_and_batched_invitations_choose_one_poster_per_participants_invited_days(): void
+    {
+        $disk = Storage::fake('local');
+        $event = Event::factory()->create(['start_date' => '2027-01-15', 'end_date' => '2027-01-17']);
+        [$firstDay, $secondDay, $thirdDay] = EventDay::factory()->for($event)->count(3)->sequence(
+            ['day_number' => 1, 'date' => '2027-01-15'],
+            ['day_number' => 2, 'date' => '2027-01-16'],
+            ['day_number' => 3, 'date' => '2027-01-17'],
+        )->create();
+        $firstPoster = EventPoster::factory()->for($event)->primary()->hasAttached($firstDay, [], 'days')->create(['sort_order' => 2]);
+        $secondPoster = EventPoster::factory()->for($event)->hasAttached($secondDay, [], 'days')->create(['sort_order' => 0]);
+        $sharedPoster = EventPoster::factory()->for($event)->hasAttached(collect([$firstDay, $secondDay]), [], 'days')->create(['sort_order' => 1]);
+        $images = [];
+        foreach ([$firstPoster, $secondPoster, $sharedPoster] as $index => $poster) {
+            $variant = EventPoster::variantPath($poster->file_path, 'invitation');
+            $file = UploadedFile::fake()->image('poster.jpg', 105 + $index, 160);
+            $disk->put($variant, file_get_contents($file->getPathname()));
+            $images[] = $disk->path($variant);
+        }
+
+        $participants = [
+            EventRegistration::factory()->for($event)->invitedTo($firstDay)->create(),
+            EventRegistration::factory()->external()->for($event)->invitedTo($secondDay)->create(),
+            EventRegistration::factory()->for($event)->invitedTo($firstDay, $secondDay)->create(),
+            EventRegistration::factory()->for($event)->invitedTo($thirdDay)->create(),
+        ];
+        $expected = [$images[0], $images[1], $images[0], null];
+        $rendered = [];
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
+            foreach ($view->getData()['pages'] as $page) {
+                $rendered[$page['registration']->id] = $page['poster']['image'] ?? null;
+            }
+        });
+        $this->actingAs($this->staff('registrations.view', 'registrations.manage'));
+        foreach ($participants as $index => $participant) {
+            $pdf = $this->get($this->invitationUrl($event, $participant))->assertOk()->getContent();
+            $this->assertSame($expected[$index], $rendered[$participant->id]);
+            $this->assertSame('RA1:'.$participant->uuid, $this->invitationPayload($pdf));
+        }
+
+        $url = route('events.participants.invitations.export', $event);
+        $rendered = [];
+        $pdf = $this->get($url)->assertOk()->getContent();
+        $this->assertInvitationPdf($pdf, 4);
+        $this->assertSame($expected, array_values($rendered));
+        $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 105\s+/Height 160\b~', $pdf);
+        $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 106\s+/Height 160\b~', $pdf);
+        $this->assertDoesNotMatchRegularExpression('~/Subtype /Image\s+/Width 107\s+/Height 160\b~', $pdf);
+
+        config(['event_invitations.direct_limit' => 1, 'event_invitations.batch_size' => 2]);
+        $rendered = [];
+        $export = $this->postJson($url, ['participant_type' => 'all'])->assertAccepted()->json();
+        $this->workOneExportJob();
+        $this->workOneExportJob();
+        $this->workOneExportJob();
+        $this->getJson($export['status_url'])->assertOk()->assertJsonPath('status', 'completed');
+        $this->assertSame($expected, array_values($rendered));
     }
 
     public function test_external_invitation_preview_keeps_qr_and_only_the_primary_poster_with_no_contact_details(): void

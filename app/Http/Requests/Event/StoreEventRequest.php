@@ -98,6 +98,7 @@ class StoreEventRequest extends FormRequest
             'posters.*.mimes' => 'Poster harus berupa gambar JPG, JPEG, PNG, atau WebP.',
             'posters.*.extensions' => 'Gunakan ekstensi JPG, JPEG, PNG, atau WebP untuk poster.',
             'posters.*.file' => 'Pilih berkas gambar untuk poster.',
+            'poster_assignments.*' => 'Pilihan hari untuk poster tidak valid.',
             'google_maps_url.url' => 'URL Google Maps harus menggunakan HTTP atau HTTPS.',
             'logo.image' => 'Logo event harus berupa gambar.',
             'logo.mimes' => 'Logo event harus berformat PNG atau JPEG.',

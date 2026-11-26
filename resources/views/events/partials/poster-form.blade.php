@@ -1,7 +1,12 @@
-@php($posterLimit = \App\Services\EventPosterService::uploadLimitLabel())
+@php
+    $posterLimit = \App\Services\EventPosterService::uploadLimitLabel();
+    $posterDays = $event->days ?? collect();
+    $uploadAssignments = collect(old('poster_assignments'))->filter(fn ($assignment, $key) =>
+        str_starts_with((string) $key, 'upload:') && is_string($assignment['upload_reference'] ?? null))->values();
+@endphp
 <section class="card mt-3" data-poster-editor data-limit="{{ config('event_assets.poster_max_count') }}"
     data-file-limit="{{ config('event_assets.poster_max_kb') * 1024 }}" data-file-limit-label="{{ $posterLimit }}"
-    data-post-limit="{{ config('event_assets.post_max_bytes') }}">
+    data-post-limit="{{ config('event_assets.post_max_bytes') }}" data-poster-upload-assignments="{{ $uploadAssignments->toJson() }}">
     <div class="card-header"><h3 class="card-title">Poster Event</h3></div>
     <div class="card-body">
         <label for="event-posters" class="form-label">Tambah poster</label>
@@ -13,16 +18,21 @@
             Sisi terpanjang maksimal {{ number_format(config('event_assets.poster_max_side'), 0, ',', '.') }} piksel,
             dengan luas maksimal {{ config('event_assets.poster_max_pixels') / 1000000 }} megapiksel.
         </div>
-        @foreach ($errors->get('posters*') as $messages)
+        @foreach (array_merge($errors->get('posters*'), $errors->get('poster_assignments*')) as $messages)
             @foreach ($messages as $message)
                 <div class="text-danger small mt-1">{{ $message }}</div>
             @endforeach
         @endforeach
+        @if ($posterDays->isEmpty())
+            <p class="form-hint mt-2 mb-0">Poster dapat diunggah sekarang. Atur pilihan hari setelah Event Day dibuat.</p>
+        @elseif ($uploadAssignments->isNotEmpty())
+            <p class="form-hint mt-2 mb-0">Pilih kembali berkas poster yang sama untuk memulihkan pilihan harinya.</p>
+        @endif
         <p class="text-danger small mb-0" data-poster-error role="status"></p>
         <div data-poster-removed></div>
         <input type="hidden" name="poster_primary" data-poster-primary disabled>
 
-        <div class="event-poster-grid mt-3" data-poster-list>
+        <div class="event-poster-grid event-poster-editor-grid mt-3" data-poster-list>
             @foreach ($event->posters ?? [] as $poster)
                 @include('events.partials.poster-tile', [
                     'key' => $poster->id,
@@ -30,6 +40,8 @@
                     'thumbnail' => route('events.posters.show', [$event, $poster, 'size' => 'thumbnail']),
                     'name' => $poster->original_filename,
                     'primary' => $poster->is_primary,
+                    'eventWide' => $poster->isEventWide(),
+                    'assignedDays' => $poster->days->modelKeys(),
                 ])
             @endforeach
         </div>

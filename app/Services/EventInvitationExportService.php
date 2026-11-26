@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Event;
+use App\Models\EventPoster;
 use App\Models\EventRegistration;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
@@ -108,14 +109,21 @@ class EventInvitationExportService
 
         try {
             $pages = [];
+            $posterImages = [];
             foreach ($registrations as $registration) {
                 $invitedDates = $this->invitations->dateSummary($registration);
                 if ($invitedDates !== null) {
+                    $poster = $this->artwork->resolvePoster($event, $registration->activeInvitedDays->modelKeys());
+                    if ($poster !== null && ! array_key_exists($poster->id, $posterImages)) {
+                        $posterImages[$poster->id] = $this->posterForPage($poster);
+                    }
+
                     $pages[] = [
                         'registration' => $registration,
                         'participantName' => $registration->participant_name ?? 'Peserta',
                         'invitedDates' => $invitedDates,
                         'qrImage' => 'data:image/png;base64,'.base64_encode($this->qrCode->generateInvitationPng($registration)),
+                        'poster' => $posterImages[$poster?->id] ?? null,
                     ];
                 }
             }
@@ -123,16 +131,11 @@ class EventInvitationExportService
                 throw ValidationException::withMessages(['export' => 'Tidak ada peserta dengan hari undangan aktif untuk filter ini.']);
             }
 
-            $poster = $this->artwork->poster($event);
-            $scale = $poster === null ? 0 : min(0.6, 245 / $poster['width'], 120 / $poster['height']);
             $description = trim($event->description ?? '');
             $pdf = Pdf::loadView('events.partials.invitation-document', [
                 'event' => $event,
                 'pages' => $pages,
                 'logoImage' => $this->artwork->dataUri($this->artwork->logo($event)),
-                'posterImage' => $poster['file'] ?? $this->artwork->dataUri($poster),
-                'posterWidth' => round(($poster['width'] ?? 0) * $scale, 2),
-                'posterHeight' => round(($poster['height'] ?? 0) * $scale, 2),
                 'description' => $description === '' ? [] : (preg_split('/\R/u', $description) ?: [$description]),
             ])->setPaper('a5', 'portrait')->setOptions([
                 'defaultFont' => 'DejaVu Sans',
@@ -152,6 +155,23 @@ class EventInvitationExportService
                 ini_set('memory_limit', $originalLimit);
             }
         }
+    }
+
+    /** @return array{image: string, width: float, height: float}|null */
+    private function posterForPage(EventPoster $poster): ?array
+    {
+        $image = $this->artwork->poster($poster);
+        if ($image === null) {
+            return null;
+        }
+
+        $scale = min(0.6, 245 / $image['width'], 120 / $image['height']);
+
+        return [
+            'image' => $image['file'] ?? $this->artwork->dataUri($image),
+            'width' => round($image['width'] * $scale, 2),
+            'height' => round($image['height'] * $scale, 2),
+        ];
     }
 
     public function eventSlug(Event $event): string

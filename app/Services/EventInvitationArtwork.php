@@ -12,15 +12,19 @@ class EventInvitationArtwork
 {
     public function __construct(private readonly EventPosterImages $posters) {}
 
+    /** @param list<int> $dayIds */
+    public function resolvePoster(Event $event, array $dayIds): ?EventPoster
+    {
+        $relevant = $event->loadMissing('posters.days')->posters
+            ->filter(fn (EventPoster $poster): bool => $poster->appliesToDays($dayIds));
+
+        return $relevant->firstWhere('is_primary', true) ?? $relevant->first();
+    }
+
     /** @return array{contents: string, mime: string, width: int, height: int, file: string|null}|null */
-    public function poster(Event $event): ?array
+    public function poster(EventPoster $poster): ?array
     {
         try {
-            $poster = $event->loadMissing('primaryPoster')->primaryPoster;
-            if ($poster === null) {
-                return null;
-            }
-
             $disk = Storage::disk('local');
 
             $variant = EventPoster::variantPath($poster->file_path, 'invitation');
@@ -35,7 +39,8 @@ class EventInvitationArtwork
             return ['contents' => $contents, 'mime' => 'image/jpeg', 'width' => $dimensions[0], 'height' => $dimensions[1], 'file' => $file];
         } catch (Throwable $exception) {
             Log::warning('Event invitation poster could not be read.', [
-                'event_id' => $event->id,
+                'event_id' => $poster->event_id,
+                'poster_id' => $poster->id,
                 'exception_type' => $exception::class,
             ]);
 

@@ -238,14 +238,23 @@ class EventBulkInvitationResendTest extends TestCase
         $this->actingAs($this->user('events.view', 'events.update'));
         $event = Event::factory()->published()->create(['title' => 'Old event title']);
         $day = EventDay::factory()->for($event)->create(['date' => '2027-02-01']);
+        $otherDay = EventDay::factory()->for($event)->create(['day_number' => 2, 'date' => '2027-02-16']);
+        $primary = EventPoster::factory()->for($event)->primary()->hasAttached($day, [], 'days')->create();
+        $poster = EventPoster::factory()->for($event)->hasAttached($otherDay, [], 'days')->create(['sort_order' => 1]);
+        $original = UploadedFile::fake()->image('original.jpg', 80, 90);
+        Storage::disk('local')->put(EventPoster::variantPath($primary->file_path, 'invitation'), file_get_contents($original->getPathname()));
         $schedule = EventSchedule::factory()->for($day)->create(['title' => 'Old session title']);
         EventSchedule::factory()->for($day)->inactive()->create(['title' => 'Inactive session']);
         $external = ExternalParticipant::factory()->create(['name' => 'Sari <Peserta>', 'email' => 'external@example.test']);
         $registration = EventRegistration::factory()->external()->for($event)->invitedTo($day)
             ->create(['external_participant_id' => $external->id]);
         $transport = Mockery::mock(TransportInterface::class);
-        $transport->shouldReceive('send')->once()->ordered()
-            ->andThrow(new UnexpectedResponseException('SMTP reply 451 4.7.1 retry later', 451));
+        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message) use ($original): never {
+            $attachments = collect($message->getAttachments())->keyBy(fn ($attachment): string => $attachment->getFilename());
+            $this->assertSame(file_get_contents($original->getPathname()), $attachments['event-poster.jpg']->getBody());
+
+            throw new UnexpectedResponseException('SMTP reply 451 4.7.1 retry later', 451);
+        });
         $mail = new MailManager($this->app);
         $mail->mailer('smtp')->setSymfonyTransport($transport);
         Mail::swap($mail);
@@ -259,7 +268,6 @@ class EventBulkInvitationResendTest extends TestCase
         $this->assertNull($notification->sent_at);
 
         $logo = UploadedFile::fake()->image('latest.png', 64, 32)->store('event-logos', 'local');
-        $poster = EventPoster::factory()->for($event)->primary()->create();
         $posterImage = UploadedFile::fake()->image('latest.jpg', 100, 180);
         $posterContent = file_get_contents($posterImage->getPathname());
         Storage::disk('local')->put(EventPoster::variantPath($poster->file_path, 'invitation'), $posterContent);
@@ -267,6 +275,14 @@ class EventBulkInvitationResendTest extends TestCase
             'location' => 'Updated hall', 'google_maps_url' => 'https://maps.google.com/?q=Updated', 'start_date' => '2027-02-14', 'end_date' => '2027-02-16']);
         $day->update(['date' => '2027-02-15', 'title' => 'Invited day']);
         $schedule->update(['title' => 'Latest <session>', 'start_time' => '14:00:00', 'end_time' => '15:00:00']);
+        $this->put(route('events.update', $event), [
+            'title' => $event->title, 'description' => $event->description, 'location' => $event->location, 'google_maps_url' => $event->google_maps_url,
+            'start_date' => '2027-02-14', 'end_date' => '2027-02-16', 'status' => Event::STATUS_PUBLISHED,
+            'poster_assignments' => [
+                $primary->id => ['scope' => 'days', 'days' => [$otherDay->id]],
+                $poster->id => ['scope' => 'days', 'days' => [$day->id]],
+            ],
+        ])->assertSessionHasNoErrors();
         $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message, Envelope $envelope) use ($logo, $posterContent, $registration): SentMessage {
             $html = $message->getHtmlBody();
             $this->assertSame('Undangan Event - Updated event title', $message->getSubject());
