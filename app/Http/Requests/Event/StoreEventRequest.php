@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Event;
 
 use App\Models\Event;
+use App\Services\DressCode;
 use App\Services\EventPosterService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\PostTooLargeException;
@@ -22,7 +23,7 @@ class StoreEventRequest extends FormRequest
             'title' => ['required', 'string', 'max:200'],
 
             'description' => ['nullable', 'string'],
-            'dress_code' => ['nullable', 'string', 'max:150'],
+            'dress_code' => ['nullable', 'string', 'max:'.DressCode::MAX_LENGTH],
 
             'location' => ['nullable', 'string', 'max:255'],
             'google_maps_url' => ['nullable', 'string', 'max:2048', 'url:http,https'],
@@ -52,6 +53,10 @@ class StoreEventRequest extends FormRequest
 
         $registrationStart = $this->input('registration_start_at');
         $registrationEnd = $this->input('registration_end_at');
+        $dressCode = $this->input('dress_code');
+        if (is_string($dressCode)) {
+            $this->merge(['dress_code' => DressCode::normalize($dressCode)]);
+        }
 
         $this->merge([
             'title' => trim((string) $this->input('title')),
@@ -107,7 +112,7 @@ class StoreEventRequest extends FormRequest
             'logo.dimensions' => 'Dimensi logo event maksimal 3000 × 3000 piksel.',
             'title.required' => 'Nama event wajib diisi.',
             'title.max' => 'Nama event maksimal 200 karakter.',
-            'dress_code.max' => 'Dress code maksimal 150 karakter.',
+            'dress_code.max' => 'Dress code maksimal '.DressCode::MAX_LENGTH.' karakter.',
 
             'start_date.required' => 'Tanggal mulai wajib diisi.',
             'start_date.date_format' => 'Format tanggal mulai tidak valid.',

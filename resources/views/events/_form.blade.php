@@ -63,16 +63,8 @@
                     @enderror
                 </div>
 
-                <div class="mb-3">
-                    <label for="dress_code" class="form-label">Dress Code Event</label>
-                    <input type="text" id="dress_code" name="dress_code" maxlength="150"
-                        class="form-control @error('dress_code') is-invalid @enderror"
-                        value="{{ old('dress_code', $event->dress_code ?? '') }}">
-                    @error('dress_code')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
-                    <div class="form-hint">Berlaku untuk hari yang tidak memiliki dress code sendiri.</div>
-                </div>
+                <x-ui.form.dress-code label="Dress Code Event" :value="$event->dress_code ?? null"
+                    hint="Berlaku untuk hari yang tidak memiliki dress code sendiri." />
 
                 {{-- Location --}}
                 <div class="mb-3">

@@ -141,7 +141,7 @@ class EventDayManagementTest extends TestCase
         $data = $this->newEventData();
         $this->post(route('events.store'), [...$data, 'dress_code' => 'Batik'])->assertSessionHasNoErrors();
         $event = Event::query()->sole();
-        $this->get(route('events.edit', $event))->assertOk()->assertSee('value="Batik"', false);
+        $this->get(route('events.edit', $event))->assertOk()->assertSee('>Batik</textarea>', false);
         $this->get(route('events.days.create', $event))->assertOk()->assertSee('type="time"', false);
 
         $this->post(route('events.days.store', $event), [
@@ -192,13 +192,45 @@ class EventDayManagementTest extends TestCase
 
     public function test_dress_code_length_is_validated_for_events_and_days(): void
     {
-        $tooLong = str_repeat('x', 151);
+        $tooLong = str_repeat('x', 1001);
         $this->actingAs($this->authorizedUser())
             ->post(route('events.store'), [...$this->newEventData(), 'dress_code' => $tooLong])
-            ->assertSessionHasErrors('dress_code');
+            ->assertSessionHasErrors(['dress_code' => 'Dress code maksimal 1000 karakter.']);
         $this->post(route('events.days.store', $this->event()), [
             'date' => '2027-01-15', 'dress_code' => $tooLong, 'is_active' => true,
-        ])->assertSessionHasErrors('dress_code');
+        ])->assertSessionHasErrors(['dress_code' => 'Dress code maksimal 1000 karakter.']);
+    }
+
+    public function test_multiline_dress_codes_are_normalized_saved_and_rendered_as_text_and_lists(): void
+    {
+        $this->withoutVite()->actingAs($this->authorizedUser());
+        $instruction = str_repeat('Kenakan pakaian yang nyaman dan sopan. ', 5);
+        $eventCode = "Ketentuan umum\n".trim($instruction)."\n\n• Batik\n- Sepatu tertutup";
+        $this->assertGreaterThan(150, mb_strlen($eventCode));
+        $this->post(route('events.store'), [...$this->newEventData(), 'dress_code' => str_replace("\n", " \r\n", $eventCode)])
+            ->assertSessionHasNoErrors();
+        $event = Event::query()->sole();
+        $this->assertSame($eventCode, $event->dress_code);
+
+        $this->get(route('events.show', $event))->assertOk()
+            ->assertSeeInOrder(['Ketentuan umum<br>', 'Kenakan pakaian yang nyaman', '<ul style=', '<li>Batik</li>', '<li>Sepatu tertutup</li>'], false);
+        $this->get(route('events.edit', $event))->assertOk()->assertSee($eventCode);
+
+        $payload = ['date' => '2027-12-10', 'is_active' => true];
+        $unsafe = '<img src=x onerror="alert(1)">';
+        $dayCode = "Persiapan\n\n3. Bawa jaket\n4. $unsafe";
+        $this->post(route('events.days.store', $event), [...$payload, 'dress_code' => $dayCode])->assertSessionHasNoErrors();
+        $day = $event->days()->sole();
+        $this->assertSame($dayCode, $day->dress_code);
+        $this->get(route('events.days.edit', [$event, $day]))->assertOk()->assertSee($dayCode);
+        $this->get(route('events.days.show', [$event, $day]))->assertOk()
+            ->assertSeeInOrder(['Persiapan', '<ol start="3"', '<li>Bawa jaket</li>', '<li>'.e($unsafe).'</li>'], false)
+            ->assertDontSee($unsafe, false)->assertDontSee('<li>Batik</li>', false);
+
+        $this->put(route('events.days.update', [$event, $day]), [...$payload, 'dress_code' => " \r\n  "])->assertSessionHasNoErrors();
+        $this->assertNull($day->fresh()->dress_code);
+        $this->get(route('events.days.show', [$event, $day]))->assertOk()
+            ->assertSee('<li>Batik</li>', false)->assertDontSee('Bawa jaket');
     }
 
     public function test_authorized_user_can_create_event_day(): void

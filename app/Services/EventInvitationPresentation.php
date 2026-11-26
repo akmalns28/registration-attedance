@@ -27,7 +27,7 @@ class EventInvitationPresentation
             'time' => $day->attendanceTime(),
             'dress_code' => $day->effectiveDressCode($event),
         ]);
-        $dressCodes = $rows->pluck('dress_code')->uniqueStrict();
+        $dressCodes = $rows->pluck('dress_code')->uniqueStrict(DressCode::blocks(...));
 
         return [
             'days' => $rows->all(),

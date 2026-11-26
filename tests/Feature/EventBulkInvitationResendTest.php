@@ -274,7 +274,7 @@ class EventBulkInvitationResendTest extends TestCase
         $event->update(['title' => 'Updated event title', 'description' => 'Updated <description>', 'logo_path' => $logo,
             'location' => 'Updated hall', 'google_maps_url' => 'https://maps.google.com/?q=Updated', 'start_date' => '2027-02-14', 'end_date' => '2027-02-16']);
         $day->update(['date' => '2027-02-15', 'title' => 'Invited day',
-            'start_time' => '08:00', 'end_time' => '17:00', 'dress_code' => 'Batik']);
+            'start_time' => '08:00', 'end_time' => '17:00', 'dress_code' => "• Batik\n• Sepatu tertutup"]);
         $schedule->update(['title' => 'Latest <session>', 'start_time' => '14:00:00', 'end_time' => '15:00:00']);
         $this->put(route('events.update', $event), [
             'title' => $event->title, 'description' => $event->description, 'location' => $event->location, 'google_maps_url' => $event->google_maps_url,
@@ -293,6 +293,8 @@ class EventBulkInvitationResendTest extends TestCase
                 $this->assertStringContainsString($text, $html);
             }
             $this->assertSame(1, substr_count($html, '15 Februari 2027'));
+            $this->assertStringContainsString('<li>Batik</li>', $html);
+            $this->assertStringContainsString('<li>Sepatu tertutup</li>', $html);
             foreach (['Old session title', 'Latest &lt;session&gt;', 'Inactive session', 'Invited day',
                 '14/02/2027', '16/02/2027', 'Yth.', 'External', 'Employee'] as $text) {
                 $this->assertStringNotContainsString($text, $html);

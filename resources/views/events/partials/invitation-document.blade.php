@@ -16,6 +16,7 @@
         .details { margin: 6pt 0 10pt; }
         .detail-row { padding: 3pt 0; border-bottom: 1pt solid #e1eaf4; overflow-wrap: break-word; }
         .details strong { color: #315782; }
+        .details .dress-code-content { font-size: 9pt; line-height: 1.15; }
         .check-in { width: 100%; table-layout: fixed; border: 1pt solid #d6e3f2; background: #f7faff; page-break-inside: avoid; }
         .check-in-details, .check-in-qr { padding: 6pt; vertical-align: middle; }
         .check-in-details { width: 64%; line-height: 1.05; }
@@ -49,13 +50,6 @@
         </div>
     @endif
 
-    <div class="details">
-        @include('events.partials.invitation-attendance')
-        @if (filled($event->location) || filled($event->google_maps_url))
-            <div class="detail-row"><strong>Lokasi</strong> @include('events.partials.location-link', ['location' => $event->location, 'mapsUrl' => $event->google_maps_url, 'showMapsHint' => true])</div>
-        @endif
-    </div>
-
     <table class="check-in" role="presentation">
         <tr>
             <td class="check-in-details">
@@ -70,6 +64,13 @@
             </td>
         </tr>
     </table>
+
+    <div class="details">
+        @include('events.partials.invitation-attendance')
+        @if (filled($event->location) || filled($event->google_maps_url))
+            <div class="detail-row"><strong>Lokasi</strong> @include('events.partials.location-link', ['location' => $event->location, 'mapsUrl' => $event->google_maps_url, 'showMapsHint' => true])</div>
+        @endif
+    </div>
 
     @if ($description !== [])
         <div class="description">

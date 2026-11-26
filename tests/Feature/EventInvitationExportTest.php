@@ -166,10 +166,11 @@ class EventInvitationExportTest extends TestCase
     }
 
     #[TestWith([null, 1])]
-    #[TestWith(['Seragam olahraga', 2])]
+    #[TestWith(["- Batik\n- Sepatu tertutup", 1])]
+    #[TestWith(["3. Seragam olahraga\n4. <img src=x>", 2])]
     public function test_resent_email_and_pdf_share_day_times_and_effective_dress_codes(?string $override, int $dressCodeLabels): void
     {
-        $event = Event::factory()->create(['start_date' => '2026-12-02', 'end_date' => '2026-12-05', 'dress_code' => 'Batik']);
+        $event = Event::factory()->create(['start_date' => '2026-12-02', 'end_date' => '2026-12-05', 'dress_code' => "• Batik\n• Sepatu tertutup"]);
         [$first, $second, , $inactive] = EventDay::factory()->for($event)->count(4)->sequence(
             ['day_number' => 1, 'date' => '2026-12-02', 'start_time' => '08:00:00', 'end_time' => '17:00:00'],
             ['day_number' => 2, 'date' => '2026-12-03', 'start_time' => '09:00:00', 'dress_code' => $override],
@@ -193,8 +194,15 @@ class EventInvitationExportTest extends TestCase
             $this->assertSame(1, substr_count($html, '2 Desember 2026'));
             $this->assertSame(1, substr_count($html, '3 Desember 2026'));
             $this->assertSame($dressCodeLabels, substr_count($html, 'Dress Code'));
-            $this->assertSame(1, substr_count($html, 'Batik'));
-            $this->assertSame($override === null ? 0 : 1, substr_count($html, 'Seragam olahraga'));
+            $this->assertSame(1, substr_count($html, '<li>Batik</li>'));
+            $this->assertSame(1, substr_count($html, '<li>Sepatu tertutup</li>'));
+            if ($dressCodeLabels === 2) {
+                $this->assertStringContainsString('<ol start="3"', $html);
+                $this->assertStringContainsString('<li>&lt;img src=x&gt;</li>', $html);
+                $this->assertLessThan(strpos($html, '<li>Batik</li>'), strpos($html, '2 Desember 2026'));
+                $this->assertLessThan(strpos($html, '<li>Seragam olahraga</li>'), strpos($html, '3 Desember 2026'));
+            }
+            $this->assertStringNotContainsString('<img src=x>', $html);
             foreach (['Internal Day Title', 'Internal Rundown', '4 Desember 2026', '5 Desember 2026', 'Jadwal Event', 'Hari Undangan', 'External'] as $text) {
                 $this->assertStringNotContainsString($text, $html);
             }
@@ -375,7 +383,11 @@ class EventInvitationExportTest extends TestCase
     public function test_individual_and_batched_invitations_choose_one_poster_per_participants_invited_days(): void
     {
         $disk = Storage::fake('local');
-        $event = Event::factory()->create(['start_date' => '2027-01-15', 'end_date' => '2027-01-17']);
+        $event = Event::factory()->create([
+            'title' => 'Forum Operasional', 'location' => 'Aula Utama',
+            'description' => 'Gunakan undangan ini untuk check-in.',
+            'start_date' => '2027-01-15', 'end_date' => '2027-01-17', 'dress_code' => "1. Batik\n2. Sepatu tertutup",
+        ]);
         [$firstDay, $secondDay, $thirdDay] = EventDay::factory()->for($event)->count(3)->sequence(
             ['day_number' => 1, 'date' => '2027-01-15'],
             ['day_number' => 2, 'date' => '2027-01-16'],
@@ -400,7 +412,9 @@ class EventInvitationExportTest extends TestCase
         ];
         $expected = [$images[0], $images[1], $images[0], null];
         $rendered = [];
-        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
+        $document = [];
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered, &$document): void {
+            $document = $view->getData();
             foreach ($view->getData()['pages'] as $page) {
                 $rendered[$page['registration']->id] = $page['poster']['image'] ?? null;
             }
@@ -417,6 +431,7 @@ class EventInvitationExportTest extends TestCase
         $pdf = $this->get($url)->assertOk()->getContent();
         $this->assertInvitationPdf($pdf, 4);
         $this->assertSame($expected, array_values($rendered));
+        $this->assertSame(4, substr_count(view('events.partials.invitation-document', $document)->render(), '<li>Batik</li>'));
         $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 105\s+/Height 160\b~', $pdf);
         $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 106\s+/Height 160\b~', $pdf);
         $this->assertDoesNotMatchRegularExpression('~/Subtype /Image\s+/Width 107\s+/Height 160\b~', $pdf);
@@ -427,8 +442,10 @@ class EventInvitationExportTest extends TestCase
         $this->workOneExportJob();
         $this->workOneExportJob();
         $this->workOneExportJob();
-        $this->getJson($export['status_url'])->assertOk()->assertJsonPath('status', 'completed');
+        $status = $this->getJson($export['status_url'])->assertOk()->assertJsonPath('status', 'completed');
         $this->assertSame($expected, array_values($rendered));
+        $this->assertSame(2, substr_count(view('events.partials.invitation-document', $document)->render(), '<li>Batik</li>'));
+        $this->get($status->json('download_url'))->assertOk()->assertHeader('Content-Type', 'application/zip');
     }
 
     public function test_external_invitation_preview_keeps_qr_and_only_the_primary_poster_with_no_contact_details(): void
@@ -465,9 +482,12 @@ class EventInvitationExportTest extends TestCase
         $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
     }
 
-    public function test_long_description_flows_across_pages_without_losing_the_qr(): void
+    public function test_long_description_and_dress_code_flow_across_pages_without_losing_the_qr(): void
     {
-        $event = Event::factory()->create(['description' => str_repeat("Paragraf informasi yang panjang.\n", 100).str_repeat('X', 500)]);
+        $event = Event::factory()->create([
+            'description' => str_repeat("Paragraf informasi yang panjang.\n", 100).str_repeat('X', 500),
+            'dress_code' => str_repeat("• Kenakan pakaian yang nyaman dan sesuai kegiatan.\n", 15).'• Bawa pakaian ganti.',
+        ]);
         $registration = EventRegistration::factory()->for($event)->invitedTo()->create();
         $pdf = $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk()->getContent();
 

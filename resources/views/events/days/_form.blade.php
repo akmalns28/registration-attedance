@@ -58,16 +58,8 @@
                     <div class="col-12 form-hint">Jam pelaksanaan hari ini untuk undangan peserta.</div>
                 </div>
 
-                <div class="mb-3">
-                    <label for="dress_code" class="form-label">Dress Code Hari Ini</label>
-                    <input type="text" id="dress_code" name="dress_code" maxlength="150"
-                        class="form-control @error('dress_code') is-invalid @enderror"
-                        value="{{ old('dress_code', $day->dress_code ?? '') }}">
-                    @error('dress_code')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
-                    <div class="form-hint">Kosongkan untuk mengikuti dress code event{{ $event->dress_code ? ' ('.$event->dress_code.')' : '' }}.</div>
-                </div>
+                <x-ui.form.dress-code label="Dress Code Hari Ini" :value="$day->dress_code ?? null"
+                    hint="Kosongkan untuk mengikuti dress code event." />
 
                 <div class="mb-3">
                     <label for="title" class="form-label">
