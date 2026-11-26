@@ -596,7 +596,8 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 select("first.png", 1);
                 select("second.png", 2);
                 const last = list.lastElementChild;
-                await until(() => last.querySelector("img").naturalWidth > 0);
+                last.scrollIntoView({ block: "center" });
+                await until(() => last.querySelector("img").naturalWidth > 0, "Poster preview did not load");
                 last.querySelector('[data-poster-action="primary"]').click();
                 last.querySelector('[data-poster-action="up"]').click();
                 last.querySelector('[data-poster-action="up"]').click();
@@ -939,6 +940,78 @@ test("Sprint 4R with production Vite assets", { skip: !browser, timeout: 240000 
                 }
             });
         }
+        await suite.test("Dress Code formats and continues lists on mobile forms", async () => {
+            await client.send("Emulation.setDeviceMetricsOverride", { width: 320, height: 720, deviceScaleFactor: 1, mobile: true });
+            await client.send("Emulation.setTouchEmulationEnabled", { enabled: true });
+            try {
+                const values = {
+                    eventCreate: "",
+                    eventEdit: "Selama kegiatan\n\n• Batik\n• Sepatu tertutup",
+                    dayCreate: "",
+                    dayEdit: "Hari pertama\n\n1. Kemeja putih\n2. Sepatu hitam",
+                };
+                for (const [page, value] of Object.entries(values)) {
+                    await fresh(page);
+                    assert.deepEqual(await client.evaluate(`
+                        const field = document.querySelector("[data-dress-code-editor] textarea");
+                        const toolbar = document.querySelector("[data-dress-code-toolbar]");
+                        return {
+                            value: field.value,
+                            buttons: toolbar.querySelectorAll("button").length,
+                            fits: field.getBoundingClientRect().right <= innerWidth &&
+                                document.documentElement.scrollWidth <= innerWidth &&
+                                [...toolbar.querySelectorAll("button")].every((button) =>
+                                    button.getBoundingClientRect().right <= innerWidth && button.getBoundingClientRect().height >= 44),
+                        };
+                    `), { value, buttons: 2, fits: true }, page);
+                }
+
+                await client.evaluate(`
+                    window.dressField = document.querySelector("[data-dress-code-editor] textarea");
+                    dressField.value = "Batik";
+                    dressField.setSelectionRange(dressField.value.length, dressField.value.length);
+                    document.querySelector('[data-list-format="bullet"]').click();
+                `);
+                await client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+                await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+                assert.equal(await client.evaluate("return dressField.value;"), "• Batik\n• ");
+
+                await client.evaluate(`
+                    const enter = () => dressField.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertLineBreak", cancelable: true }));
+                    enter();
+                    dressField.value = "Kemeja putih\\nSepatu hitam";
+                    dressField.select();
+                    document.querySelector('[data-list-format="number"]').click();
+                    dressField.setSelectionRange("1. Kemeja putih".length, "1. Kemeja putih".length);
+                    enter();
+                `);
+                assert.equal(await client.evaluate("return dressField.value;"), "1. Kemeja putih\n2. \n3. Sepatu hitam");
+                await client.evaluate(`
+                    dressField.setRangeText("Ikat pinggang", dressField.selectionStart, dressField.selectionEnd, "end");
+                    dressField.form.addEventListener("submit", (event) => event.preventDefault(), { once: true });
+                    dressField.form.dispatchEvent(new Event("submit", { cancelable: true }));
+                `);
+                assert.equal(await client.evaluate('return new FormData(dressField.form).get("dress_code");'),
+                    "1. Kemeja putih\n2. Ikat pinggang\n3. Sepatu hitam");
+
+                for (const [page, tag, style] of [["event", "ul", "disc"], ["day", "ol", "decimal"]]) {
+                    await fresh(page);
+                    const list = await client.evaluate(`
+                        const list = document.querySelector("[data-dress-code-content] ${tag}");
+                        return {
+                            items: list.querySelectorAll("li").length,
+                            style: getComputedStyle(list).listStyleType,
+                            fits: list.getBoundingClientRect().width > 0 && list.getBoundingClientRect().right <= innerWidth,
+                        };
+                    `);
+                    assert.deepEqual(list, { items: 2, style, fits: true }, page);
+                }
+            } finally {
+                await client.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+                await client.send("Emulation.clearDeviceMetricsOverride");
+            }
+        });
+
         assert.deepEqual(client.errors, []);
     } finally {
         if (client) { await client.send("Page.close").catch(() => {}); client.socket.close(); }

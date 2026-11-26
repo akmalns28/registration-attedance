@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\DressCode;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -75,10 +76,7 @@ class EventDay extends Model
 
     public function effectiveDressCode(Event $event): ?string
     {
-        $override = trim($this->dress_code ?? '');
-        $default = trim($event->dress_code ?? '');
-
-        return $override !== '' ? $override : ($default !== '' ? $default : null);
+        return DressCode::normalize($this->dress_code) ?? DressCode::normalize($event->dress_code);
     }
 
     /**

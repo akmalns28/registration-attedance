@@ -249,7 +249,7 @@
                             @if (filled($event->dress_code))
                                 <div class="datagrid-item">
                                     <div class="datagrid-title">Dress Code Event</div>
-                                    <div class="datagrid-content text-break">{{ $event->dress_code }}</div>
+                                    <div class="datagrid-content"><x-ui.dress-code :value="$event->dress_code" /></div>
                                 </div>
                             @endif
 
@@ -374,10 +374,6 @@
                                                 <x-ui.icon name="clock" class="me-1" />Jam pelaksanaan {{ $attendanceTime }}
                                             </div>
                                         @endif
-                                        @if (($dressCode = $day->effectiveDressCode($event)) !== null)
-                                            <div class="text-secondary small mt-1 text-break">Dress Code {{ $dressCode }}</div>
-                                        @endif
-
                                     </div>
 
                                     <div class="card-actions">
@@ -406,6 +402,14 @@
                                 </div>
 
                                 <div class="card-body py-3 d-flex flex-wrap gap-3">
+                                    @if (filled($day->dress_code))
+                                        <div class="w-100">
+                                            <strong>Dress Code</strong>
+                                            <x-ui.dress-code :value="$day->dress_code" />
+                                        </div>
+                                    @elseif (filled($event->dress_code))
+                                        <div class="w-100 text-secondary small">Mengikuti Dress Code Event</div>
+                                    @endif
                                     <span><x-ui.icon name="list-details" class="me-1" />{{ $day->schedules_count }} kegiatan rundown</span>
                                     <span class="text-secondary">
                                         <x-ui.icon name="clock" class="me-1" />

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\EventDay;
 
 use App\Models\Event;
+use App\Services\DressCode;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -26,7 +27,7 @@ class StoreEventDayRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:5000'],
             'start_time' => ['nullable', 'date_format:H:i'],
             'end_time' => ['bail', 'nullable', 'date_format:H:i', Rule::when($this->filled('start_time'), ['after:start_time'])],
-            'dress_code' => ['nullable', 'string', 'max:150'],
+            'dress_code' => ['nullable', 'string', 'max:'.DressCode::MAX_LENGTH],
 
             'is_active' => ['required', 'boolean'],
         ];
@@ -34,6 +35,11 @@ class StoreEventDayRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $dressCode = $this->input('dress_code');
+        if (is_string($dressCode)) {
+            $this->merge(['dress_code' => DressCode::normalize($dressCode)]);
+        }
+
         $this->merge([
             'title' => $this->filled('title') ? trim((string) $this->input('title')) : null,
 
@@ -60,7 +66,7 @@ class StoreEventDayRequest extends FormRequest
             'start_time.date_format' => 'Gunakan format jam mulai JJ:MM.',
             'end_time.date_format' => 'Gunakan format jam selesai JJ:MM.',
             'end_time.after' => 'Jam selesai harus setelah jam mulai pada hari yang sama.',
-            'dress_code.max' => 'Dress code maksimal 150 karakter.',
+            'dress_code.max' => 'Dress code maksimal '.DressCode::MAX_LENGTH.' karakter.',
         ];
     }
 }

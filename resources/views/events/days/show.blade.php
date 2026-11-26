@@ -33,7 +33,10 @@
                     <div><dt>Jam Pelaksanaan</dt><dd class="mb-0">{{ $attendanceTime }}</dd></div>
                 @endif
                 @if ($dressCode !== null)
-                    <div><dt>Dress Code</dt><dd class="mb-0 text-break">{{ $dressCode }}</dd></div>
+                    <div class="mw-100">
+                        <dt>Dress Code</dt>
+                        <dd class="mb-0"><x-ui.dress-code :value="$dressCode" /></dd>
+                    </div>
                 @endif
             </dl>
         @endif

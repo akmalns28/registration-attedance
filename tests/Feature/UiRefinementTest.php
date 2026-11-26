@@ -168,8 +168,8 @@ class UiRefinementTest extends TestCase
             User::factory()->create(['name' => $name])->assignRole('panitia');
             Role::create(['name' => 'ui-role-'.$index, 'guard_name' => 'web']);
         }
-        $fixture['day']->update(['date' => $fixture['event']->start_date->toDateString()]);
-        $fixture['event']->update(['status' => Event::STATUS_PUBLISHED]);
+        $fixture['day']->update(['date' => $fixture['event']->start_date->toDateString(), 'dress_code' => "Hari pertama\n\n1. Kemeja putih\n2. Sepatu hitam"]);
+        $fixture['event']->update(['status' => Event::STATUS_PUBLISHED, 'dress_code' => "Selama kegiatan\n\n• Batik\n• Sepatu tertutup"]);
         $poster = EventPoster::factory()->for($fixture['event'])->primary()->create(['original_filename' => 'Poster awal.png']);
         $photo = EventMedia::factory()->for($fixture['event'])->create(['title' => 'Foto dokumentasi']);
         $clip = EventMedia::factory()->for($fixture['event'])->create([
