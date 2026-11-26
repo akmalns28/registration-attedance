@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\EventPoster;
 use App\Models\EventRegistration;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Dompdf\Image\Cache as DompdfImageCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
@@ -18,11 +19,11 @@ use Throwable;
 
 class EventInvitationExportService
 {
-    private const INVITED_DATES = 'activeInvitedDays:event_days.id,event_days.date';
+    private const INVITED_DAYS = 'activeInvitedDays:event_days.id,event_days.event_id,event_days.date,event_days.start_time,event_days.end_time,event_days.dress_code';
 
     public function __construct(
         private readonly RegistrationQrCodeService $qrCode,
-        private readonly EventDayInvitationService $invitations,
+        private readonly EventInvitationPresentation $presentation,
         private readonly EventInvitationArtwork $artwork,
     ) {}
 
@@ -34,8 +35,12 @@ class EventInvitationExportService
             throw ValidationException::withMessages(['export' => 'Undangan hanya tersedia untuk registrasi yang masih aktif.']);
         }
 
-        $registration->loadMissing([$registration->isEmployee() ? 'employee:id,name' : 'externalParticipant:id,name', self::INVITED_DATES]);
-        if ($registration->activeInvitedDays->isEmpty()) {
+        $registration->loadMissing([$registration->isEmployee() ? 'employee:id,name' : 'externalParticipant:id,name', self::INVITED_DAYS]);
+        if ($registration->participant_name === null) {
+            throw ValidationException::withMessages(['export' => 'Data peserta untuk undangan tidak ditemukan.']);
+        }
+
+        if ($this->presentation->invitedDays($event, $registration)->isEmpty()) {
             throw ValidationException::withMessages(['export' => 'Peserta belum memiliki hari undangan aktif.']);
         }
 
@@ -47,8 +52,16 @@ class EventInvitationExportService
     /** @return Builder<EventRegistration> */
     public function eligible(Event $event, string $participantType): Builder
     {
-        return EventRegistration::query()->whereBelongsTo($event)->registered()->whereHas('activeInvitedDays')
-            ->when($participantType !== 'all', fn (Builder $query): Builder => $query->where('registration_type', $participantType));
+        return EventRegistration::query()->whereBelongsTo($event)->registered()
+            ->whereHas('activeInvitedDays', fn (Builder $days): Builder => $days->where('event_days.event_id', $event->id))
+            ->where(function (Builder $query) use ($participantType): void {
+                if ($participantType !== EventRegistration::TYPE_EXTERNAL) {
+                    $query->where(fn (Builder $employees): Builder => $employees->employees()->whereHas('employee'));
+                }
+                if ($participantType !== EventRegistration::TYPE_EMPLOYEE) {
+                    $query->orWhere(fn (Builder $externals): Builder => $externals->externals()->whereHas('externalParticipant'));
+                }
+            });
     }
 
     /** @param Builder<EventRegistration> $query */
@@ -56,7 +69,7 @@ class EventInvitationExportService
     {
         return $query
             ->select(['id', 'event_id', 'uuid', 'registration_number', 'employee_id', 'external_participant_id', 'registration_type'])
-            ->with(self::INVITED_DATES)
+            ->with(self::INVITED_DAYS)
             ->when($participantType !== EventRegistration::TYPE_EXTERNAL, fn (Builder $query): Builder => $query->with('employee:id,name'))
             ->when($participantType !== EventRegistration::TYPE_EMPLOYEE, fn (Builder $query): Builder => $query->with('externalParticipant:id,name'))
             ->orderBy('id');
@@ -74,6 +87,7 @@ class EventInvitationExportService
             Context::scope(fn () => report($exception), [
                 'event_id' => $event->id,
                 'participant_count' => $registrations->count(),
+                'duration_ms' => (int) ((hrtime(true) - $started) / 1e6),
                 'peak_memory_bytes' => memory_get_peak_usage(true),
             ]);
 
@@ -110,18 +124,19 @@ class EventInvitationExportService
         try {
             $pages = [];
             $posterImages = [];
+            $logoImage = $this->artwork->dataUri($this->artwork->logo($event));
             foreach ($registrations as $registration) {
-                $invitedDates = $this->invitations->dateSummary($registration);
-                if ($invitedDates !== null) {
-                    $poster = $this->artwork->resolvePoster($event, $registration->activeInvitedDays->modelKeys());
+                $days = $this->presentation->invitedDays($event, $registration);
+                if ($registration->participant_name !== null && $days->isNotEmpty()) {
+                    $poster = $this->artwork->resolvePoster($event, $days->pluck('id')->all());
                     if ($poster !== null && ! array_key_exists($poster->id, $posterImages)) {
                         $posterImages[$poster->id] = $this->posterForPage($poster);
                     }
 
                     $pages[] = [
                         'registration' => $registration,
-                        'participantName' => $registration->participant_name ?? 'Peserta',
-                        'invitedDates' => $invitedDates,
+                        'participantName' => $registration->participant_name,
+                        'attendance' => $this->presentation->attendance($event, $days),
                         'qrImage' => 'data:image/png;base64,'.base64_encode($this->qrCode->generateInvitationPng($registration)),
                         'poster' => $posterImages[$poster?->id] ?? null,
                     ];
@@ -135,7 +150,7 @@ class EventInvitationExportService
             $pdf = Pdf::loadView('events.partials.invitation-document', [
                 'event' => $event,
                 'pages' => $pages,
-                'logoImage' => $this->artwork->dataUri($this->artwork->logo($event)),
+                'logoImage' => $logoImage,
                 'description' => $description === '' ? [] : (preg_split('/\R/u', $description) ?: [$description]),
             ])->setPaper('a5', 'portrait')->setOptions([
                 'defaultFont' => 'DejaVu Sans',
@@ -144,11 +159,12 @@ class EventInvitationExportService
                 'isJavascriptEnabled' => false,
                 'isFontSubsettingEnabled' => true,
                 'chroot' => [base_path(), Storage::disk('local')->path('event-posters')],
-            ]);
+            ], mergeWithDefaults: true);
 
             return $pdf->output();
         } finally {
-            unset($pdf);
+            DompdfImageCache::clear();
+            unset($pdf, $pages, $posterImages, $logoImage);
             gc_collect_cycles();
             gc_mem_caches();
             if ($limited) {
@@ -165,7 +181,7 @@ class EventInvitationExportService
             return null;
         }
 
-        $scale = min(0.6, 245 / $image['width'], 120 / $image['height']);
+        $scale = min(0.6, 245 / $image['width'], 105 / $image['height']);
 
         return [
             'image' => $image['file'] ?? $this->artwork->dataUri($image),

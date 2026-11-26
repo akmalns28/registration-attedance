@@ -246,6 +246,13 @@
                                 </div>
                             </div>
 
+                            @if (filled($event->dress_code))
+                                <div class="datagrid-item">
+                                    <div class="datagrid-title">Dress Code Event</div>
+                                    <div class="datagrid-content text-break">{{ $event->dress_code }}</div>
+                                </div>
+                            @endif
+
                             <div class="datagrid-item">
                                 <div class="datagrid-title">
                                     Tanggal Mulai
@@ -362,6 +369,14 @@
                                             <x-ui.icon name="calendar" class="me-1" />
                                             {{ $day->date->format('d M Y') }}
                                         </div>
+                                        @if ($attendanceTime = $day->attendanceTime())
+                                            <div class="text-secondary small mt-1">
+                                                <x-ui.icon name="clock" class="me-1" />Jam pelaksanaan {{ $attendanceTime }}
+                                            </div>
+                                        @endif
+                                        @if (($dressCode = $day->effectiveDressCode($event)) !== null)
+                                            <div class="text-secondary small mt-1 text-break">Dress Code {{ $dressCode }}</div>
+                                        @endif
 
                                     </div>
 
@@ -394,7 +409,7 @@
                                     <span><x-ui.icon name="list-details" class="me-1" />{{ $day->schedules_count }} kegiatan rundown</span>
                                     <span class="text-secondary">
                                         <x-ui.icon name="clock" class="me-1" />
-                                        {{ $day->schedules_min_start_time ? substr($day->schedules_min_start_time, 0, 5).' - '.substr($day->schedules_max_end_time, 0, 5) : 'Belum ada rundown' }}
+                                        {{ $day->schedules_min_start_time ? 'Rundown '.substr($day->schedules_min_start_time, 0, 5).' - '.substr($day->schedules_max_end_time, 0, 5) : 'Belum ada rundown' }}
                                     </span>
                                     <span><x-ui.icon name="users" class="me-1" />{{ $day->checked_in_count }} / {{ $day->invited_count }} peserta hadir</span>
                                 </div>

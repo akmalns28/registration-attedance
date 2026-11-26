@@ -22,7 +22,7 @@ class Event extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
-    protected $fillable = ['title', 'description', 'location', 'google_maps_url', 'logo_path', 'start_date', 'end_date', 'registration_start_at', 'registration_end_at', 'capacity', 'status'];
+    protected $fillable = ['title', 'description', 'dress_code', 'location', 'google_maps_url', 'logo_path', 'start_date', 'end_date', 'registration_start_at', 'registration_end_at', 'capacity', 'status'];
 
     /** @return array{contents: string, mime: string}|null */
     public function logoImage(): ?array

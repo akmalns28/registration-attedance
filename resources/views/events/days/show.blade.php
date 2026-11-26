@@ -23,6 +23,21 @@
             <span class="badge {{ $day->is_active ? 'bg-success-lt' : 'bg-danger-lt' }}">{{ $day->is_active ? 'Hari Aktif' : 'Hari Tidak Aktif' }}</span>
         </div>
 
+        @php
+            $attendanceTime = $day->attendanceTime();
+            $dressCode = $day->effectiveDressCode($event);
+        @endphp
+        @if ($attendanceTime || $dressCode !== null)
+            <dl class="d-flex flex-wrap gap-3 gap-md-5 mb-3">
+                @if ($attendanceTime)
+                    <div><dt>Jam Pelaksanaan</dt><dd class="mb-0">{{ $attendanceTime }}</dd></div>
+                @endif
+                @if ($dressCode !== null)
+                    <div><dt>Dress Code</dt><dd class="mb-0 text-break">{{ $dressCode }}</dd></div>
+                @endif
+            </dl>
+        @endif
+
         @if ($day->description)
             <p class="text-secondary">{{ $day->description }}</p>
         @endif

@@ -96,7 +96,7 @@ class EventRegistrationMailTest extends TestCase
         $this->assertStringContainsString(e(config('app.name')), $message->getHtmlBody());
         $this->assertStringNotContainsString('src="cid:', $message->getHtmlBody());
         $this->assertCount(1, $message->getAttachments());
-        $this->assertSame('RA1:'.$notification->registration->uuid, new QrReader($message->getAttachments()[0]->getBody(), QrReader::SOURCE_TYPE_BLOB)->text());
+        $this->assertSame('RA1:'.$notification->registration->uuid, new QrReader($message->getAttachments()[0]->getBody(), QrReader::SOURCE_TYPE_BLOB)->text(['TRY_HARDER' => true]));
     }
 
     public function test_reactivation_email_can_be_rendered(): void

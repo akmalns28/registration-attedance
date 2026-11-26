@@ -11,6 +11,7 @@ use App\Models\EventInvitationExport;
 use App\Models\EventPoster;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationNotification;
+use App\Models\EventSchedule;
 use App\Models\ExternalParticipant;
 use App\Models\User;
 use App\Services\EventInvitationExportQueue;
@@ -124,10 +125,10 @@ class EventInvitationExportTest extends TestCase
         $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($response->getContent()));
     }
 
-    #[TestWith([[4], '4 Februari 2027'])]
-    #[TestWith([[4, 3, 5], '3 Februari 2027 – 5 Februari 2027'])]
-    #[TestWith([[8, 4, 3], '3 Februari 2027, 4 Februari 2027, 8 Februari 2027'])]
-    public function test_email_and_pdf_show_only_the_assigned_dates_in_chronological_order(array $assignedDates, string $expected): void
+    #[TestWith([[4], ['4 Februari 2027']])]
+    #[TestWith([[4, 3, 5], ['3 Februari 2027', '4 Februari 2027', '5 Februari 2027']])]
+    #[TestWith([[8, 4, 3], ['3 Februari 2027', '4 Februari 2027', '8 Februari 2027']])]
+    public function test_email_and_pdf_show_only_the_assigned_dates_in_chronological_order(array $assignedDates, array $expected): void
     {
         $event = Event::factory()->create(['start_date' => '2027-02-01', 'end_date' => '2027-02-10']);
         $days = [];
@@ -148,10 +149,55 @@ class EventInvitationExportTest extends TestCase
         $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk();
 
         foreach ([view('events.partials.invitation-document', $rendered)->render(), (new EventRegistrationMail($notification))->render()] as $html) {
-            $this->assertStringContainsString($expected, $html);
+            foreach ($expected as $date) {
+                $this->assertSame(1, substr_count($html, $date), $date);
+            }
+            $positions = array_map(fn (string $date): int => strpos($html, $date), $expected);
+            $this->assertSame($positions, collect($positions)->sort()->values()->all());
+            $this->assertSame(1, substr_count($html, 'Jadwal Kehadiran'));
+            $this->assertSame(1, substr_count($html, e($registration->participant_name)));
+            $this->assertStringNotContainsString('Yth.', $html);
+            $this->assertStringNotContainsString('Anda telah terdaftar sebagai peserta', $html);
+            $this->assertStringNotContainsString('Dress Code', $html);
             $this->assertStringNotContainsString('Hidden Day Title', $html);
             $this->assertStringNotContainsString('1 Februari 2027', $html);
             $this->assertStringNotContainsString('10 Februari 2027', $html);
+        }
+    }
+
+    #[TestWith([null, 1])]
+    #[TestWith(['Seragam olahraga', 2])]
+    public function test_resent_email_and_pdf_share_day_times_and_effective_dress_codes(?string $override, int $dressCodeLabels): void
+    {
+        $event = Event::factory()->create(['start_date' => '2026-12-02', 'end_date' => '2026-12-05', 'dress_code' => 'Batik']);
+        [$first, $second, , $inactive] = EventDay::factory()->for($event)->count(4)->sequence(
+            ['day_number' => 1, 'date' => '2026-12-02', 'start_time' => '08:00:00', 'end_time' => '17:00:00'],
+            ['day_number' => 2, 'date' => '2026-12-03', 'start_time' => '09:00:00', 'dress_code' => $override],
+            ['day_number' => 3, 'date' => '2026-12-04', 'end_time' => '16:00:00'],
+            ['day_number' => 4, 'date' => '2026-12-05', 'is_active' => false],
+        )->create(['title' => 'Internal Day Title']);
+        EventSchedule::factory()->for($first)->create(['is_active' => true, 'title' => 'Internal Rundown']);
+        $registration = EventRegistration::factory()->external()->for($event)->invitedTo($second, $first, $inactive)->create();
+        $notification = EventRegistrationNotification::factory()->for($registration, 'registration')->create([
+            'event_id' => $event->id, 'notification_type' => EventRegistrationNotification::TYPE_INVITATION,
+            'metadata' => ['bulk_resend' => true],
+        ]);
+        $rendered = [];
+        View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
+            $rendered = $view->getData();
+        });
+        $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk();
+        foreach ([view('events.partials.invitation-document', $rendered)->render(), (new EventRegistrationMail($notification))->render()] as $html) {
+            $this->assertStringContainsString('2 Desember 2026 | 08.00–17.00 WIB', $html);
+            $this->assertStringContainsString('3 Desember 2026 | Mulai 09.00 WIB', $html);
+            $this->assertSame(1, substr_count($html, '2 Desember 2026'));
+            $this->assertSame(1, substr_count($html, '3 Desember 2026'));
+            $this->assertSame($dressCodeLabels, substr_count($html, 'Dress Code'));
+            $this->assertSame(1, substr_count($html, 'Batik'));
+            $this->assertSame($override === null ? 0 : 1, substr_count($html, 'Seragam olahraga'));
+            foreach (['Internal Day Title', 'Internal Rundown', '4 Desember 2026', '5 Desember 2026', 'Jadwal Event', 'Hari Undangan', 'External'] as $text) {
+                $this->assertStringNotContainsString($text, $html);
+            }
         }
     }
 
@@ -227,7 +273,7 @@ class EventInvitationExportTest extends TestCase
         $renderedDates = [];
         View::composer('events.partials.invitation-document', function (BladeView $view) use (&$renderedDates): void {
             foreach ($view->getData()['pages'] as $page) {
-                $renderedDates[$page['registration']->id] = $page['invitedDates'];
+                $renderedDates[$page['registration']->id] = array_column($page['attendance']['days'], 'date');
             }
         });
 
@@ -240,7 +286,7 @@ class EventInvitationExportTest extends TestCase
         foreach ($expectedTypes as $index => $type) {
             $registration = $registrations[$type];
             $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf, $index));
-            $this->assertSame($type === 'employee' ? '1 Februari 2027' : '1 Februari 2027, 3 Februari 2027', $renderedDates[$registration->id]);
+            $this->assertSame($type === 'employee' ? ['1 Februari 2027'] : ['1 Februari 2027', '3 Februari 2027'], $renderedDates[$registration->id]);
         }
         $this->assertDatabaseCount('event_registrations', 5);
         $this->assertDatabaseCount('event_registration_notifications', 0);
@@ -260,8 +306,26 @@ class EventInvitationExportTest extends TestCase
             ->assertJsonValidationErrors(['export' => 'Tidak ada peserta dengan hari undangan aktif untuk filter ini.']);
     }
 
+    public function test_invalid_registration_relationships_cannot_export_an_invitation(): void
+    {
+        $event = Event::factory()->create();
+        $day = EventDay::factory()->for($event)->create();
+        $otherDay = EventDay::factory()->create();
+        $invalid = EventRegistration::factory()->for($event)->invitedTo($day)->create(['employee_id' => null]);
+        $wrongDay = EventRegistration::factory()->for($event)->create();
+        $wrongDay->invitedDays()->attach($otherDay);
+        $this->actingAs($this->staff('registrations.manage', 'registrations.view'));
+
+        $this->getJson($this->invitationUrl($event, $invalid))->assertUnprocessable()
+            ->assertJsonValidationErrors(['export' => 'Data peserta untuk undangan tidak ditemukan.']);
+        $this->getJson($this->invitationUrl($event, $wrongDay))->assertUnprocessable()
+            ->assertJsonValidationErrors(['export' => 'Peserta belum memiliki hari undangan aktif.']);
+        $this->getJson(route('events.participants.invitations.export', $event))->assertUnprocessable()
+            ->assertJsonValidationErrors(['export' => 'Tidak ada peserta dengan hari undangan aktif untuk filter ini.']);
+    }
+
     #[TestWith([1])]
-    #[TestWith([25])]
+    #[TestWith([5])]
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
     public function test_direct_export_threshold_renders_branded_pdfs_within_web_limits(int $count): void
@@ -274,7 +338,8 @@ class EventInvitationExportTest extends TestCase
             fn (array $uploads): array => $posters->sync($event, $uploads, []));
         EventPoster::factory()->for($event)->create();
         $days = [$event->days()->create(['date' => $event->start_date, 'day_number' => 1, 'is_active' => true])];
-        EventRegistration::factory()->for($event)->invitedTo(...$days)->count($count)->create();
+        $registrations = EventRegistration::factory()->for($event)->invitedTo(...$days)->count($count)->create();
+        $registrations->last()->employee->update(['name' => 'Kasiran Lukman Pradana S.H.']);
 
         $rendered = [];
         View::composer('events.partials.invitation-document', function (BladeView $view) use (&$rendered): void {
@@ -297,9 +362,9 @@ class EventInvitationExportTest extends TestCase
         $pagePoster = $rendered['pages'][0]['poster'];
         $this->assertSame(Storage::disk('local')->path($variant), $pagePoster['image']);
         $posterBytes = Storage::disk('local')->get($variant);
-        $this->assertSame([1067, 1600, IMAGETYPE_JPEG], array_slice(getimagesizefromstring($posterBytes), 0, 3));
+        $this->assertSame([640, 960, IMAGETYPE_JPEG], array_slice(getimagesizefromstring($posterBytes), 0, 3));
         $this->assertLessThan(512 * 1024, strlen($posterBytes));
-        $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 1067\s+/Height 1600\b~', $response->getContent());
+        $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 640\s+/Height 960\b~', $response->getContent());
         $this->assertDoesNotMatchRegularExpression('~/Subtype /Image\s+/Width 2400\s+/Height 3600\b~', $response->getContent());
         $this->assertEqualsWithDelta(2 / 3, $pagePoster['width'] / $pagePoster['height'], 0.01);
         $html = view('events.partials.invitation-document', $rendered)->render();
@@ -385,6 +450,21 @@ class EventInvitationExportTest extends TestCase
         $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
     }
 
+    public function test_a_legacy_large_poster_derivative_is_resized_before_pdf_rendering(): void
+    {
+        $disk = Storage::fake('local');
+        $event = Event::factory()->create();
+        $poster = EventPoster::factory()->for($event)->primary()->create();
+        $legacy = UploadedFile::fake()->image('legacy.jpg', 1600, 1000);
+        $disk->put(EventPoster::variantPath($poster->file_path, 'invitation'), file_get_contents($legacy->getPathname()));
+        $registration = EventRegistration::factory()->for($event)->invitedTo()->create();
+
+        $pdf = $this->actingAs($this->staff('registrations.view'))->get($this->invitationUrl($event, $registration))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 960\s+/Height 600\b~', $pdf);
+        $this->assertDoesNotMatchRegularExpression('~/Subtype /Image\s+/Width 1600\s+/Height 1000\b~', $pdf);
+        $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
+    }
+
     public function test_long_description_flows_across_pages_without_losing_the_qr(): void
     {
         $event = Event::factory()->create(['description' => str_repeat("Paragraf informasi yang panjang.\n", 100).str_repeat('X', 500)]);
@@ -396,6 +476,7 @@ class EventInvitationExportTest extends TestCase
         $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
     }
 
+    #[TestWith([25])]
     #[TestWith([50])]
     #[TestWith([100])]
     #[TestWith([300])]
@@ -404,6 +485,7 @@ class EventInvitationExportTest extends TestCase
     public function test_large_exports_process_ordered_pdf_batches_on_the_database_queue(int $count): void
     {
         Storage::fake('local');
+        config(['event_invitations.direct_limit' => 50, 'event_invitations.batch_size' => 25]);
         $logo = imagecreatetruecolor(3000, 2250);
         imagealphablending($logo, false);
         imagesavealpha($logo, true);
@@ -416,7 +498,7 @@ class EventInvitationExportTest extends TestCase
         $event = Event::factory()->create(['title' => 'Forum Operasional', 'logo_path' => $logoPath]);
         $day = EventDay::factory()->for($event)->create();
         $employees = EventRegistration::factory()->for($event)->invitedTo($day)->count(intdiv($count, 2))->create();
-        $guests = EventRegistration::factory()->external()->for($event)->invitedTo($day)->count(intdiv($count, 2))->create();
+        $guests = EventRegistration::factory()->external()->for($event)->invitedTo($day)->count($count - $employees->count())->create();
         $this->actingAs($this->staff('registrations.manage'));
         $renderedIds = [];
         View::composer('events.partials.invitation-document', function (BladeView $view) use (&$renderedIds): void {
@@ -536,6 +618,77 @@ class EventInvitationExportTest extends TestCase
         Storage::disk('local')->assertMissing(EventInvitationExport::findOrFail($first['id'])->archivePath());
         $second = $this->postJson($url)->assertAccepted()->assertJsonPath('status', 'pending')->json();
         $this->assertNotSame($first['id'], $second['id']);
+    }
+
+    public function test_worker_retries_with_a_smaller_batch_and_preserves_completed_progress(): void
+    {
+        $disk = Storage::fake('local');
+        $event = Event::factory()->create();
+        $day = EventDay::factory()->for($event)->create();
+        EventRegistration::factory()->external()->for($event)->invitedTo($day)->count(8)->create();
+        EventRegistration::factory()->for($event)->invitedTo($day)->create();
+        $this->actingAs($this->staff('registrations.manage'));
+        $url = route('events.participants.invitations.export', $event);
+        $request = $this->getJson($url.'?participant_type=external')->assertAccepted()->assertJsonPath('participant_count', 8)->json();
+        $export = EventInvitationExport::findOrFail($request['id']);
+        $export->update(['batch_size' => 25]);
+        EventRegistration::factory()->external()->for($event)->invitedTo($day)->create();
+        $this->workOneExportJob();
+        $this->getJson($request['status_url'])->assertJsonPath('processed_count', 5);
+        $firstPdf = $disk->get($export->batchPath(0));
+        $this->assertInvitationPdf($firstPdf, 5);
+
+        $pdfs = app(EventInvitationExportService::class);
+        $this->mock(EventInvitationExportService::class, function ($mock) use ($pdfs): void {
+            $mock->makePartial()->shouldReceive('render')->once()->withArgs(fn ($event, $rows): bool => $rows->count() === 3)
+                ->andThrow(new RuntimeException('Simulated PDF render failure'));
+            $mock->shouldReceive('render')->twice()->withArgs(fn ($event, $rows): bool => $rows->count() < 3)
+                ->andReturnUsing($pdfs->render(...));
+        });
+        Exceptions::fake();
+        $this->workOneExportJob();
+        $this->getJson($request['status_url'])->assertJsonPath('processed_count', 5);
+        $this->travel(16)->seconds();
+        $this->workOneExportJob();
+        $this->getJson($request['status_url'])->assertJsonPath('processed_count', 7);
+        $this->workOneExportJob();
+        $this->workOneExportJob();
+        $status = $this->getJson($request['status_url'])->assertJsonPath('status', 'completed')->assertJsonPath('processed_count', 8)->json();
+        $this->get($status['download_url'])->assertOk()->assertHeader('Content-Type', 'application/zip');
+        $this->assertDatabaseCount('jobs', 0);
+        $disk->assertDirectoryEmpty($export->directory().'/batches');
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($disk->path($export->archivePath()), ZipArchive::CHECKCONS));
+        $this->assertSame($firstPdf, $zip->getFromIndex(0));
+        $this->assertInvitationPdf($zip->getFromIndex(1), 2);
+        $this->assertInvitationPdf($zip->getFromIndex(2), 1);
+        $zip->close();
+    }
+
+    public function test_a_lost_worker_reservation_is_retried_after_the_job_timeout_window(): void
+    {
+        Storage::fake('local');
+        config(['event_invitations.direct_limit' => 0]);
+        $event = Event::factory()->create();
+        $day = EventDay::factory()->for($event)->create();
+        EventRegistration::factory()->for($event)->invitedTo($day)->count(3)->create();
+        $this->actingAs($this->staff('registrations.manage'));
+        $request = $this->postJson(route('events.participants.invitations.export', $event))->assertAccepted()->json();
+        $connection = app('queue')->connection(EventInvitationExportQueue::CONNECTION);
+        $reserved = $connection->pop(EventInvitationExportQueue::QUEUE);
+        $this->assertSame(120, $reserved->timeout());
+        $this->assertSame(180, config('queue.connections.invitation_exports.retry_after'));
+
+        $this->travel(121)->seconds();
+        $this->workOneExportJob();
+        $this->getJson($request['status_url'])->assertJsonPath('status', 'pending')->assertJsonPath('processed_count', 0);
+        $this->travel(60)->seconds();
+        $this->workOneExportJob();
+        $this->getJson($request['status_url'])->assertJsonPath('status', 'processing')->assertJsonPath('processed_count', 2);
+        $this->workOneExportJob();
+        $this->workOneExportJob();
+        $this->getJson($request['status_url'])->assertJsonPath('status', 'completed')->assertJsonPath('processed_count', 3);
+        $this->assertDatabaseCount('jobs', 0);
     }
 
     public function test_participants_tab_shows_invitation_actions_counts_and_participant_picker_for_the_right_users(): void

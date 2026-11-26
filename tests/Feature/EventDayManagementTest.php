@@ -134,6 +134,73 @@ class EventDayManagementTest extends TestCase
         return ['title' => 'Forum Desember', 'start_date' => '2027-12-10', 'end_date' => '2027-12-12', 'status' => Event::STATUS_DRAFT];
     }
 
+    public function test_event_forms_save_optional_day_times_and_apply_the_default_dress_code(): void
+    {
+        $this->withoutVite()->actingAs($this->authorizedUser());
+        $this->get(route('events.create'))->assertOk()->assertSee('name="dress_code"', false);
+        $data = $this->newEventData();
+        $this->post(route('events.store'), [...$data, 'dress_code' => 'Batik'])->assertSessionHasNoErrors();
+        $event = Event::query()->sole();
+        $this->get(route('events.edit', $event))->assertOk()->assertSee('value="Batik"', false);
+        $this->get(route('events.days.create', $event))->assertOk()->assertSee('type="time"', false);
+
+        $this->post(route('events.days.store', $event), [
+            'date' => '2027-12-10', 'start_time' => '08:00', 'end_time' => '17:00', 'is_active' => true,
+        ])->assertSessionHasNoErrors();
+        $this->post(route('events.days.store', $event), [
+            'date' => '2027-12-11', 'start_time' => '09:30', 'end_time' => '16:00', 'dress_code' => 'Pakaian olahraga', 'is_active' => true,
+        ])->assertSessionHasNoErrors();
+        $this->post(route('events.days.store', $event), [
+            'date' => '2027-12-12', 'is_active' => true,
+        ])->assertSessionHasNoErrors();
+        [$first, $second, $third] = $event->days()->get();
+
+        $this->get(route('events.show', $event))->assertOk()
+            ->assertSee('08.00–17.00 WIB')->assertSee('09.30–16.00 WIB')
+            ->assertSee('Batik')->assertSee('Pakaian olahraga');
+        $this->get(route('events.days.show', [$event, $first]))->assertOk()->assertSee('Batik');
+        $this->get(route('events.days.show', [$event, $second]))->assertOk()->assertSee('Pakaian olahraga');
+        $this->get(route('events.days.edit', [$event, $second]))->assertOk()->assertSee('value="09:30"', false);
+        $this->assertNull($third->start_time);
+        $this->assertNull($third->end_time);
+        $this->assertNull($third->dress_code);
+
+        $this->put(route('events.days.update', [$event, $second]), [
+            'date' => '2027-12-11', 'start_time' => '', 'end_time' => '16:00', 'dress_code' => '', 'is_active' => true,
+        ])->assertSessionHasNoErrors();
+        $this->get(route('events.days.show', [$event, $second]))->assertOk()
+            ->assertSee('Selesai 16.00 WIB')->assertSee('Batik')->assertDontSee('Pakaian olahraga');
+
+        $this->put(route('events.update', $event), [...$data, 'dress_code' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($event->fresh()->dress_code);
+        $this->get(route('events.days.show', [$event, $third]))->assertOk()
+            ->assertDontSee('Dress Code')->assertDontSee('Jam Pelaksanaan');
+    }
+
+    #[TestWith(['09:00', '09:00', 'end_time'])]
+    #[TestWith(['17:00', '08:00', 'end_time'])]
+    #[TestWith(['25:00', null, 'start_time'])]
+    #[TestWith([null, '9:00', 'end_time'])]
+    public function test_event_day_time_validation_rejects_invalid_or_unordered_times(?string $start, ?string $end, string $error): void
+    {
+        $this->actingAs($this->authorizedUser())->post(route('events.days.store', $this->event()), [
+            'date' => '2027-01-15', 'start_time' => $start, 'end_time' => $end, 'is_active' => true,
+        ])->assertSessionHasErrors($error);
+
+        $this->assertDatabaseCount('event_days', 0);
+    }
+
+    public function test_dress_code_length_is_validated_for_events_and_days(): void
+    {
+        $tooLong = str_repeat('x', 151);
+        $this->actingAs($this->authorizedUser())
+            ->post(route('events.store'), [...$this->newEventData(), 'dress_code' => $tooLong])
+            ->assertSessionHasErrors('dress_code');
+        $this->post(route('events.days.store', $this->event()), [
+            'date' => '2027-01-15', 'dress_code' => $tooLong, 'is_active' => true,
+        ])->assertSessionHasErrors('dress_code');
+    }
+
     public function test_authorized_user_can_create_event_day(): void
     {
         $event = $this->event();

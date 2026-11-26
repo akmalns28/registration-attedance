@@ -3,7 +3,7 @@ FROM ${FRANKENPHP_IMAGE} AS php-base
 
 RUN cp "${PHP_INI_DIR}/php.ini-production" "${PHP_INI_DIR}/php.ini" \
     && install-php-extensions bcmath exif gd intl mbstring pcntl pdo_mysql zip \
-    && php -r 'exit(empty(gd_info()["JPEG Support"]) || empty(gd_info()["PNG Support"]) || empty(gd_info()["WebP Support"]) ? 1 : 0);'
+    && php -r 'exit(!function_exists("pcntl_alarm") || !class_exists("ZipArchive") || empty(gd_info()["JPEG Support"]) || empty(gd_info()["PNG Support"]) || empty(gd_info()["WebP Support"]) ? 1 : 0);'
 COPY php.prod.ini /usr/local/etc/php/conf.d/zz-rams-production.ini
 WORKDIR /app
 
@@ -12,7 +12,7 @@ FROM php-base AS dependencies
 COPY --from=composer-tool /usr/bin/composer /usr/bin/composer
 COPY . .
 RUN mkdir -p storage/app/private storage/app/public storage/framework/cache/data \
-        storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+        storage/framework/sessions storage/framework/views storage/fonts storage/logs bootstrap/cache \
     && COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
 FROM node:24-bookworm-slim AS frontend
