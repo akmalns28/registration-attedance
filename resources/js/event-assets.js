@@ -77,6 +77,8 @@ function initializePosterEditor(editor) {
     const postLimit = Number(editor.dataset.postLimit);
     const form = input.form;
     const pending = new Map();
+    const savedUploads = new Map(JSON.parse(editor.dataset.posterUploadAssignments)
+        .map((assignment) => [assignment.upload_reference, assignment]));
     let nextKey = 0;
     let changed = false;
     let primary = list.querySelector('[aria-pressed="true"]')?.closest("[data-poster-key]").dataset.posterKey;
@@ -107,6 +109,7 @@ function initializePosterEditor(editor) {
             if (key === primary) {
                 primaryField.value = orderField.value;
             }
+            syncPosterAssignment(tile, orderField.value, upload?.reference);
         });
 
         primaryField.disabled = !changed || !primary;
@@ -125,8 +128,8 @@ function initializePosterEditor(editor) {
                 error.textContent = `Ukuran setiap poster maksimal ${editor.dataset.fileLimitLabel}.`;
                 continue;
             }
-            const duplicate = Array.from(pending.values()).some(({ file: existing }) =>
-                existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified);
+            const reference = JSON.stringify([file.name, file.size, file.lastModified]);
+            const duplicate = Array.from(pending.values()).some((upload) => upload.reference === reference);
             if (duplicate) {
                 continue;
             }
@@ -150,7 +153,8 @@ function initializePosterEditor(editor) {
             const name = tile.querySelector("[data-poster-name]");
             name.textContent = file.name;
             name.title = file.name;
-            pending.set(key, { file, url });
+            pending.set(key, { file, url, reference });
+            restorePosterAssignment(tile, savedUploads.get(reference));
             list.append(tile);
             selectedBytes += file.size;
             changed = true;
@@ -169,6 +173,25 @@ function initializePosterEditor(editor) {
             input.focus();
         }
     }, true);
+
+    list.addEventListener("change", (event) => {
+        const checkbox = event.target;
+        const assignment = checkbox.closest("[data-poster-assignment]");
+        if (!assignment) {
+            return;
+        }
+
+        if (checkbox.matches("[data-poster-all-days]") && checkbox.checked) {
+            for (const day of assignment.querySelectorAll("[data-poster-day]")) {
+                day.checked = false;
+            }
+        } else if (checkbox.matches("[data-poster-day]") && checkbox.checked) {
+            assignment.querySelector("[data-poster-all-days]").checked = false;
+        }
+        assignment.setAttribute("data-poster-assignment-dirty", "");
+        const tile = assignment.closest("[data-poster-key]");
+        syncPosterAssignment(tile, tile.querySelector("[data-poster-order]").value, pending.get(tile.dataset.posterKey)?.reference);
+    });
 
     list.addEventListener("click", (event) => {
         const button = event.target.closest("[data-poster-action]");
@@ -211,4 +234,50 @@ function initializePosterEditor(editor) {
     });
 
     sync();
+}
+
+function syncPosterAssignment(tile, key, uploadReference) {
+    const assignment = tile.querySelector("[data-poster-assignment]");
+    if (!assignment) {
+        return;
+    }
+
+    assignment.hidden = false;
+    const allDays = assignment.querySelector("[data-poster-all-days]").checked;
+    const days = Array.from(assignment.querySelectorAll("[data-poster-day]:checked"));
+    tile.querySelector("[data-poster-day-count]").textContent = allDays ? "Semua Hari" : `${days.length} hari`;
+    const fields = assignment.querySelector("[data-poster-assignment-fields]");
+    fields.replaceChildren();
+    if (!assignment.hasAttribute("data-poster-assignment-dirty")) {
+        return;
+    }
+
+    const scope = allDays ? "all" : "days";
+    const values = [["[scope]", scope], ["[day_count]", days.length], ...days.map((day) => ["[days][]", day.value])];
+    if (uploadReference) {
+        values.push(["[upload_reference]", uploadReference]);
+    }
+
+    for (const [field, value] of values) {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = `poster_assignments[${key}]${field}`;
+        input.value = value;
+        fields.append(input);
+    }
+}
+
+function restorePosterAssignment(tile, saved) {
+    const assignment = tile.querySelector("[data-poster-assignment]");
+    if (!assignment || !["all", "days"].includes(saved?.scope)) {
+        return;
+    }
+
+    assignment.open = true;
+    assignment.setAttribute("data-poster-assignment-dirty", "");
+    assignment.querySelector("[data-poster-all-days]").checked = saved.scope === "all";
+    const selectedDays = new Set(Array.isArray(saved.days) ? saved.days.map(String) : []);
+    for (const day of assignment.querySelectorAll("[data-poster-day]")) {
+        day.checked = saved.scope === "days" && selectedDays.has(day.value);
+    }
 }

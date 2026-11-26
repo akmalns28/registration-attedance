@@ -144,6 +144,12 @@ class EventRegistrationMail extends Mailable
         if ($includeSchedule) {
             $registration->loadMissing(['activeInvitedDays.schedules' => fn (HasMany $schedules): HasMany => $schedules->active()->ordered()]);
         }
+        $posterImage = null;
+        if ($hasQrCode) {
+            $artwork = app(EventInvitationArtwork::class);
+            $poster = $artwork->resolvePoster($event->load('posters.days'), $registration->activeInvitedDays->modelKeys());
+            $posterImage = $poster === null ? null : $artwork->poster($poster);
+        }
 
         return array_merge($content, [
             'participant_name' => $participant->name,
@@ -159,8 +165,7 @@ class EventRegistrationMail extends Mailable
             'invited_rundown' => $includeSchedule
                 ? $registration->activeInvitedDays->filter(fn ($day): bool => $day->schedules->isNotEmpty()) : [],
             'event_logo' => $includeInvitationDetails ? $this->eventLogo($event) : null,
-            'event_poster' => $includeInvitationDetails && $type !== EventRegistrationNotification::TYPE_CANCELLATION
-                ? app(EventInvitationArtwork::class)->poster($event) : null,
+            'event_poster' => $posterImage,
             'invite_preview' => $this->preview,
             'qr_preview' => $this->preview && $hasQrCode ? base64_encode(app(RegistrationQrCodeService::class)->generateInvitationPng($registration)) : null,
             'has_qr_code' => $hasQrCode,

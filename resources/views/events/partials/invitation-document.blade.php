@@ -30,7 +30,7 @@
     </style>
 </head>
 <body>
-    @foreach ($pages as ['registration' => $registration, 'participantName' => $participantName, 'invitedDates' => $invitedDates, 'qrImage' => $qrImage])
+    @foreach ($pages as ['registration' => $registration, 'participantName' => $participantName, 'invitedDates' => $invitedDates, 'qrImage' => $qrImage, 'poster' => $poster])
     <article @unless ($loop->first) class="invitation-next" @endunless>
     <header>
         @if ($logoImage)
@@ -41,9 +41,9 @@
         <p class="event-name">{{ $event->title }}</p>
     </header>
 
-    @if ($posterImage)
+    @if ($poster)
         <div class="poster">
-            <img src="{{ $posterImage }}" alt="Poster {{ $event->title }}" style="width: {{ $posterWidth }}pt; height: {{ $posterHeight }}pt">
+            <img src="{{ $poster['image'] }}" alt="Poster {{ $event->title }}" style="width: {{ $poster['width'] }}pt; height: {{ $poster['height'] }}pt">
         </div>
     @endif
 

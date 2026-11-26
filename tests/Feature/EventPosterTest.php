@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Event;
+use App\Models\EventDay;
 use App\Models\EventPoster;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
@@ -42,9 +43,134 @@ class EventPosterTest extends TestCase
 
         $this->get($url)->assertOk()->assertHeader('Content-Type', 'image/jpeg');
         $this->get(route('events.show', $event))->assertOk()->assertSee($url)->assertSee(route('events.logo', $event));
-        $this->get(route('events.edit', $event))->assertOk()->assertSee($url)->assertSee('name="posters[]"', false);
+        $this->get(route('events.edit', $event))->assertOk()->assertSee($url)->assertSee('name="posters[]"', false)
+            ->assertSee('Atur pilihan hari setelah Event Day dibuat.');
         $this->get(route('events.posters.show', [Event::factory()->create(), $primary]))->assertNotFound();
         $this->actingAs(User::factory()->create(['is_active' => true]))->get($url)->assertForbidden();
+    }
+
+    public function test_posters_can_share_days_and_remain_event_wide_until_explicitly_assigned(): void
+    {
+        $event = Event::factory()->create($this->eventData());
+        [$firstDay, $secondDay] = $this->posterDays($event);
+        $legacy = EventPoster::factory()->for($event)->primary()->create(['original_filename' => 'legacy.png']);
+        $firstFile = UploadedFile::fake()->image('first-day.jpg', 90, 110);
+        $response = $this->put(route('events.update', $event), [...$this->eventData(),
+            'posters' => [$firstFile, UploadedFile::fake()->image('second-day.jpg', 100, 110), UploadedFile::fake()->image('shared.jpg', 120, 110)],
+            'poster_assignments' => [
+                'upload:0' => ['scope' => 'days', 'days' => [$firstDay->id]],
+                'upload:1' => ['scope' => 'days', 'days' => [$secondDay->id]],
+                'upload:2' => ['scope' => 'days', 'days' => [$secondDay->id, $firstDay->id, $firstDay->id]],
+            ],
+        ]);
+
+        $response->assertSessionHasNoErrors();
+        [, $first, $second, $shared] = $event->posters()->get();
+        $this->assertTrue($legacy->isEventWide());
+        $this->assertSame([$firstDay->id], $first->days->modelKeys());
+        $this->assertSame([$secondDay->id], $second->days->modelKeys());
+        $this->assertSame([$firstDay->id, $secondDay->id], $shared->days->modelKeys());
+        $this->assertSame([$first->id, $shared->id], $firstDay->posters->modelKeys());
+        $this->assertDatabaseCount('event_day_event_poster', 4);
+
+        $this->get(route('events.show', [$event, 'poster_day' => $firstDay->id]))->assertOk()
+            ->assertSee('Poster utama')->assertSee('first-day.jpg')->assertSee('shared.jpg')->assertDontSee('second-day.jpg');
+        $this->get(route('events.show', [$event, 'poster_day' => $secondDay->id]))->assertOk()
+            ->assertSee('second-day.jpg')->assertSee('Day 1 · Opening, Day 2 · Closing')->assertDontSee('first-day.jpg');
+
+        $this->put(route('events.update', $event), [...$this->eventData(), 'title' => 'Unrelated edit'])->assertSessionHasNoErrors();
+        $this->assertSame([$firstDay->id], $first->fresh()->days->modelKeys());
+
+        $this->put(route('events.update', $event), [...$this->eventData(), 'title' => 'Unrelated edit', 'posters' => [$firstFile]])
+            ->assertSessionHasNoErrors();
+        $this->assertSame([$firstDay->id], $first->fresh()->days->modelKeys());
+        $this->assertSame([$firstDay->id, $secondDay->id], $shared->fresh()->days->modelKeys());
+        $this->assertDatabaseCount('event_posters', 4);
+        $this->assertCount(12, Storage::disk('local')->files('event-posters'));
+
+        $this->put(route('events.update', $event), [...$this->eventData(), 'title' => 'Unrelated edit',
+            'poster_assignments' => [$first->id => ['scope' => 'all']],
+        ])->assertSessionHasNoErrors();
+        $this->assertTrue($first->fresh()->isEventWide());
+        $this->assertSame([], $first->fresh()->days->modelKeys());
+
+        $form = $this->get(route('events.edit', $event))->assertOk()->assertSee('2 hari')->assertSee('16/01/2027');
+        if ($directory = getenv('POSTER_BROWSER_ARTIFACT_DIR')) {
+            file_put_contents($directory.'/edit.html', $form->getContent());
+            $this->from(route('events.edit', $event))->put(route('events.update', $event), [...$this->eventData(), 'title' => '',
+                'poster_assignments' => ['upload:0' => [
+                    'scope' => 'days', 'days' => [$secondDay->id], 'upload_reference' => '["retry.jpg",3,1234]',
+                ]],
+            ])->assertSessionHasErrors('title');
+            file_put_contents($directory.'/retry.html', $this->get(route('events.edit', $event))->assertOk()->getContent());
+        }
+    }
+
+    public function test_stale_or_cross_event_assignments_are_rejected_without_modifying_posters(): void
+    {
+        $event = Event::factory()->create($this->eventData());
+        [$first, $second] = $this->posterDays($event);
+        $foreignDay = EventDay::factory()->create();
+        $poster = EventPoster::factory()->for($event)->primary()->create();
+        $poster->days()->attach($first);
+        $foreignPoster = EventPoster::factory()->create();
+        $edit = route('events.edit', $event);
+        $update = route('events.update', $event);
+
+        $this->from($edit)->put($update, [...$this->eventData(), 'title' => 'Rejected',
+            'poster_assignments' => [$poster->id => ['scope' => 'days', 'days' => [$second->id, $foreignDay->id]]],
+        ])->assertRedirect($edit)->assertSessionHasErrors(['poster_assignments' => 'Hari pelaksanaan yang dipilih tidak tersedia pada event ini.'])
+            ->assertSessionHasInput('poster_assignments.'.$poster->id.'.days.0', $second->id);
+        $form = $this->get($edit)->assertOk()->assertSee('data-poster-assignment-dirty open', false);
+        $this->assertMatchesRegularExpression('/data-poster-day value="'.$second->id.'"\s+checked/', $form->getContent());
+
+        $this->put($update, [...$this->eventData(), 'poster_assignments' => [$foreignPoster->id => ['scope' => 'all']]])
+            ->assertSessionHasErrors('poster_assignments');
+        $this->put($update, [...$this->eventData(), 'poster_assignments' => [$poster->id => ['scope' => 'days']]])
+            ->assertSessionHasErrors('poster_assignments');
+        $this->put($update, [...$this->eventData(),
+            'poster_assignments' => [$poster->id => ['scope' => 'days', 'day_count' => 2, 'days' => [$second->id]]],
+        ])->assertSessionHasErrors(['poster_assignments' => 'Pilihan hari untuk poster tidak lengkap. Pilih kembali hari yang diinginkan.']);
+        $this->put($update, [...$this->eventData(), 'poster_assignments' => [$poster->id => ['days' => [$second->id]]]])
+            ->assertSessionHasErrors('poster_assignments.'.$poster->id.'.scope');
+        $this->assertSame([$first->id], $poster->fresh()->days->modelKeys());
+        $this->assertSame('Forum', $event->fresh()->title);
+    }
+
+    public function test_removing_days_prunes_links_without_making_scoped_posters_event_wide(): void
+    {
+        $event = Event::factory()->create($this->eventData());
+        [$first, $second] = $this->posterDays($event);
+        $this->put(route('events.update', $event), [...$this->eventData(), 'posters' => [UploadedFile::fake()->image('shared.jpg')],
+            'poster_assignments' => ['upload:0' => ['scope' => 'days', 'days' => [$first->id, $second->id]]],
+        ])->assertSessionHasNoErrors();
+        $poster = $event->posters()->sole();
+
+        $this->delete(route('events.days.destroy', [$event, $first]))->assertSessionHasNoErrors();
+        $this->assertSame([$second->id], $poster->fresh()->days->modelKeys());
+        $this->delete(route('events.days.destroy', [$event, $second]))->assertSessionHasNoErrors();
+        $this->assertFalse($poster->fresh()->isEventWide());
+        $this->assertDatabaseCount('event_day_event_poster', 0);
+        Storage::disk('local')->assertExists([$poster->file_path, ...$this->variants($poster)]);
+    }
+
+    public function test_removing_an_assigned_poster_preserves_other_posters_and_days(): void
+    {
+        $event = Event::factory()->create($this->eventData());
+        [$day] = $this->posterDays($event);
+        $this->put(route('events.update', $event), [...$this->eventData(), 'posters' => [UploadedFile::fake()->image('remove.jpg')],
+            'poster_assignments' => ['upload:0' => ['scope' => 'days', 'days' => [$day->id]]],
+        ])->assertSessionHasNoErrors();
+        $poster = $event->posters()->sole();
+        $kept = EventPoster::factory()->for($event)->create();
+        $kept->days()->attach($day);
+
+        $this->put(route('events.update', $event), [...$this->eventData(), 'poster_remove' => [$poster->id]])->assertSessionHasNoErrors();
+
+        $this->assertModelMissing($poster);
+        $this->assertSame([$kept->id], $day->posters->modelKeys());
+        $this->assertSame($kept->id, $event->primaryPoster()->sole()->id);
+        Storage::disk('local')->assertMissing([$poster->file_path, ...$this->variants($poster)]);
     }
 
     public function test_edit_preserves_posters_and_can_add_reorder_choose_primary_and_remove_them(): void
@@ -212,6 +338,15 @@ class EventPosterTest extends TestCase
     private function eventData(): array
     {
         return ['title' => 'Forum', 'status' => Event::STATUS_DRAFT, 'start_date' => '2027-01-15', 'end_date' => '2027-01-16'];
+    }
+
+    /** @return array{EventDay, EventDay} */
+    private function posterDays(Event $event): array
+    {
+        return [
+            EventDay::factory()->for($event)->create(['day_number' => 1, 'date' => '2027-01-15', 'title' => 'Opening']),
+            EventDay::factory()->for($event)->create(['day_number' => 2, 'date' => '2027-01-16', 'title' => 'Closing']),
+        ];
     }
 
     /** @return list<string> */

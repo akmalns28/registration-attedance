@@ -30,7 +30,7 @@ class EventController extends Controller
 {
     private const MAX_EVENT_DAY_NUMBER = 65_535;
 
-    private const POSTER_FIELDS = ['posters', 'poster_remove', 'poster_order', 'poster_primary'];
+    private const POSTER_FIELDS = ['posters', 'poster_remove', 'poster_order', 'poster_primary', 'poster_assignments'];
 
     public function __construct(
         private readonly EventPublicationNotificationService $notifications,
@@ -181,7 +181,9 @@ class EventController extends Controller
         $canAddParticipants = $user->can('events.update') && in_array($event->status, [Event::STATUS_DRAFT, Event::STATUS_PUBLISHED], true);
         $canViewReports = $user->can('reports.view');
         $organizationOptions = $canAddParticipants || $canViewReports ? OrganizationFilters::options() : [];
-        $event->load('posters');
+        $event->load('posters.days');
+        $posterDay = $request->query('poster_day');
+        $posterDay = is_string($posterDay) ? $event->days->first(fn (EventDay $day): bool => (string) $day->id === $posterDay) : null;
         $galleryFilter = $request->query('media_type');
         $galleryFilter = in_array($galleryFilter, ['image', 'video'], true) ? $galleryFilter : 'all';
         $gallery = $event->media()
@@ -198,6 +200,7 @@ class EventController extends Controller
             'organizationOptions' => $organizationOptions,
             'remainingCapacity' => $remainingCapacity,
             'eventAttendanceSummary' => $eventAttendanceSummary,
+            'posterDay' => $posterDay,
             'gallery' => $gallery,
             'galleryFilter' => $galleryFilter,
             'invitationExports' => $user->can('registrations.manage') ? $exports->recent($event, $user) : [],
@@ -222,7 +225,7 @@ class EventController extends Controller
      */
     public function edit(Event $event): View
     {
-        $event->load('posters');
+        $event->load(['days', 'posters.days']);
         $event->loadCount([
             'registrations as registered_participants_count' => fn ($query) => $query->registered(),
         ]);
