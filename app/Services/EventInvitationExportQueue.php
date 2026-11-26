@@ -19,12 +19,14 @@ class EventInvitationExportQueue
 
     public const QUEUE = 'invitation-exports';
 
+    public const MAX_BATCH_SIZE = 5;
+
     public function __construct(private readonly EventInvitationExportService $pdfs) {}
 
     /** @return Collection<int, EventRegistration>|EventInvitationExport */
     public function prepare(Event $event, User $requester, string $participantType): Collection|EventInvitationExport
     {
-        $directLimit = min(50, max(0, (int) config('event_invitations.direct_limit')));
+        $directLimit = min(self::MAX_BATCH_SIZE, max(0, (int) config('event_invitations.direct_limit')));
 
         return DB::transaction(function () use ($event, $requester, $participantType, $directLimit): Collection|EventInvitationExport {
             $lockedEvent = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
@@ -50,7 +52,7 @@ class EventInvitationExportQueue
                 'participant_type' => $participantType,
                 'participant_count' => $stats->total,
                 'last_registration_id' => $stats->last_id,
-                'batch_size' => min(25, max(1, (int) config('event_invitations.batch_size'))),
+                'batch_size' => min(self::MAX_BATCH_SIZE, max(1, (int) config('event_invitations.batch_size'))),
             ]);
             $this->enqueue($export);
 

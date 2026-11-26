@@ -28,7 +28,11 @@ class EventInvitationArtwork
             $disk = Storage::disk('local');
 
             $variant = EventPoster::variantPath($poster->file_path, 'invitation');
-            $contents = $disk->get($variant);
+            $path = $disk->path($variant);
+            $dimensions = EventPosterImages::dimensions($path);
+            $contents = $dimensions !== null && $dimensions[2] === IMAGETYPE_JPEG
+                && max($dimensions[0], $dimensions[1]) <= config('event_assets.poster_sizes.invitation')
+                && @filesize($path) <= 512 * 1024 ? $disk->get($variant) : null;
             $file = $contents === null ? null : $disk->path($variant);
             $contents ??= $this->posters->legacyInvitation($poster->file_path);
             $dimensions = $contents ? @getimagesizefromstring($contents) : false;
@@ -51,7 +55,16 @@ class EventInvitationArtwork
     /** @return array{contents: string, mime: string, width: int, height: int}|null */
     public function logo(Event $event): ?array
     {
-        return $this->resize($event->logoImage()['contents'] ?? null, 256, 192);
+        try {
+            return $this->resize($event->logoImage()['contents'] ?? null, 256, 192);
+        } catch (Throwable $exception) {
+            Log::warning('Event invitation logo could not be read.', [
+                'event_id' => $event->id,
+                'exception_type' => $exception::class,
+            ]);
+
+            return null;
+        }
     }
 
     /** @param array{contents: string, mime: string}|null $image */

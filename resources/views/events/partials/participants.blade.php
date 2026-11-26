@@ -16,7 +16,8 @@
         @can('registrations.manage')
             @php
                 $exportableRegistrations = $registrations->filter(fn ($registration) => $registration->isRegistered()
-                    && $registration->invitedDays->contains('is_active', true));
+                    && $registration->participant_name !== null
+                    && $registration->invitedDays->contains(fn ($day) => $day->is_active && (int) $day->event_id === (int) $event->id));
                 $exportableCounts = $exportableRegistrations->countBy('registration_type');
             @endphp
             <div class="dropdown">

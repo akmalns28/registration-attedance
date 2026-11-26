@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 use ZipArchive;
@@ -48,44 +49,63 @@ class GenerateEventInvitationExport implements ShouldQueue
             return;
         }
 
-        $event = $export->event;
-        $eligible = $pdfs->eligible($event, $export->participant_type)
-            ->where('id', '>', $export->cursor)->where('id', '<=', $export->last_registration_id);
-        $registrations = DB::transaction(fn () => $pdfs->withInvitationDetails($eligible, $export->participant_type)->limit($export->batch_size)->get());
-        $lastId = $registrations->last()?->id;
+        $batchSize = min(EventInvitationExportQueue::MAX_BATCH_SIZE, $export->batch_size);
+        $batchSize = max(1, match ($this->attempts()) {
+            1 => $batchSize,
+            2 => intdiv($batchSize, 2),
+            default => 1,
+        });
 
-        if ($lastId === null) {
-            $this->package($export);
+        try {
+            $event = $export->event;
+            $eligible = $pdfs->eligible($event, $export->participant_type)
+                ->where('id', '>', $export->cursor)->where('id', '<=', $export->last_registration_id);
+            $registrations = DB::transaction(fn () => $pdfs->withInvitationDetails($eligible, $export->participant_type)->limit($batchSize)->get());
 
-            return;
-        }
+            if ($registrations->isEmpty()) {
+                $this->package($export);
 
-        $registrations = $registrations->filter(fn ($registration): bool => $registration->activeInvitedDays->isNotEmpty());
-        $pdf = $pdfs->render($event, $registrations);
-        DB::transaction(function () use ($pdf, $lastId, $registrations, $queue): void {
-            $current = $this->lockedCurrent();
-            if ($current === null) {
                 return;
             }
-            if (! Storage::disk('local')->put($current->batchPath($current->batch_number), $pdf, 'private')) {
-                throw new RuntimeException('Invitation export batch could not be stored.');
-            }
 
-            $current->update([
-                'cursor' => $lastId,
-                'processed_count' => $current->processed_count + $registrations->count(),
-                'batch_number' => $current->batch_number + 1,
-                'peak_memory_bytes' => max($current->peak_memory_bytes, memory_get_peak_usage(true)),
+            $pdf = $pdfs->render($event, $registrations);
+            $lastId = $registrations->last()->id;
+            $processed = $registrations->count();
+            DB::transaction(function () use ($pdf, $lastId, $processed, $queue): void {
+                $current = $this->lockedCurrent();
+                if ($current === null) {
+                    return;
+                }
+                if (! Storage::disk('local')->put($current->batchPath($current->batch_number), $pdf, 'private')) {
+                    throw new RuntimeException('Invitation export batch could not be stored.');
+                }
+
+                $current->update([
+                    'cursor' => $lastId,
+                    'processed_count' => $current->processed_count + $processed,
+                    'batch_number' => $current->batch_number + 1,
+                    'peak_memory_bytes' => max($current->peak_memory_bytes, memory_get_peak_usage(true)),
+                ]);
+                $queue->enqueue($current);
+            }, attempts: 3);
+
+            Log::debug('Invitation export batch processed.', [
+                ...$this->context($export),
+                'render_size' => $processed,
+                'duration_ms' => (int) ((hrtime(true) - $started) / 1e6),
+                'peak_memory_bytes' => memory_get_peak_usage(true),
             ]);
-            $queue->enqueue($current);
-        }, attempts: 3);
+        } catch (Throwable $exception) {
+            Log::warning('Invitation export attempt failed.', [
+                ...$this->context($export),
+                'render_size' => $batchSize,
+                'attempt' => $this->attempts(),
+                'duration_ms' => (int) ((hrtime(true) - $started) / 1e6),
+                'exception' => $exception,
+            ]);
 
-        Log::debug('Invitation export batch processed.', [
-            ...$this->context($export),
-            'batch_number' => $this->batchNumber + 1,
-            'duration_ms' => (int) ((hrtime(true) - $started) / 1e6),
-            'peak_memory_bytes' => memory_get_peak_usage(true),
-        ]);
+            throw $exception;
+        }
     }
 
     private function package(EventInvitationExport $export): void
@@ -97,7 +117,7 @@ class GenerateEventInvitationExport implements ShouldQueue
         }
 
         $disk = Storage::disk('local');
-        $pendingPath = $export->directory().'/invitations.tmp';
+        $pendingPath = $export->directory().'/batches/zip-'.Str::uuid().'.tmp';
         $zip = new ZipArchive;
         if ($zip->open($disk->path($pendingPath), ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
             throw new RuntimeException('Invitation ZIP could not be opened.');
@@ -113,30 +133,28 @@ class GenerateEventInvitationExport implements ShouldQueue
             if ($zip->numFiles === 0 || ! $zip->close()) {
                 throw new RuntimeException('Invitation ZIP could not be finalized.');
             }
-        } catch (Throwable $exception) {
+            unset($zip);
+
+            $completed = DB::transaction(function () use ($disk, $pendingPath): ?EventInvitationExport {
+                $current = $this->lockedCurrent();
+                if ($current === null) {
+                    return null;
+                }
+                if (! $disk->move($pendingPath, $current->archivePath())) {
+                    throw new RuntimeException('Invitation ZIP could not be published.');
+                }
+                $current->update([
+                    'status' => EventInvitationExport::COMPLETED,
+                    'peak_memory_bytes' => max($current->peak_memory_bytes, memory_get_peak_usage(true)),
+                    'expires_at' => $this->expiration(),
+                ]);
+
+                return $current;
+            });
+        } finally {
             unset($zip);
             $disk->delete($pendingPath);
-
-            throw $exception;
         }
-
-        $completed = DB::transaction(function () use ($disk, $pendingPath): ?EventInvitationExport {
-            $current = $this->lockedCurrent();
-            if ($current === null) {
-                return null;
-            }
-            if (! $disk->move($pendingPath, $current->archivePath())) {
-                throw new RuntimeException('Invitation ZIP could not be published.');
-            }
-            $current->update([
-                'status' => EventInvitationExport::COMPLETED,
-                'peak_memory_bytes' => max($current->peak_memory_bytes, memory_get_peak_usage(true)),
-                'expires_at' => $this->expiration(),
-            ]);
-
-            return $current;
-        });
-        $disk->delete($pendingPath);
 
         if ($completed !== null) {
             $disk->deleteDirectory($completed->directory().'/batches');
@@ -159,13 +177,13 @@ class GenerateEventInvitationExport implements ShouldQueue
         }, attempts: 3);
 
         if ($export !== null) {
+            Storage::disk('local')->deleteDirectory($export->directory());
             Log::warning('Invitation export failed.', [
                 ...$this->context($export),
                 'processed_count' => $export->processed_count,
-                'batch_number' => $this->batchNumber + 1,
                 'duration_seconds' => now()->diffInSeconds($export->created_at, absolute: true),
                 'peak_memory_bytes' => max($export->peak_memory_bytes, memory_get_peak_usage(true)),
-                'failure_reason' => $exception::class,
+                'exception' => $exception,
             ]);
         }
     }
@@ -182,7 +200,7 @@ class GenerateEventInvitationExport implements ShouldQueue
         return now()->addHours(max(1, (int) config('event_invitations.retention_hours')));
     }
 
-    /** @return array{export_id: string, event_id: int, participant_count: int, batch_size: int} */
+    /** @return array{export_id: string, event_id: int, participant_count: int, batch_size: int, batch_number: int} */
     private function context(EventInvitationExport $export): array
     {
         return [
@@ -190,6 +208,7 @@ class GenerateEventInvitationExport implements ShouldQueue
             'event_id' => $export->event_id,
             'participant_count' => $export->participant_count,
             'batch_size' => $export->batch_size,
+            'batch_number' => $this->batchNumber + 1,
         ];
     }
 }

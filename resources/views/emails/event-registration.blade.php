@@ -113,26 +113,16 @@
                                 {{ $heading }}
                             </h1>
 
-                            {{-- Greeting --}}
+                            <div style="font-size: 15px; margin: 0 0 16px;">
+                                <div style="font-size: 13px; color: #475569;">Peserta</div>
+                                <strong>{{ $participant_name }}</strong>
+                            </div>
 
-                            <p
-                                style="
-                            font-size: 15px;
-                            line-height: 1.8;
-                            margin: 0 0 16px;
-                        ">
-                                Yth. <strong>{{ $participant_name }}</strong>,
-                            </p>
-
-                            <p
-                                style="
-    font-size: 14px;
-    line-height: 1.8;
-    margin: 0 0 24px;
-    color: #475569;
-">
-                                {{ $body_text }}
-                            </p>
+                            @isset($body_text)
+                                <p style="font-size: 14px; line-height: 1.8; margin: 0 0 24px; color: #475569;">
+                                    {{ $body_text }}
+                                </p>
+                            @endisset
 
                             {{-- Event Information --}}
 
@@ -189,78 +179,18 @@
                                             </p>
                                         @endif
 
-                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                                            border="0">
-                                            @isset($event_schedule)
-                                                <tr>
-                                                    <td style="padding: 8px 0; width: 115px; font-size: 13px; color: #64748b; vertical-align: top;">
-                                                        Jadwal Event
-                                                    </td>
-                                                    <td style="padding: 8px 0; font-size: 13px; font-weight: 600; color: #182433;">
-                                                        {{ $event_schedule }}
-                                                    </td>
-                                                </tr>
-                                            @endisset
-                                            <tr>
-                                                <td
-                                                    style="
-                                                padding: 8px 0;
-                                                width: 115px;
-                                                font-size: 13px;
-                                                color: #64748b;
-                                                vertical-align: top;
-                                            ">
-                                                    {{ isset($event_schedule) ? 'Hari Undangan' : 'Tanggal' }}
-                                                </td>
-
-                                                <td
-                                                    style="
-                                                padding: 8px 0;
-                                                font-size: 13px;
-                                                font-weight: 600;
-                                                color: #182433;
-                                            ">
-                                                    {{ $event_date ?? 'Belum ada tanggal undangan aktif.' }}
-                                                </td>
-                                            </tr>
-
-                                            <tr>
-                                                <td
-                                                    style="
-                                                padding: 8px 0;
-                                                font-size: 13px;
-                                                color: #64748b;
-                                                vertical-align: top;
-                                            ">
-                                                    Lokasi
-                                                </td>
-
-                                                <td
-                                                    style="
-                                                padding: 8px 0;
-                                                font-size: 13px;
-                                                font-weight: 600;
-                                                color: #182433;
-                                            ">
-                                                    @include('events.partials.location-link', ['location' => $event_location, 'mapsUrl' => $event_maps_url, 'showMapsHint' => true])
-                                                </td>
-                                            </tr>
-
-                                        </table>
-
-                                        @foreach ($invited_rundown ?? [] as $day)
-                                            @if ($loop->first)
-                                                <h2 style="font-size: 14px; margin: 18px 0 8px;">Rundown Hari Undangan</h2>
+                                        <div style="font-size: 13px; line-height: 1.55; color: #182433;">
+                                            @include('events.partials.invitation-attendance')
+                                            @if ($attendance['days'] === [] && $body_text === null)
+                                                <p>Belum ada tanggal undangan aktif.</p>
                                             @endif
-                                            <p style="font-size: 13px; font-weight: 600; margin: 12px 0 4px;">
-                                                {{ $day->date->locale('id')->translatedFormat('j F Y') }} · {{ $day->title }}
-                                            </p>
-                                            <ul style="font-size: 13px; margin: 0; padding-left: 20px;">
-                                                @foreach ($day->schedules as $session)
-                                                    <li>{{ substr($session->start_time, 0, 5) }} – {{ substr($session->end_time, 0, 5) }} · {{ $session->title }}</li>
-                                                @endforeach
-                                            </ul>
-                                        @endforeach
+                                            @if (filled($event_location) || filled($event_maps_url))
+                                                <div style="margin-top: 8px;">
+                                                    <strong>Lokasi</strong>
+                                                    @include('events.partials.location-link', ['location' => $event_location, 'mapsUrl' => $event_maps_url, 'showMapsHint' => true])
+                                                </div>
+                                            @endif
+                                        </div>
 
                                     </td>
                                 </tr>
@@ -299,6 +229,7 @@
 
                             {{-- Status Information --}}
 
+                            @isset($highlight)
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                                 style="
                                 border-left: 4px solid {{ $badge_color }};
@@ -316,6 +247,7 @@
                                     </td>
                                 </tr>
                             </table>
+                            @endisset
 
                             {{-- QR Code Information --}}
 

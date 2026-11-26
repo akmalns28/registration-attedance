@@ -2,22 +2,18 @@
 
 namespace App\Mail;
 
-use App\Models\Event;
 use App\Models\EventRegistrationNotification;
-use App\Services\EventDayInvitationService;
 use App\Services\EventInvitationArtwork;
+use App\Services\EventInvitationPresentation;
 use App\Services\RegistrationQrCodeService;
 use Illuminate\Bus\Queueable;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use LogicException;
-use Throwable;
 
 class EventRegistrationMail extends Mailable
 {
@@ -55,8 +51,8 @@ class EventRegistrationMail extends Mailable
         }
 
         $registration = $this->notification->registration;
-
-        if (! $registration || $registration->loadMissing('activeInvitedDays')->activeInvitedDays->isEmpty()) {
+        $event = $registration?->event;
+        if (! $event || app(EventInvitationPresentation::class)->invitedDays($event, $registration)->isEmpty()) {
             return [];
         }
 
@@ -100,8 +96,8 @@ class EventRegistrationMail extends Mailable
             EventRegistrationNotification::TYPE_INVITATION => [
                 'subject' => 'Undangan Event - '.$event->title,
                 'heading' => 'Undangan Event',
-                'body_text' => 'Anda telah terdaftar sebagai peserta pada event berikut.',
-                'highlight' => 'Registrasi Anda telah tercatat.',
+                'body_text' => null,
+                'highlight' => null,
                 'badge' => 'INVITATION',
                 'badge_color' => '#2563eb',
             ],
@@ -136,18 +132,15 @@ class EventRegistrationMail extends Mailable
             default => throw new InvalidArgumentException('Jenis notifikasi email tidak valid.'),
         };
 
-        $invitedDates = $includeInvitationDetails
-            ? app(EventDayInvitationService::class)->dateSummary($registration->load('activeInvitedDays'))
-            : null;
-        $hasQrCode = $type !== EventRegistrationNotification::TYPE_CANCELLATION && $invitedDates !== null;
-        $includeSchedule = $includeInvitationDetails && ($this->notification->metadata['bulk_resend'] ?? false);
-        if ($includeSchedule) {
-            $registration->loadMissing(['activeInvitedDays.schedules' => fn (HasMany $schedules): HasMany => $schedules->active()->ordered()]);
-        }
+        $presentation = app(EventInvitationPresentation::class);
+        $days = $includeInvitationDetails
+            ? $presentation->invitedDays($event, $registration->load('activeInvitedDays'))
+            : collect();
+        $hasQrCode = $type !== EventRegistrationNotification::TYPE_CANCELLATION && $days->isNotEmpty();
+        $artwork = app(EventInvitationArtwork::class);
         $posterImage = null;
         if ($hasQrCode) {
-            $artwork = app(EventInvitationArtwork::class);
-            $poster = $artwork->resolvePoster($event->load('posters.days'), $registration->activeInvitedDays->modelKeys());
+            $poster = $artwork->resolvePoster($event, $days->pluck('id')->all());
             $posterImage = $poster === null ? null : $artwork->poster($poster);
         }
 
@@ -159,33 +152,12 @@ class EventRegistrationMail extends Mailable
             'event_description' => $event->description,
             'event_location' => $event->location,
             'event_maps_url' => $event->google_maps_url,
-            'event_date' => $invitedDates,
-            'event_schedule' => $includeSchedule ? $event->start_date->format('d/m/Y')
-                .($event->start_date->isSameDay($event->end_date) ? '' : ' – '.$event->end_date->format('d/m/Y')) : null,
-            'invited_rundown' => $includeSchedule
-                ? $registration->activeInvitedDays->filter(fn ($day): bool => $day->schedules->isNotEmpty()) : [],
-            'event_logo' => $includeInvitationDetails ? $this->eventLogo($event) : null,
+            'attendance' => $presentation->attendance($event, $days),
+            'event_logo' => $includeInvitationDetails ? $artwork->logo($event) : null,
             'event_poster' => $posterImage,
             'invite_preview' => $this->preview,
             'qr_preview' => $this->preview && $hasQrCode ? base64_encode(app(RegistrationQrCodeService::class)->generateInvitationPng($registration)) : null,
             'has_qr_code' => $hasQrCode,
         ]);
-    }
-
-    /** @return array{contents: string, mime: string}|null */
-    private function eventLogo(Event $event): ?array
-    {
-        try {
-            $logo = $event->logoImage();
-
-            return empty($logo['contents']) ? null : $logo;
-        } catch (Throwable $exception) {
-            Log::warning('Event invitation logo could not be read.', [
-                'event_id' => $event->id,
-                'exception_type' => $exception::class,
-            ]);
-
-            return null;
-        }
     }
 }

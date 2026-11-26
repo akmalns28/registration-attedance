@@ -12,9 +12,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Throwable;
 
 class EventInvitationExportController extends Controller
 {
@@ -42,7 +44,20 @@ class EventInvitationExportController extends Controller
                 'participant_type.*' => 'Pilih semua peserta, Employee, atau External.',
             ]);
 
-            $export = $queue->prepare($event, $request->user(), $filters['participant_type'] ?? 'all');
+            $participantType = $filters['participant_type'] ?? 'all';
+            try {
+                $export = $queue->prepare($event, $request->user(), $participantType);
+            } catch (ValidationException $exception) {
+                throw $exception;
+            } catch (Throwable $exception) {
+                Log::error('Invitation export could not be prepared.', [
+                    'event_id' => $event->id,
+                    'participant_type' => $participantType,
+                    'exception' => $exception,
+                ]);
+
+                throw ValidationException::withMessages(['export' => 'Ekspor undangan gagal disiapkan. Silakan coba lagi.'])->status(500);
+            }
             if ($export instanceof EventInvitationExport) {
                 if ($request->expectsJson()) {
                     return $this->statusResponse($event, $export, 202);

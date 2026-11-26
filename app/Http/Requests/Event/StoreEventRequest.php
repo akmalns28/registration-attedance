@@ -22,6 +22,7 @@ class StoreEventRequest extends FormRequest
             'title' => ['required', 'string', 'max:200'],
 
             'description' => ['nullable', 'string'],
+            'dress_code' => ['nullable', 'string', 'max:150'],
 
             'location' => ['nullable', 'string', 'max:255'],
             'google_maps_url' => ['nullable', 'string', 'max:2048', 'url:http,https'],
@@ -106,6 +107,7 @@ class StoreEventRequest extends FormRequest
             'logo.dimensions' => 'Dimensi logo event maksimal 3000 × 3000 piksel.',
             'title.required' => 'Nama event wajib diisi.',
             'title.max' => 'Nama event maksimal 200 karakter.',
+            'dress_code.max' => 'Dress code maksimal 150 karakter.',
 
             'start_date.required' => 'Tanggal mulai wajib diisi.',
             'start_date.date_format' => 'Format tanggal mulai tidak valid.',

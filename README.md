@@ -9,26 +9,33 @@
 
 ## RAMS event media and invitation exports
 
-Apply the additive migrations and rebuild the frontend during deployment.
+Build the same FrankenPHP PHP 8.4 application image for the web service and a dedicated export worker. The Dockerfile builds the frontend, installs GD with JPEG, PNG, and WebP support, and verifies ZIP and CLI PCNTL. Keep `php.prod.ini` active and set `APP_DEBUG=false`. PHP needs a writable temp directory and `storage/fonts`.
+
+Run the export worker alongside the existing notification worker. Give the worker the same runtime environment and application MySQL database as the web service. The `invitation_exports` connection uses the application's `jobs` table and reserves only jobs on `invitation-exports` with the command below. A worker listening on the default queue misses those jobs.
 
 ```sh
-php artisan migrate --force --no-interaction
-php artisan config:cache --no-interaction
-npm run build
-php artisan queue:restart --no-interaction
+php -d max_execution_time=0 artisan queue:work invitation_exports --queue=invitation-exports --tries=3 --timeout=120 --sleep=1 --memory=128 --max-time=3600 --no-interaction
 ```
 
-Run a supervised export worker alongside the existing workers. The dedicated database connection uses the application's database and `jobs` table. Web, worker, and scheduler processes need a shared, writable `storage/app/private` volume. Install PHP GD with WebP support, Fileinfo, ZIP, and CLI PCNTL in the appropriate containers.
-
-```sh
-php artisan queue:work invitation_exports --queue=invitation-exports --tries=3 --timeout=120 --sleep=1 --memory=128 --max-time=3600 --no-interaction
-```
-
-- The default direct-download limit is 25 invitations. Larger exports render five invitations per PDF and deliver one ZIP. Tune `INVITATION_EXPORT_DIRECT_LIMIT` (0–50) and `INVITATION_EXPORT_BATCH_SIZE` (1–25) after measuring with production artwork.
-- Align the supervisor and container stop grace period with `INVITATION_EXPORT_JOB_TIMEOUT` (120 seconds by default). The connection's reservation expires 60 seconds after the configured job timeout. Run Laravel's scheduler every minute so it can prune expired exports hourly. `INVITATION_EXPORT_RETENTION_HOURS` defaults to 24.
-- Posters accept JPG, JPEG, PNG, and WebP up to 30 MiB each, with a 64 MiB request limit including multipart overhead. The longest side can be up to 10,000 pixels with a 36-megapixel total cap. Originals stay in private storage alongside 400, 1200, and 1600-pixel JPEG variants for the grid, event detail, and invitations. The gallery shares PHP's 30 MiB per-file limit.
+- Configure Compose with `restart: unless-stopped` and `stop_grace_period: 150s` for the export worker. Use `INVITATION_EXPORT_JOB_TIMEOUT=120` for a 120-second Laravel job timeout and 180-second `retry_after`. The per-PDF ceiling and worker recycle threshold are both 128 MiB by default.
+- Mount the same persistent volume at `/app/storage/app/private` in web, worker, and scheduler services. Keep it outside the web document root and use the same writable UID across these services. The scheduler needs `php artisan schedule:run --no-interaction` every minute for hourly pruning. The default retention is 24 hours.
+- The default direct PDF limit is five invitations. Larger exports deliver a ZIP of PDFs with up to five invitations per PDF. `INVITATION_EXPORT_DIRECT_LIMIT` accepts 0–5 and `INVITATION_EXPORT_BATCH_SIZE` accepts 1–5. Failed batch attempts retry with fewer invitations.
+- Posters accept JPG, JPEG, PNG, and WebP up to 30 MiB each, with a 64 MiB request limit including multipart overhead. The longest side can be up to 10,000 pixels with a 36-megapixel total cap. Originals stay in private storage alongside 400, 1200, and 960-pixel JPEG variants for the grid, event detail, and invitations. The gallery shares PHP's 30 MiB per-file limit.
 - A queued export evaluates current eligibility as it processes each batch and excludes registrations created after the request. The resulting count can change if staff amend registrations or invited days during processing.
 - Verify on staging with production-like artwork, Keycloak roles, and target mobile browsers. Check video playback and ranges through Nginx, scan a printed PDF QR code, and confirm the worker completes a 300-person export and the scheduler removes expired archives.
+
+Set `WEB_SERVICE` and `EXPORT_WORKER_SERVICE` to the service names in your stack and `RAMS_IMAGE` to their shared application image tag. Run these commands from the deployed checkout.
+
+```sh
+docker build --pull --tag "$RAMS_IMAGE" --file Dockerfile .
+docker compose -f compose.prod.yml run --rm --no-deps --pull never "$WEB_SERVICE" php artisan migrate --force --no-interaction
+docker compose -f compose.prod.yml up -d --no-deps --no-build --pull never --force-recreate "$WEB_SERVICE" "$EXPORT_WORKER_SERVICE"
+docker compose -f compose.prod.yml exec -T "$WEB_SERVICE" php artisan config:cache --no-interaction
+docker compose -f compose.prod.yml restart "$WEB_SERVICE"
+docker compose -f compose.prod.yml logs --tail=100 "$EXPORT_WORKER_SERVICE"
+```
+
+Recreate the notification worker and scheduler with the same image so resend emails and pruning use the current code. Invitation exports use ordinary authenticated PDF and ZIP responses through the existing Nginx proxy.
 
 ### Deploy the poster upload fix
 

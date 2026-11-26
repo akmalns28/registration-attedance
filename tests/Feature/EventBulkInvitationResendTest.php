@@ -273,7 +273,8 @@ class EventBulkInvitationResendTest extends TestCase
         Storage::disk('local')->put(EventPoster::variantPath($poster->file_path, 'invitation'), $posterContent);
         $event->update(['title' => 'Updated event title', 'description' => 'Updated <description>', 'logo_path' => $logo,
             'location' => 'Updated hall', 'google_maps_url' => 'https://maps.google.com/?q=Updated', 'start_date' => '2027-02-14', 'end_date' => '2027-02-16']);
-        $day->update(['date' => '2027-02-15', 'title' => 'Invited day']);
+        $day->update(['date' => '2027-02-15', 'title' => 'Invited day',
+            'start_time' => '08:00', 'end_time' => '17:00', 'dress_code' => 'Batik']);
         $schedule->update(['title' => 'Latest <session>', 'start_time' => '14:00:00', 'end_time' => '15:00:00']);
         $this->put(route('events.update', $event), [
             'title' => $event->title, 'description' => $event->description, 'location' => $event->location, 'google_maps_url' => $event->google_maps_url,
@@ -287,14 +288,15 @@ class EventBulkInvitationResendTest extends TestCase
             $html = $message->getHtmlBody();
             $this->assertSame('Undangan Event - Updated event title', $message->getSubject());
             foreach (['Updated event title', 'Updated &lt;description&gt;', 'Updated hall', 'https://maps.google.com/?q=Updated',
-                '14/02/2027 – 16/02/2027', '15 Februari 2027', 'Invited day', '14:00 – 15:00', 'Latest &lt;session&gt;',
+                'Jadwal Kehadiran', '15 Februari 2027 | 08.00–17.00 WIB', 'Batik',
                 'Sari &lt;Peserta&gt;', $registration->registration_number] as $text) {
                 $this->assertStringContainsString($text, $html);
             }
-            $this->assertStringNotContainsString('Old session title', $html);
-            $this->assertStringNotContainsString('Inactive session', $html);
-            $this->assertStringNotContainsString('External', $html);
-            $this->assertStringNotContainsString('Employee', $html);
+            $this->assertSame(1, substr_count($html, '15 Februari 2027'));
+            foreach (['Old session title', 'Latest &lt;session&gt;', 'Inactive session', 'Invited day',
+                '14/02/2027', '16/02/2027', 'Yth.', 'External', 'Employee'] as $text) {
+                $this->assertStringNotContainsString($text, $html);
+            }
             $attachments = collect($message->getAttachments())->keyBy(fn ($attachment): string => $attachment->getFilename());
             $this->assertSame(Storage::disk('local')->get($logo), $attachments['event-logo.png']->getBody());
             $this->assertSame($posterContent, $attachments['event-poster.jpg']->getBody());

@@ -24,6 +24,9 @@ class StoreEventDayRequest extends FormRequest
             'title' => ['nullable', 'string', 'max:150'],
 
             'description' => ['nullable', 'string', 'max:5000'],
+            'start_time' => ['nullable', 'date_format:H:i'],
+            'end_time' => ['bail', 'nullable', 'date_format:H:i', Rule::when($this->filled('start_time'), ['after:start_time'])],
+            'dress_code' => ['nullable', 'string', 'max:150'],
 
             'is_active' => ['required', 'boolean'],
         ];
@@ -54,6 +57,10 @@ class StoreEventDayRequest extends FormRequest
             'date.unique' => 'Tanggal tersebut sudah terdaftar pada event ini.',
 
             'title.max' => 'Nama hari maksimal 150 karakter.',
+            'start_time.date_format' => 'Gunakan format jam mulai JJ:MM.',
+            'end_time.date_format' => 'Gunakan format jam selesai JJ:MM.',
+            'end_time.after' => 'Jam selesai harus setelah jam mulai pada hari yang sama.',
+            'dress_code.max' => 'Dress code maksimal 150 karakter.',
         ];
     }
 }

@@ -41,13 +41,15 @@ class EventPosterImages
     public function legacyInvitation(string $posterPath): ?string
     {
         $disk = Storage::disk('local');
-        if (! $disk->exists($posterPath)) {
-            return null;
+        $maxEdge = config('event_assets.poster_sizes.invitation');
+        foreach (['detail', 'invitation'] as $variant) {
+            $path = $disk->path(EventPoster::variantPath($posterPath, $variant));
+            if (is_file($path) && self::dimensions($path) !== null) {
+                return $this->jpeg($this->open($path), $maxEdge);
+            }
         }
 
-        $source = $this->open($disk->path($posterPath));
-
-        return $this->jpeg($source, config('event_assets.poster_sizes.invitation'));
+        return $disk->exists($posterPath) ? $this->jpeg($this->open($disk->path($posterPath)), $maxEdge) : null;
     }
 
     private function open(string $path): GdImage
