@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Event;
 use App\Models\EventPoster;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -12,13 +13,17 @@ class EventInvitationArtwork
 {
     public function __construct(private readonly EventPosterImages $posters) {}
 
-    /** @param list<int> $dayIds */
-    public function resolvePoster(Event $event, array $dayIds): ?EventPoster
+    /**
+     * @param  list<int>  $dayIds
+     * @return Collection<int, EventPoster>
+     */
+    public function resolvePosters(Event $event, array $dayIds): Collection
     {
-        $relevant = $event->loadMissing('posters.days')->posters
-            ->filter(fn (EventPoster $poster): bool => $poster->appliesToDays($dayIds));
-
-        return $relevant->firstWhere('is_primary', true) ?? $relevant->first();
+        return $event->loadMissing('posters.days')->posters
+            ->filter(fn (EventPoster $poster): bool => $poster->appliesToDays($dayIds))
+            ->unique('id')
+            ->sortBy([['is_primary', 'desc'], ['sort_order', 'asc'], ['id', 'asc']])
+            ->values();
     }
 
     /** @return array{contents: string, mime: string, width: int, height: int, file: string|null}|null */

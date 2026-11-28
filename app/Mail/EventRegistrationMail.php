@@ -138,11 +138,9 @@ class EventRegistrationMail extends Mailable
             : collect();
         $hasQrCode = $type !== EventRegistrationNotification::TYPE_CANCELLATION && $days->isNotEmpty();
         $artwork = app(EventInvitationArtwork::class);
-        $posterImage = null;
-        if ($hasQrCode) {
-            $poster = $artwork->resolvePoster($event, $days->pluck('id')->all());
-            $posterImage = $poster === null ? null : $artwork->poster($poster);
-        }
+        $posterImages = $hasQrCode
+            ? $artwork->resolvePosters($event, $days->pluck('id')->all())->map($artwork->poster(...))->filter()->values()->all()
+            : [];
 
         return array_merge($content, [
             'participant_name' => $participant->name,
@@ -154,7 +152,7 @@ class EventRegistrationMail extends Mailable
             'event_maps_url' => $event->google_maps_url,
             'attendance' => $presentation->attendance($event, $days),
             'event_logo' => $includeInvitationDetails ? $artwork->logo($event) : null,
-            'event_poster' => $posterImage,
+            'event_posters' => $posterImages,
             'invite_preview' => $this->preview,
             'qr_preview' => $this->preview && $hasQrCode ? base64_encode(app(RegistrationQrCodeService::class)->generateInvitationPng($registration)) : null,
             'has_qr_code' => $hasQrCode,

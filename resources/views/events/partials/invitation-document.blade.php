@@ -27,13 +27,15 @@
         .qr { display: block; width: 35mm; height: 35mm; background: #fff; }
         .instructions { margin: 0; font-size: 9pt; }
         .invitation-next { page-break-before: always; }
-        .poster { text-align: center; margin: 0 0 6pt; page-break-inside: avoid; }
+        .poster-grid { margin: 0 0 6pt; page-break-inside: avoid; }
+        .poster-grid table { table-layout: fixed; border-collapse: collapse; margin: 0 auto; }
+        .poster-grid td { padding: 2pt 3pt; text-align: center; vertical-align: middle; font-size: 0; line-height: 0; }
         .description { margin-top: 8pt; }
         .description p { margin: 0 0 4pt; overflow-wrap: break-word; }
     </style>
 </head>
 <body>
-    @foreach ($pages as ['registration' => $registration, 'participantName' => $participantName, 'attendance' => $attendance, 'qrImage' => $qrImage, 'poster' => $poster])
+    @foreach ($pages as ['registration' => $registration, 'participantName' => $participantName, 'attendance' => $attendance, 'qrImage' => $qrImage, 'posterGrid' => $posterGrid])
     <article @unless ($loop->first) class="invitation-next" @endunless>
     <header>
         @if ($logoImage)
@@ -44,9 +46,17 @@
         <p class="event-name">{{ $event->title }}</p>
     </header>
 
-    @if ($poster)
-        <div class="poster">
-            <img src="{{ $poster['image'] }}" alt="Poster {{ $event->title }}" style="width: {{ $poster['width'] }}pt; height: {{ $poster['height'] }}pt">
+    @if ($posterGrid['rows'] !== [])
+        <div class="poster-grid">
+            @foreach ($posterGrid['rows'] as $row)
+                <table role="presentation" style="width: {{ count($row) * $posterGrid['cellWidth'] }}pt">
+                    <tr>
+                        @foreach ($row as $poster)
+                            <td><img src="{{ $poster['image'] }}" alt="Poster {{ $event->title }}" style="width: {{ $poster['width'] }}pt; height: {{ $poster['height'] }}pt"></td>
+                        @endforeach
+                    </tr>
+                </table>
+            @endforeach
         </div>
     @endif
 

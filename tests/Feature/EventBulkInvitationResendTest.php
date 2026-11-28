@@ -239,19 +239,28 @@ class EventBulkInvitationResendTest extends TestCase
         $event = Event::factory()->published()->create(['title' => 'Old event title']);
         $day = EventDay::factory()->for($event)->create(['date' => '2027-02-01']);
         $otherDay = EventDay::factory()->for($event)->create(['day_number' => 2, 'date' => '2027-02-16']);
-        $primary = EventPoster::factory()->for($event)->primary()->hasAttached($day, [], 'days')->create();
+        $primary = EventPoster::factory()->for($event)->primary()->hasAttached($day, [], 'days')->create(['sort_order' => 2]);
         $poster = EventPoster::factory()->for($event)->hasAttached($otherDay, [], 'days')->create(['sort_order' => 1]);
+        $shared = EventPoster::factory()->for($event)->hasAttached(collect([$day, $otherDay]), [], 'days')->create(['sort_order' => 0]);
         $original = UploadedFile::fake()->image('original.jpg', 80, 90);
+        $posterImage = UploadedFile::fake()->image('other.jpg', 100, 180);
+        $sharedImage = UploadedFile::fake()->image('shared.jpg', 180, 100);
+        $posterContent = file_get_contents($posterImage->getPathname());
+        $sharedContent = file_get_contents($sharedImage->getPathname());
         Storage::disk('local')->put(EventPoster::variantPath($primary->file_path, 'invitation'), file_get_contents($original->getPathname()));
+        Storage::disk('local')->put(EventPoster::variantPath($poster->file_path, 'invitation'), $posterContent);
+        Storage::disk('local')->put(EventPoster::variantPath($shared->file_path, 'invitation'), $sharedContent);
         $schedule = EventSchedule::factory()->for($day)->create(['title' => 'Old session title']);
         EventSchedule::factory()->for($day)->inactive()->create(['title' => 'Inactive session']);
         $external = ExternalParticipant::factory()->create(['name' => 'Sari <Peserta>', 'email' => 'external@example.test']);
         $registration = EventRegistration::factory()->external()->for($event)->invitedTo($day)
             ->create(['external_participant_id' => $external->id]);
         $transport = Mockery::mock(TransportInterface::class);
-        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message) use ($original): never {
+        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message) use ($original, $sharedContent): never {
             $attachments = collect($message->getAttachments())->keyBy(fn ($attachment): string => $attachment->getFilename());
+            $this->assertCount(3, $attachments);
             $this->assertSame(file_get_contents($original->getPathname()), $attachments['event-poster.jpg']->getBody());
+            $this->assertSame($sharedContent, $attachments['event-poster-2.jpg']->getBody());
 
             throw new UnexpectedResponseException('SMTP reply 451 4.7.1 retry later', 451);
         });
@@ -268,9 +277,6 @@ class EventBulkInvitationResendTest extends TestCase
         $this->assertNull($notification->sent_at);
 
         $logo = UploadedFile::fake()->image('latest.png', 64, 32)->store('event-logos', 'local');
-        $posterImage = UploadedFile::fake()->image('latest.jpg', 100, 180);
-        $posterContent = file_get_contents($posterImage->getPathname());
-        Storage::disk('local')->put(EventPoster::variantPath($poster->file_path, 'invitation'), $posterContent);
         $event->update(['title' => 'Updated event title', 'description' => 'Updated <description>', 'logo_path' => $logo,
             'location' => 'Updated hall', 'google_maps_url' => 'https://maps.google.com/?q=Updated', 'start_date' => '2027-02-14', 'end_date' => '2027-02-16']);
         $day->update(['date' => '2027-02-15', 'title' => 'Invited day',
@@ -279,12 +285,13 @@ class EventBulkInvitationResendTest extends TestCase
         $this->put(route('events.update', $event), [
             'title' => $event->title, 'description' => $event->description, 'location' => $event->location, 'google_maps_url' => $event->google_maps_url,
             'start_date' => '2027-02-14', 'end_date' => '2027-02-16', 'status' => Event::STATUS_PUBLISHED,
+            'poster_primary' => null,
             'poster_assignments' => [
                 $primary->id => ['scope' => 'days', 'days' => [$otherDay->id]],
                 $poster->id => ['scope' => 'days', 'days' => [$day->id]],
             ],
         ])->assertSessionHasNoErrors();
-        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message, Envelope $envelope) use ($logo, $posterContent, $registration): SentMessage {
+        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message, Envelope $envelope) use ($logo, $posterContent, $sharedContent, $registration): SentMessage {
             $html = $message->getHtmlBody();
             $this->assertSame('Undangan Event - Updated event title', $message->getSubject());
             foreach (['Updated event title', 'Updated &lt;description&gt;', 'Updated hall', 'https://maps.google.com/?q=Updated',
@@ -300,8 +307,10 @@ class EventBulkInvitationResendTest extends TestCase
                 $this->assertStringNotContainsString($text, $html);
             }
             $attachments = collect($message->getAttachments())->keyBy(fn ($attachment): string => $attachment->getFilename());
+            $this->assertCount(4, $attachments);
             $this->assertSame(Storage::disk('local')->get($logo), $attachments['event-logo.png']->getBody());
-            $this->assertSame($posterContent, $attachments['event-poster.jpg']->getBody());
+            $this->assertSame($sharedContent, $attachments['event-poster.jpg']->getBody());
+            $this->assertSame($posterContent, $attachments['event-poster-2.jpg']->getBody());
             $qr = new QrReader($attachments['registration-'.$registration->uuid.'.png']->getBody(), QrReader::SOURCE_TYPE_BLOB);
             $this->assertSame('RA1:'.$registration->uuid, $qr->text(['TRY_HARDER' => true]));
 

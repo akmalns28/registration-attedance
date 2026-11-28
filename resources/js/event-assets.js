@@ -80,22 +80,21 @@ function initializePosterEditor(editor) {
     const savedUploads = new Map(JSON.parse(editor.dataset.posterUploadAssignments)
         .map((assignment) => [assignment.upload_reference, assignment]));
     let nextKey = 0;
-    let changed = false;
-    let primary = list.querySelector('[aria-pressed="true"]')?.closest("[data-poster-key]").dataset.posterKey;
+    let orderChanged = false;
+    let primaryChanged = false;
+    let primary = list.querySelector("[data-poster-badge]:not(.d-none)")?.closest("[data-poster-key]").dataset.posterKey;
 
     function sync() {
         const tiles = Array.from(list.children);
         const transfer = new DataTransfer();
 
-        if (!tiles.some((tile) => tile.dataset.posterKey === primary)) {
-            primary = tiles[0]?.dataset.posterKey;
-        }
+        primaryField.value = "";
 
         tiles.forEach((tile, index) => {
             const key = tile.dataset.posterKey;
             const upload = pending.get(key);
             const orderField = tile.querySelector("[data-poster-order]");
-            orderField.disabled = !changed;
+            orderField.disabled = !orderChanged;
             orderField.value = upload ? `upload:${transfer.items.length}` : key;
             if (upload) {
                 transfer.items.add(upload.file);
@@ -103,7 +102,7 @@ function initializePosterEditor(editor) {
 
             tile.querySelector("[data-poster-controls]").classList.remove("d-none");
             tile.querySelector("[data-poster-badge]").classList.toggle("d-none", key !== primary);
-            tile.querySelector('[data-poster-action="primary"]').setAttribute("aria-pressed", String(key === primary));
+            tile.querySelector('[data-poster-action="primary"]').textContent = key === primary ? "Lepas status utama" : "Jadikan utama";
             tile.querySelector('[data-poster-action="up"]').disabled = index === 0;
             tile.querySelector('[data-poster-action="down"]').disabled = index === tiles.length - 1;
             if (key === primary) {
@@ -112,7 +111,7 @@ function initializePosterEditor(editor) {
             syncPosterAssignment(tile, orderField.value, upload?.reference);
         });
 
-        primaryField.disabled = !changed || !primary;
+        primaryField.disabled = !primaryChanged;
         input.files = transfer.files;
     }
 
@@ -157,7 +156,7 @@ function initializePosterEditor(editor) {
             restorePosterAssignment(tile, savedUploads.get(reference));
             list.append(tile);
             selectedBytes += file.size;
-            changed = true;
+            orderChanged = true;
         }
         sync();
     });
@@ -201,10 +200,11 @@ function initializePosterEditor(editor) {
 
         const tile = button.closest("[data-poster-key]");
         const key = tile.dataset.posterKey;
-        changed = true;
+        orderChanged ||= button.dataset.posterAction !== "primary";
         switch (button.dataset.posterAction) {
             case "primary":
-                primary = key;
+                primary = primary === key ? undefined : key;
+                primaryChanged = true;
                 break;
             case "up":
                 tile.previousElementSibling?.before(tile);
@@ -213,6 +213,9 @@ function initializePosterEditor(editor) {
                 tile.nextElementSibling?.after(tile);
                 break;
             case "remove": {
+                if (primary === key) {
+                    primary = undefined;
+                }
                 const upload = pending.get(key);
                 if (upload) {
                     URL.revokeObjectURL(upload.url);

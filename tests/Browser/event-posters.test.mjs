@@ -92,6 +92,25 @@ test("poster assignments fit mobile screens and submit only explicit changes", {
         ]);
         assert.equal(existing.selected, 0);
 
+        const primary = await client.evaluate(`
+            const selected = () => new FormData(editor.closest("form")).get("poster_primary");
+            const button = (name) => editor.querySelector('[data-poster-name][title="' + name + '"]')
+                .closest("[data-poster-key]").querySelector('[data-poster-action="primary"]');
+            const initial = selected();
+            button("legacy.png").click();
+            const cleared = selected();
+            button("shared.jpg").click();
+            const changed = selected();
+            const label = button("shared.jpg").textContent;
+            button("shared.jpg").closest("[data-poster-key]").querySelector('[data-poster-action="remove"]').click();
+            const removed = selected();
+            chooseFiles(["extra.jpg"]);
+            return { initial, cleared, changed, label, removed, afterUpload: selected(),
+                badges: editor.querySelectorAll("[data-poster-badge]:not(.d-none)").length };
+        `);
+        assert.deepEqual(primary, { initial: null, cleared: "", changed: existing.key,
+            label: "Lepas status utama", removed: "", afterUpload: "", badges: 0 });
+
         await open("retry");
         const upload = await client.evaluate(`
             chooseFiles(["different.jpg", "retry.jpg"]);

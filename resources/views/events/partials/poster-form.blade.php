@@ -18,6 +18,10 @@
             Sisi terpanjang maksimal {{ number_format(config('event_assets.poster_max_side'), 0, ',', '.') }} piksel,
             dengan luas maksimal {{ config('event_assets.poster_max_pixels') / 1000000 }} megapiksel.
         </div>
+        <p class="form-hint mt-2 mb-0">Poster utama opsional. Simpan perubahan setelah mengatur poster.</p>
+        @error('poster_primary')
+            <div class="text-danger small mt-1">{{ $message }}</div>
+        @enderror
         @foreach (array_merge($errors->get('posters*'), $errors->get('poster_assignments*')) as $messages)
             @foreach ($messages as $message)
                 <div class="text-danger small mt-1">{{ $message }}</div>
