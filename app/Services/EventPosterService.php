@@ -160,24 +160,31 @@ class EventPosterService
         $assignments = $this->resolveAssignments($event, $remaining, $aliases, $changes['poster_assignments'] ?? []);
         $order = collect($changes['poster_order'] ?? [])->map(fn (string $key): string => $aliases[$key] ?? $key)
             ->merge($remaining->keys())->unique()->filter(fn (string $key): bool => $remaining->has($key))->values();
-        $requestedPrimary = $changes['poster_primary'] ?? '';
-        $primary = $aliases[$requestedPrimary] ?? $requestedPrimary;
-        if (! $remaining->has($primary)) {
-            $primary = $remaining->firstWhere('is_primary', true)?->id ?? $order->first();
+        $previousPrimary = $remaining->firstWhere('is_primary', true);
+        $primary = $previousPrimary?->id;
+        if (array_key_exists('poster_primary', $changes)) {
+            $requestedPrimary = $changes['poster_primary'];
+            $primary = $requestedPrimary === null || $requestedPrimary === '' ? null : ($aliases[$requestedPrimary] ?? $requestedPrimary);
+            if ($primary !== null && ! $remaining->has($primary)) {
+                throw ValidationException::withMessages(['poster_primary' => 'Poster utama yang dipilih tidak tersedia pada event ini.']);
+            }
         }
 
         foreach ($posters->only(array_keys($removed)) as $poster) {
             $poster->delete();
             $discardedPaths[] = $poster->file_path;
         }
-        $previousPrimary = $remaining->firstWhere('is_primary', true);
         if ($previousPrimary !== null && $previousPrimary->id !== $primary) {
             $previousPrimary->update(['is_primary' => false]);
         }
 
+        $orderChanged = $uploads !== [] || $removed !== [] || isset($changes['poster_order']);
         foreach ($order as $position => $id) {
             $poster = $remaining->get($id);
-            $poster->fill(['is_primary' => $id === $primary, 'sort_order' => $position]);
+            $poster->is_primary = $id === $primary;
+            if ($orderChanged) {
+                $poster->sort_order = $position;
+            }
             if (isset($assignments[$id])) {
                 $poster->is_event_wide = $assignments[$id] === [];
             }

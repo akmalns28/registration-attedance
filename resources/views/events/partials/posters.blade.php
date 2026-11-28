@@ -1,7 +1,7 @@
 @if ($event->posters->isNotEmpty())
     @php
         $visiblePosters = $posterDay === null ? $event->posters : $event->posters->filter(fn ($poster) => $poster->appliesToDays([$posterDay->id]));
-        $primary = $visiblePosters->firstWhere('is_primary', true) ?? ($posterDay === null ? $visiblePosters->first() : null);
+        $primary = $visiblePosters->firstWhere('is_primary', true);
     @endphp
     <section id="event-posters" class="mb-4">
         <h3>Poster Event</h3>

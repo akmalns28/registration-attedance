@@ -27,25 +27,24 @@ class EventPosterTest extends TestCase
         $this->actingAs(User::factory()->create(['is_active' => true])->assignRole('event-admin'));
     }
 
-    public function test_single_upload_becomes_primary_and_is_visible_in_overview_and_edit(): void
+    public function test_single_upload_has_no_primary_and_is_visible_in_overview_and_edit(): void
     {
         $poster = UploadedFile::fake()->image('invite.jpg', 80, 120);
         $logo = UploadedFile::fake()->image('logo.png');
         $this->post(route('events.store'), [...$this->eventData(), 'posters' => [$poster], 'logo' => $logo])->assertSessionHasNoErrors();
 
         $event = Event::query()->sole();
-        $primary = $event->posters()->sole();
-        $this->assertTrue($primary->is_primary);
-        $this->assertSame($primary->id, $event->primaryPoster->id);
-        $this->assertSame('invite.jpg', $primary->original_filename);
-        Storage::disk('local')->assertExists([$primary->file_path, $event->logo_path]);
-        $url = route('events.posters.show', [$event, $primary]);
+        $savedPoster = $event->posters()->sole();
+        $this->assertNull($event->primaryPoster);
+        $this->assertSame('invite.jpg', $savedPoster->original_filename);
+        Storage::disk('local')->assertExists([$savedPoster->file_path, $event->logo_path]);
+        $url = route('events.posters.show', [$event, $savedPoster]);
 
         $this->get($url)->assertOk()->assertHeader('Content-Type', 'image/jpeg');
-        $this->get(route('events.show', $event))->assertOk()->assertSee($url)->assertSee(route('events.logo', $event));
+        $this->get(route('events.show', $event))->assertOk()->assertSee($url)->assertSee(route('events.logo', $event))->assertDontSee('Poster utama');
         $this->get(route('events.edit', $event))->assertOk()->assertSee($url)->assertSee('name="posters[]"', false)
             ->assertSee('Atur pilihan hari setelah Event Day dibuat.');
-        $this->get(route('events.posters.show', [Event::factory()->create(), $primary]))->assertNotFound();
+        $this->get(route('events.posters.show', [Event::factory()->create(), $savedPoster]))->assertNotFound();
         $this->actingAs(User::factory()->create(['is_active' => true]))->get($url)->assertForbidden();
     }
 
@@ -80,6 +79,7 @@ class EventPosterTest extends TestCase
 
         $this->put(route('events.update', $event), [...$this->eventData(), 'title' => 'Unrelated edit'])->assertSessionHasNoErrors();
         $this->assertSame([$firstDay->id], $first->fresh()->days->modelKeys());
+        $this->assertSame($legacy->id, $event->primaryPoster()->sole()->id);
 
         $this->put(route('events.update', $event), [...$this->eventData(), 'title' => 'Unrelated edit', 'posters' => [$firstFile]])
             ->assertSessionHasNoErrors();
@@ -159,7 +159,7 @@ class EventPosterTest extends TestCase
         $event = Event::factory()->create($this->eventData());
         [$day] = $this->posterDays($event);
         $this->put(route('events.update', $event), [...$this->eventData(), 'posters' => [UploadedFile::fake()->image('remove.jpg')],
-            'poster_assignments' => ['upload:0' => ['scope' => 'days', 'days' => [$day->id]]],
+            'poster_primary' => 'upload:0', 'poster_assignments' => ['upload:0' => ['scope' => 'days', 'days' => [$day->id]]],
         ])->assertSessionHasNoErrors();
         $poster = $event->posters()->sole();
         $kept = EventPoster::factory()->for($event)->create();
@@ -169,7 +169,7 @@ class EventPosterTest extends TestCase
 
         $this->assertModelMissing($poster);
         $this->assertSame([$kept->id], $day->posters->modelKeys());
-        $this->assertSame($kept->id, $event->primaryPoster()->sole()->id);
+        $this->assertNull($event->primaryPoster()->first());
         Storage::disk('local')->assertMissing([$poster->file_path, ...$this->variants($poster)]);
     }
 
@@ -184,6 +184,7 @@ class EventPosterTest extends TestCase
 
         $this->put($edit, $this->eventData())->assertSessionHasNoErrors();
         $this->assertSame([$first->id, $second->id], $event->posters()->get()->modelKeys());
+        $this->assertNull($event->primaryPoster()->first());
 
         $thirdFile = UploadedFile::fake()->image('third.png', 120, 90);
         $this->put($edit, [...$this->eventData(), 'posters' => [$firstFile, $thirdFile],
@@ -196,11 +197,47 @@ class EventPosterTest extends TestCase
         $this->assertCount(12, Storage::disk('local')->files('event-posters'));
 
         $this->put($edit, [...$this->eventData(), 'poster_remove' => [$third->id]])->assertSessionHasNoErrors();
-        $this->assertSame($second->id, $event->primaryPoster()->sole()->id);
+        $this->assertNull($event->primaryPoster()->first());
         Storage::disk('local')->assertMissing([$third->file_path, ...$this->variants($third)]);
         $this->put($edit, [...$this->eventData(), 'poster_remove' => [$first->id, $second->id]])->assertSessionHasNoErrors();
         $this->assertSame([], Storage::disk('local')->files('event-posters'));
         $this->get(route('events.show', $event))->assertOk()->assertDontSee('Poster utama');
+    }
+
+    public function test_primary_can_be_set_changed_and_unset_without_removing_posters_or_day_assignments(): void
+    {
+        $event = Event::factory()->create($this->eventData());
+        [$firstDay, $secondDay] = $this->posterDays($event);
+        $first = EventPoster::factory()->for($event)->hasAttached($firstDay, [], 'days')->create(['sort_order' => 2]);
+        $second = EventPoster::factory()->for($event)->hasAttached($secondDay, [], 'days')->create(['sort_order' => 4]);
+        $update = route('events.update', $event);
+
+        $this->put($update, [...$this->eventData(), 'poster_primary' => $first->id])->assertSessionHasNoErrors();
+        $this->assertSame($first->id, $event->primaryPoster()->sole()->id);
+
+        $this->put($update, [...$this->eventData(), 'poster_primary' => $second->id])->assertSessionHasNoErrors();
+        $this->assertSame($second->id, $event->primaryPoster()->sole()->id);
+
+        $this->put($update, [...$this->eventData(), 'poster_primary' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($event->primaryPoster()->first());
+        $this->assertSame([2, 4], $event->posters()->pluck('sort_order')->all());
+        $this->assertSame([$first->id], $firstDay->posters->modelKeys());
+        $this->assertSame([$second->id], $secondDay->posters->modelKeys());
+    }
+
+    public function test_primary_selection_rejects_posters_outside_the_event_without_changing_the_current_primary(): void
+    {
+        $event = Event::factory()->create($this->eventData());
+        $primary = EventPoster::factory()->for($event)->primary()->create();
+        $foreignPoster = EventPoster::factory()->create();
+        $edit = route('events.edit', $event);
+
+        $this->from($edit)->put(route('events.update', $event), [...$this->eventData(), 'poster_primary' => $foreignPoster->id])
+            ->assertRedirect($edit)->assertSessionHasErrors(['poster_primary' => 'Poster utama yang dipilih tidak tersedia pada event ini.']);
+
+        $this->assertSame($primary->id, $event->primaryPoster()->sole()->id);
+        $this->withCookie(session()->getName(), session()->getId())->get($edit)
+            ->assertOk()->assertSee('Poster utama yang dipilih tidak tersedia pada event ini.');
     }
 
     public function test_unsupported_files_and_an_over_limit_update_preserve_the_existing_files(): void
@@ -218,7 +255,7 @@ class EventPosterTest extends TestCase
             ->assertSessionHasErrors('posters');
         $this->assertCount(4, Storage::disk('local')->files('event-posters'));
         Storage::disk('local')->assertExists([$poster->file_path, ...$this->variants($poster)]);
-        $this->assertTrue($poster->fresh()->is_primary);
+        $this->assertFalse($poster->fresh()->is_primary);
 
         $this->actingAs(User::factory()->create(['is_active' => true])->assignRole('super-admin'))
             ->delete(route('events.destroy', $event))->assertRedirect(route('events.index'));
@@ -293,7 +330,7 @@ class EventPosterTest extends TestCase
 
     public function test_processing_failure_rolls_back_multiple_uploads_and_keeps_existing_poster_files(): void
     {
-        $this->post(route('events.store'), [...$this->eventData(), 'posters' => [UploadedFile::fake()->image('existing.png')]])
+        $this->post(route('events.store'), [...$this->eventData(), 'posters' => [UploadedFile::fake()->image('existing.png')], 'poster_primary' => 'upload:0'])
             ->assertSessionHasNoErrors();
         $event = Event::query()->sole();
         $poster = $event->posters()->sole();

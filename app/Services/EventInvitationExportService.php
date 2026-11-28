@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use App\Models\Event;
-use App\Models\EventPoster;
 use App\Models\EventRegistration;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Dompdf\Adapter\CPDF;
 use Dompdf\Image\Cache as DompdfImageCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Response;
@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Throwable;
 
 class EventInvitationExportService
@@ -128,9 +129,19 @@ class EventInvitationExportService
             foreach ($registrations as $registration) {
                 $days = $this->presentation->invitedDays($event, $registration);
                 if ($registration->participant_name !== null && $days->isNotEmpty()) {
-                    $poster = $this->artwork->resolvePoster($event, $days->pluck('id')->all());
-                    if ($poster !== null && ! array_key_exists($poster->id, $posterImages)) {
-                        $posterImages[$poster->id] = $this->posterForPage($poster);
+                    $visibleImages = [];
+                    foreach ($this->artwork->resolvePosters($event, $days->pluck('id')->all()) as $poster) {
+                        if (! array_key_exists($poster->id, $posterImages)) {
+                            $image = $this->artwork->poster($poster);
+                            $posterImages[$poster->id] = $image === null ? null : [
+                                'image' => $image['file'] ?? $this->artwork->dataUri($image),
+                                'width' => $image['width'],
+                                'height' => $image['height'],
+                            ];
+                        }
+                        if ($posterImages[$poster->id] !== null) {
+                            $visibleImages[] = $posterImages[$poster->id];
+                        }
                     }
 
                     $pages[] = [
@@ -138,7 +149,7 @@ class EventInvitationExportService
                         'participantName' => $registration->participant_name,
                         'attendance' => $this->presentation->attendance($event, $days),
                         'qrImage' => 'data:image/png;base64,'.base64_encode($this->qrCode->generateInvitationPng($registration)),
-                        'poster' => $posterImages[$poster?->id] ?? null,
+                        'posterGrid' => $this->posterGrid($visibleImages),
                     ];
                 }
             }
@@ -147,24 +158,17 @@ class EventInvitationExportService
             }
 
             $description = trim($event->description ?? '');
-            $pdf = Pdf::loadView('events.partials.invitation-document', [
+            $html = view('events.partials.invitation-document', [
                 'event' => $event,
                 'pages' => $pages,
                 'logoImage' => $logoImage,
                 'description' => $description === '' ? [] : (preg_split('/\R/u', $description) ?: [$description]),
-            ])->setPaper('a5', 'portrait')->setOptions([
-                'defaultFont' => 'DejaVu Sans',
-                'isRemoteEnabled' => false,
-                'isPhpEnabled' => false,
-                'isJavascriptEnabled' => false,
-                'isFontSubsettingEnabled' => true,
-                'chroot' => [base_path(), Storage::disk('local')->path('event-posters')],
-            ], mergeWithDefaults: true);
+            ])->render();
 
-            return $pdf->output();
+            return $this->renderDocument($html, count($pages));
         } finally {
             DompdfImageCache::clear();
-            unset($pdf, $pages, $posterImages, $logoImage);
+            unset($html, $pages, $posterImages, $logoImage);
             gc_collect_cycles();
             gc_mem_caches();
             if ($limited) {
@@ -173,20 +177,59 @@ class EventInvitationExportService
         }
     }
 
-    /** @return array{image: string, width: float, height: float}|null */
-    private function posterForPage(EventPoster $poster): ?array
+    private function renderDocument(string $html, int $invitationCount): string
     {
-        $image = $this->artwork->poster($poster);
-        if ($image === null) {
-            return null;
+        $paper = CPDF::$PAPER_SIZES['a5'];
+        $options = [
+            'defaultFont' => 'DejaVu Sans',
+            'isRemoteEnabled' => false,
+            'isPhpEnabled' => false,
+            'isJavascriptEnabled' => false,
+            'isFontSubsettingEnabled' => true,
+            'chroot' => [base_path(), Storage::disk('local')->path('event-posters')],
+        ];
+
+        for ($attempt = 0; $attempt < 8; $attempt++) {
+            $pdf = Pdf::loadHTML($html)->setPaper($paper)->setOptions($options, mergeWithDefaults: true);
+            $pdf->render();
+            $pageCount = $pdf->getDomPDF()->getCanvas()->get_page_count();
+            if ($pageCount === $invitationCount) {
+                return $pdf->output();
+            }
+
+            // Give long event details more space while keeping the QR and text at their original sizes.
+            $paper[3] *= max(1.25, $pageCount / $invitationCount);
+            unset($pdf);
+            DompdfImageCache::clear();
+            gc_collect_cycles();
         }
 
-        $scale = min(0.6, 245 / $image['width'], 105 / $image['height']);
+        throw new RuntimeException('Could not fit each invitation on a single PDF page.');
+    }
+
+    /**
+     * @param  list<array{image: string, width: int, height: int}>  $images
+     * @return array{cellWidth: float, rows: list<list<array{image: string, width: float, height: float}>>}
+     */
+    private function posterGrid(array $images): array
+    {
+        $columns = max(1, (int) ceil(sqrt(count($images))));
+        $rows = array_chunk($images, $columns);
+        $cellWidth = 350 / $columns;
+        $maxWidth = min(245, $cellWidth - 6);
+        $maxHeight = min(105, 130 / max(1, count($rows)) - 4);
 
         return [
-            'image' => $image['file'] ?? $this->artwork->dataUri($image),
-            'width' => round($image['width'] * $scale, 2),
-            'height' => round($image['height'] * $scale, 2),
+            'cellWidth' => $cellWidth,
+            'rows' => array_map(fn (array $row): array => array_map(function (array $image) use ($maxWidth, $maxHeight): array {
+                $scale = min(0.6, $maxWidth / $image['width'], $maxHeight / $image['height']);
+
+                return [
+                    'image' => $image['image'],
+                    'width' => round($image['width'] * $scale, 2),
+                    'height' => round($image['height'] * $scale, 2),
+                ];
+            }, $row), $rows),
         ];
     }
 

@@ -157,13 +157,13 @@
                                             {{ $event_title }}
                                         </div>
 
-                                        @isset($event_poster)
+                                        @foreach ($event_posters as $poster)
                                             <img src="{{ ($invite_preview ?? false) || ! isset($message)
-                                                ? 'data:'.$event_poster['mime'].';base64,'.base64_encode($event_poster['contents'])
-                                                : $message->embedData($event_poster['contents'], 'event-poster.jpg', $event_poster['mime']) }}"
-                                                alt="Poster {{ $event_title }}" width="{{ min(500, $event_poster['width']) }}"
+                                                ? 'data:'.$poster['mime'].';base64,'.base64_encode($poster['contents'])
+                                                : $message->embedData($poster['contents'], $loop->first ? 'event-poster.jpg' : 'event-poster-'.$loop->iteration.'.jpg', $poster['mime']) }}"
+                                                alt="Poster {{ $event_title }}" width="{{ min(500, $poster['width']) }}"
                                                 style="display: block; max-width: 100%; height: auto; margin: 0 auto 18px;">
-                                        @endisset
+                                        @endforeach
 
                                         @if (filled($event_description))
                                             <p
