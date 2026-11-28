@@ -13,7 +13,9 @@
     <div class="small mt-1 text-truncate" data-poster-name title="{{ $name }}">{{ $name }}</div>
     <span class="badge bg-secondary-lt mt-1" data-poster-day-count>{{ $allDays ? 'Semua Hari' : $selectedCount.' hari' }}</span>
     <div class="d-none d-flex flex-wrap gap-1 mt-1" data-poster-controls>
-        <button type="button" class="btn btn-sm btn-outline-primary" data-poster-action="primary">{{ $primary ? 'Lepas status utama' : 'Jadikan utama' }}</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-poster-action="primary"
+            aria-label="Poster utama" aria-pressed="{{ $primary ? 'true' : 'false' }}"
+            title="{{ $primary ? 'Lepas status poster utama' : 'Jadikan poster utama' }}">{{ $primary ? '★' : '☆' }}</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-poster-action="up" aria-label="Pindahkan poster lebih awal" title="Pindahkan lebih awal">↑</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-poster-action="down" aria-label="Pindahkan poster lebih akhir" title="Pindahkan lebih akhir">↓</button>
         <button type="button" class="btn btn-sm btn-outline-danger" data-poster-action="remove" aria-label="Hapus poster" title="Hapus poster">×</button>

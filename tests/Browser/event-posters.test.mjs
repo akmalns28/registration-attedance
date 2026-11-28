@@ -99,17 +99,18 @@ test("poster assignments fit mobile screens and submit only explicit changes", {
             const initial = selected();
             button("legacy.png").click();
             const cleared = selected();
+            const clearedStar = [button("legacy.png").textContent, button("legacy.png").getAttribute("aria-pressed")];
             button("shared.jpg").click();
             const changed = selected();
-            const label = button("shared.jpg").textContent;
+            const selectedStar = [button("shared.jpg").textContent, button("shared.jpg").getAttribute("aria-pressed")];
             button("shared.jpg").closest("[data-poster-key]").querySelector('[data-poster-action="remove"]').click();
             const removed = selected();
             chooseFiles(["extra.jpg"]);
-            return { initial, cleared, changed, label, removed, afterUpload: selected(),
+            return { initial, cleared, clearedStar, changed, selectedStar, removed, afterUpload: selected(),
                 badges: editor.querySelectorAll("[data-poster-badge]:not(.d-none)").length };
         `);
-        assert.deepEqual(primary, { initial: null, cleared: "", changed: existing.key,
-            label: "Lepas status utama", removed: "", afterUpload: "", badges: 0 });
+        assert.deepEqual(primary, { initial: null, cleared: "", clearedStar: ["☆", "false"],
+            changed: existing.key, selectedStar: ["★", "true"], removed: "", afterUpload: "", badges: 0 });
 
         await open("retry");
         const upload = await client.evaluate(`

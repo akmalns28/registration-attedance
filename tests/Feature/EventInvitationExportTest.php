@@ -18,6 +18,8 @@ use App\Services\EventInvitationExportQueue;
 use App\Services\EventInvitationExportService;
 use App\Services\EventPosterService;
 use App\Services\RegistrationQrCodeService;
+use DOMDocument;
+use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Queue\WorkerOptions;
@@ -462,14 +464,23 @@ class EventInvitationExportTest extends TestCase
         $zip->close();
     }
 
-    public function test_external_invitation_preview_includes_all_eligible_posters_without_a_primary_or_contact_details(): void
+    public function test_external_invitation_preview_places_the_two_invited_day_posters_side_by_side_without_a_primary(): void
     {
         Storage::fake('local');
-        $event = Event::factory()->create(['description' => "Agenda <umum>\nBawa undangan"]);
-        EventPoster::factory()->for($event)->create(['file_path' => UploadedFile::fake()->image('poster.png', 240, 320)->store('event-posters', 'local')]);
-        EventPoster::factory()->for($event)->create(['file_path' => UploadedFile::fake()->image('second.png', 320, 240)->store('event-posters', 'local')]);
+        $event = Event::factory()->create([
+            'description' => "Agenda <umum>\nBawa undangan", 'start_date' => '2027-01-15', 'end_date' => '2027-01-16',
+        ]);
+        $firstDay = EventDay::factory()->for($event)->create();
+        $secondDay = EventDay::factory()->for($event)->create(['day_number' => 2, 'date' => '2027-01-16']);
+        EventPoster::factory()->for($event)->hasAttached($firstDay, [], 'days')->create([
+            'file_path' => UploadedFile::fake()->image('poster.png', 240, 320)->store('event-posters', 'local'),
+        ]);
+        EventPoster::factory()->for($event)->hasAttached($secondDay, [], 'days')->create([
+            'file_path' => UploadedFile::fake()->image('second.png', 320, 240)->store('event-posters', 'local'),
+        ]);
         $external = ExternalParticipant::factory()->create(['name' => 'Nama Saja', 'email' => null, 'phone' => null]);
-        $registration = EventRegistration::factory()->external()->for($event)->invitedTo()->create(['external_participant_id' => $external->id]);
+        $registration = EventRegistration::factory()->external()->for($event)->invitedTo($firstDay, $secondDay)
+            ->create(['external_participant_id' => $external->id]);
 
         $preview = $this->actingAs($this->staff('registrations.view'))
             ->get(route('events.participants.invitations.preview', [$event, $registration]))->assertOk()
@@ -477,8 +488,14 @@ class EventInvitationExportTest extends TestCase
             ->assertSee('src="data:image/jpeg;base64,', false)->assertSee('src="data:image/png;base64,', false)
             ->assertDontSee('External Participant')->assertDontSee('Jenis Peserta');
         $this->assertSame(2, substr_count($preview->getContent(), 'src="data:image/jpeg;base64,'));
+        $document = new DOMDocument;
+        @$document->loadHTML($preview->getContent());
+        $this->assertSame(1, (new DOMXPath($document))->query('//tr[count(td/img[starts-with(@src, "data:image/jpeg;base64,")]) = 2]')->length);
+
         $pdf = $this->get($this->invitationUrl($event, $registration))->assertOk()->getContent();
         $this->assertInvitationPdf($pdf);
+        $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 240\s+/Height 320\b~', $pdf);
+        $this->assertMatchesRegularExpression('~/Subtype /Image\s+/Width 320\s+/Height 240\b~', $pdf);
         $this->assertSame('RA1:'.$registration->uuid, $this->invitationPayload($pdf));
     }
 

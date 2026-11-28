@@ -101,11 +101,15 @@ function initializePosterEditor(editor) {
             }
 
             tile.querySelector("[data-poster-controls]").classList.remove("d-none");
-            tile.querySelector("[data-poster-badge]").classList.toggle("d-none", key !== primary);
-            tile.querySelector('[data-poster-action="primary"]').textContent = key === primary ? "Lepas status utama" : "Jadikan utama";
+            const isPrimary = key === primary;
+            const primaryButton = tile.querySelector('[data-poster-action="primary"]');
+            tile.querySelector("[data-poster-badge]").classList.toggle("d-none", !isPrimary);
+            primaryButton.setAttribute("aria-pressed", String(isPrimary));
+            primaryButton.title = isPrimary ? "Lepas status poster utama" : "Jadikan poster utama";
+            primaryButton.textContent = isPrimary ? "★" : "☆";
             tile.querySelector('[data-poster-action="up"]').disabled = index === 0;
             tile.querySelector('[data-poster-action="down"]').disabled = index === tiles.length - 1;
-            if (key === primary) {
+            if (isPrimary) {
                 primaryField.value = orderField.value;
             }
             syncPosterAssignment(tile, orderField.value, upload?.reference);

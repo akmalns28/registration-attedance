@@ -281,6 +281,7 @@ class EventBulkInvitationResendTest extends TestCase
             'location' => 'Updated hall', 'google_maps_url' => 'https://maps.google.com/?q=Updated', 'start_date' => '2027-02-14', 'end_date' => '2027-02-16']);
         $day->update(['date' => '2027-02-15', 'title' => 'Invited day',
             'start_time' => '08:00', 'end_time' => '17:00', 'dress_code' => "• Batik\n• Sepatu tertutup"]);
+        $registration->invitedDays()->attach($otherDay);
         $schedule->update(['title' => 'Latest <session>', 'start_time' => '14:00:00', 'end_time' => '15:00:00']);
         $this->put(route('events.update', $event), [
             'title' => $event->title, 'description' => $event->description, 'location' => $event->location, 'google_maps_url' => $event->google_maps_url,
@@ -291,11 +292,11 @@ class EventBulkInvitationResendTest extends TestCase
                 $poster->id => ['scope' => 'days', 'days' => [$day->id]],
             ],
         ])->assertSessionHasNoErrors();
-        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message, Envelope $envelope) use ($logo, $posterContent, $sharedContent, $registration): SentMessage {
+        $transport->shouldReceive('send')->once()->ordered()->andReturnUsing(function (Email $message, Envelope $envelope) use ($logo, $original, $posterContent, $sharedContent, $registration): SentMessage {
             $html = $message->getHtmlBody();
             $this->assertSame('Undangan Event - Updated event title', $message->getSubject());
             foreach (['Updated event title', 'Updated &lt;description&gt;', 'Updated hall', 'https://maps.google.com/?q=Updated',
-                'Jadwal Kehadiran', '15 Februari 2027 | 08.00–17.00 WIB', 'Batik',
+                'Jadwal Kehadiran', '15 Februari 2027 | 08.00–17.00 WIB', '16 Februari 2027', 'Batik',
                 'Sari &lt;Peserta&gt;', $registration->registration_number] as $text) {
                 $this->assertStringContainsString($text, $html);
             }
@@ -307,10 +308,11 @@ class EventBulkInvitationResendTest extends TestCase
                 $this->assertStringNotContainsString($text, $html);
             }
             $attachments = collect($message->getAttachments())->keyBy(fn ($attachment): string => $attachment->getFilename());
-            $this->assertCount(4, $attachments);
+            $this->assertCount(5, $attachments);
             $this->assertSame(Storage::disk('local')->get($logo), $attachments['event-logo.png']->getBody());
             $this->assertSame($sharedContent, $attachments['event-poster.jpg']->getBody());
             $this->assertSame($posterContent, $attachments['event-poster-2.jpg']->getBody());
+            $this->assertSame(file_get_contents($original->getPathname()), $attachments['event-poster-3.jpg']->getBody());
             $qr = new QrReader($attachments['registration-'.$registration->uuid.'.png']->getBody(), QrReader::SOURCE_TYPE_BLOB);
             $this->assertSame('RA1:'.$registration->uuid, $qr->text(['TRY_HARDER' => true]));
 

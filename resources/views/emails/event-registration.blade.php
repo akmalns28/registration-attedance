@@ -157,13 +157,25 @@
                                             {{ $event_title }}
                                         </div>
 
-                                        @foreach ($event_posters as $poster)
-                                            <img src="{{ ($invite_preview ?? false) || ! isset($message)
-                                                ? 'data:'.$poster['mime'].';base64,'.base64_encode($poster['contents'])
-                                                : $message->embedData($poster['contents'], $loop->first ? 'event-poster.jpg' : 'event-poster-'.$loop->iteration.'.jpg', $poster['mime']) }}"
-                                                alt="Poster {{ $event_title }}" width="{{ min(500, $poster['width']) }}"
-                                                style="display: block; max-width: 100%; height: auto; margin: 0 auto 18px;">
-                                        @endforeach
+                                        @if ($event_posters !== [])
+                                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                                                style="table-layout: fixed; margin-bottom: 18px;">
+                                                @foreach (array_chunk($event_posters, 2, true) as $row)
+                                                    <tr>
+                                                        @foreach ($row as $index => $poster)
+                                                            <td @if (count($row) === 1) colspan="2" @else width="50%" @endif
+                                                                align="center" style="padding: 4px; vertical-align: middle;">
+                                                                <img src="{{ ($invite_preview ?? false) || ! isset($message)
+                                                                    ? 'data:'.$poster['mime'].';base64,'.base64_encode($poster['contents'])
+                                                                    : $message->embedData($poster['contents'], $index === 0 ? 'event-poster.jpg' : 'event-poster-'.($index + 1).'.jpg', $poster['mime']) }}"
+                                                                    alt="Poster {{ $event_title }}" width="{{ min(count($row) === 1 ? 500 : 235, $poster['width']) }}"
+                                                                    style="display: block; max-width: 100%; height: auto; margin: 0 auto;">
+                                                            </td>
+                                                        @endforeach
+                                                    </tr>
+                                                @endforeach
+                                            </table>
+                                        @endif
 
                                         @if (filled($event_description))
                                             <p
